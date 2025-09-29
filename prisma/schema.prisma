@@ -1,0 +1,91 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  entries   Entry[]
+
+  // 💰 Wallet
+  balanceCents Int           @default(0)
+  transactions Transaction[]
+
+  // 👇👇 REFERIDOS
+  referralCode String? @unique // código propio que compartirás (nullable para migrar sin romper)
+  referredById String? // quién me refirió (nullable)
+  referredBy   User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("UserReferrals")
+}
+
+model Room {
+  id                  String    @id @default(cuid())
+  title               String
+  priceCents          Int
+  capacity            Int       @default(12)
+  state               RoomState @default(OPEN)
+  autoLockAt          DateTime?
+  createdAt           DateTime  @default(now())
+  lockedAt            DateTime?
+  finishedAt          DateTime?
+  winningEntryId      String?
+  prizeCents          Int?
+  rolledAt            DateTime?
+  preselectedPosition Int?
+
+  entries Entry[]
+}
+
+model Entry {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  position  Int
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, position])
+  @@unique([roomId, userId])
+}
+
+enum RoomState {
+  OPEN
+  LOCKED
+  DRAWING
+  FINISHED
+  ARCHIVED
+}
+
+enum TxKind {
+  DEPOSIT
+  WITHDRAW
+  JOIN_DEBIT
+  WIN_CREDIT
+  REFUND
+  REFERRAL_BONUS // 👈 nuevo
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  kind        TxKind
+  reason      String
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
