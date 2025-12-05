@@ -4,60 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      String   @default("user")
-  createdAt DateTime @default(now())
-  entries   Entry[]
-
-  // 💰 Wallet
-  balanceCents Int           @default(0)
-  transactions Transaction[]
-
-  // 👇👇 REFERIDOS
-  referralCode String? @unique // código propio que compartirás (nullable para migrar sin romper)
-  referredById String? // quién me refirió (nullable)
-  referredBy   User?   @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals    User[]  @relation("UserReferrals")
-}
-
-model Room {
-  id                  String    @id @default(cuid())
-  title               String
-  priceCents          Int
-  capacity            Int       @default(12)
-  state               RoomState @default(OPEN)
-  autoLockAt          DateTime?
-  createdAt           DateTime  @default(now())
-  lockedAt            DateTime?
-  finishedAt          DateTime?
-  winningEntryId      String?
-  prizeCents          Int?
-  rolledAt            DateTime?
-  preselectedPosition Int?
-
-  entries Entry[]
-}
-
-model Entry {
-  id        String   @id @default(cuid())
-  roomId    String
-  userId    String
-  position  Int
-  createdAt DateTime @default(now())
-
-  room Room @relation(fields: [roomId], references: [id])
-  user User @relation(fields: [userId], references: [id])
-
-  @@unique([roomId, position])
-  @@unique([roomId, userId])
 }
 
 enum RoomState {
@@ -74,7 +22,139 @@ enum TxKind {
   JOIN_DEBIT
   WIN_CREDIT
   REFUND
-  REFERRAL_BONUS // 👈 nuevo
+  REFERRAL_BONUS
+  TRANSFER_OUT
+  TRANSFER_IN
+  SHOP_PURCHASE        // 👈 NUEVO: compras de tienda (skins)
+}
+
+enum GameType {
+  ROULETTE
+  DICE_DUEL
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  entries   Entry[]
+
+  // 💰 Wallet
+  balanceCents          Int           @default(0)
+  transactions          Transaction[]
+  referralEarningsCents Int           @default(0)
+
+  // 🤖 Bots
+  isBot Boolean @default(false)
+
+  // REFERIDOS
+  referralCode String? @unique
+  referredById String?
+  referredBy   User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("UserReferrals")
+
+  // Pagos (depósitos)
+  payments Payment[]
+
+  // Chat
+  chatMessages ChatMessage[]
+
+  // 👇 Retiros
+  withdrawals Withdrawal[]
+
+  // 👇 Transferencias
+  outgoingTransfers Transfer[] @relation("FromTransfers")
+  incomingTransfers Transfer[] @relation("ToTransfers")
+
+  // 👇 Soporte
+  supportThreads SupportThread[]
+
+  // 👇 Reset de contraseña
+  passwordResetTokens PasswordResetToken[]
+
+  // 🎲 Tienda de skins de dados
+  diceSkins          DiceSkin[]
+  selectedDiceColor  String?      // ej: "green" | "blue" | "yellow" | "red" | "purple"
+
+  rouletteSkins        RouletteSkin[]
+  selectedRouletteSkin String?    // ej: "classic" | "vip" | "cyberpunk"
+
+  @@index([isBot])
+}
+
+model Room {
+  id                  String    @id @default(cuid())
+  title               String
+  priceCents          Int
+  capacity            Int       @default(12)
+  state               RoomState @default(OPEN)
+  autoLockAt          DateTime?
+  createdAt           DateTime  @default(now())
+  lockedAt            DateTime?
+  finishedAt          DateTime?
+  winningEntryId      String?
+  prizeCents          Int?
+  rolledAt            DateTime?
+  preselectedPosition Int?
+  
+  // 🔁 Reusabilidad
+  currentRound        Int       @default(1)
+
+  // 👇 tipo de juego + meta (JSON) para dados (tiradas, round, etc.)
+  gameType GameType @default(ROULETTE)
+  gameMeta Json?
+
+  // 🛡️ Provably Fair (Ronda Actual)
+  currentServerSeed String?  // Secreto (No enviar al front hasta terminar)
+  currentServerHash String?  // Hash SHA256 (Público)
+
+  deletedAt DateTime?
+
+  entries     Entry[]
+  gameResults GameResult[] // Historial de partidas de esta sala
+  chatMessages ChatMessage[]
+}
+
+model Entry {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  position  Int
+  createdAt DateTime @default(now())
+  
+  // 🔁 Ronda a la que pertenece esta entrada
+  round     Int      @default(1)
+
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  // Un usuario solo puede tener una posición POR RONDA en una sala
+  @@unique([roomId, position, round]) 
+}
+
+model GameResult {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+  
+  winnerUserId String?
+  winnerName   String? // Snapshot del nombre
+  
+  prizeCents   Int
+  roundNumber  Int
+
+  // 🛡️ Provably Fair Snapshot
+  serverSeed     String?
+  serverHash     String?
+  nonce          Int?
+
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([roomId])
 }
 
 model Transaction {
@@ -88,4 +168,145 @@ model Transaction {
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  currency    String
+  status      String // "pending" | "confirming" | "finished" | "failed" | "refunded"
+  orderId     String   @unique
+  npPaymentId String?
+  successUrl  String?
+  cancelUrl   String?
+  credited    Boolean  @default(false)
+  raw         Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status, credited])
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
+model Withdrawal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  wallet      String
+  status      String   @default("pending") // pending | finished | rejected
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model Transfer {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  fromUser    User     @relation("FromTransfers", fields: [fromUserId], references: [id])
+  toUser      User     @relation("ToTransfers", fields: [toUserId], references: [id])
+  amountCents Int
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([fromUserId, createdAt])
+  @@index([toUserId, createdAt])
+}
+
+/**
+ * === Soporte ===
+ */
+model SupportThread {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  guestEmail String?
+  guestName  String?
+
+  subject       String
+  status        String   @default("open") // open | closed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+
+  messages SupportMessage[]
+
+  @@index([userId, status, lastMessageAt])
+  @@index([guestEmail, status, lastMessageAt])
+}
+
+model SupportMessage {
+  id       String        @id @default(cuid())
+  threadId String
+  thread   SupportThread @relation(fields: [threadId], references: [id])
+
+  senderRole String // "user" | "admin" | "guest"
+  senderId   String?
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+/**
+ * === Reset de contraseña por link (admin genera token) ===
+ */
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/**
+ * === Tienda de Skins de Dados ===
+ */
+model DiceSkin {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  color     String   // "green" | "blue" | "yellow" | "red" | "purple"
+  createdAt DateTime @default(now())
+
+  @@unique([userId, color])
+  @@index([userId, color])
+}
+
+model RouletteSkin {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  definitionId String // Identificador del skin (e.g. "classic", "vip")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, definitionId])
+  @@index([userId, definitionId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
 }

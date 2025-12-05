@@ -1,0 +1,61 @@
+# Auditoría del Proyecto "Ruleta12"
+
+Fecha: 04/12/2025
+Estado General: El proyecto tiene una estructura base sólida (Next.js App Router, Prisma, NextAuth), pero presenta serios riesgos de configuración y escalabilidad para una aplicación de apuestas/dinero.
+
+## 🚨 Errores Críticos y Riesgos
+
+1. **Configuración Duplicada de Next.js**:
+   - Existen dos archivos de configuración: `next.config.mjs` y `next.config.ts`. Esto causa conflictos. Next.js usará uno e ignorará el otro.
+   - En `next.config.mjs` se están **ignorando errores de Build y Linting** (`ignoreDuringBuilds`, `ignoreBuildErrors`). Esto es peligroso porque permite subir código roto a producción.
+
+2. **Base de Datos (SQLite)**:
+   - El proyecto usa SQLite (`provider = "sqlite"`).
+   - **Problema**: SQLite no maneja bien la concurrencia de escrituras. En una app de apuestas donde varios usuarios apuestan al mismo tiempo o hay transacciones financieras simultáneas, la base de datos se bloqueará ("Database is locked"), causando fallos en los pagos o duplicación de saldo.
+   - **Solución**: Migrar obligatoriamente a PostgreSQL o MySQL.
+
+3. **Mala Instancia de Prisma en Auth**:
+   - En `src/lib/auth.ts`, se está creando una **nueva instancia** de `PrismaClient` (`const prisma = new PrismaClient()`).
+   - Ya existe un singleton configurado correctamente en `src/lib/prisma.ts`.
+   - **Problema**: En desarrollo (y serverless), esto abrirá múltiples conexiones hasta agotar el límite de la base de datos, tirando el servidor.
+
+4. **Rutas Hardcodeadas**:
+   - `outputFileTracingRoot: '/root/ruleta12'` en `next.config.mjs`. Esto romperá el build si cambias de carpeta o de servidor.
+
+---
+
+## 🛠️ Mejoras Recomendadas
+
+1. **Atomicidad en Transacciones**: Asegurar que todas las operaciones de dinero (restar saldo -> crear apuesta) usen `prisma.$transaction`.
+2. **Validación de Entorno**: Usar `zod` o `t3-env` para validar que `DATABASE_URL`, `NEXTAUTH_SECRET`, etc., existan al iniciar.
+3. **Middleware**: Revisar `middleware.ts` para asegurar que las rutas de `admin` y `dashboard` estén proteginas correctamente.
+
+---
+
+## 🗺️ Ruta de Trabajo (Roadmap)
+
+Sigue estos pasos en orden para estabilizar y profesionalizar el proyecto:
+
+### Paso 1: Limpieza de Configuración (Urgente)
+1.  Eliminar `next.config.mjs` y migrar su contenido válido a `next.config.ts`.
+2.  Eliminar las opciones `ignoreDuringBuilds` y `ignoreBuildErrors`.
+3.  Eliminar `outputFileTracingRoot` si no es estrictamente necesario (o usar `process.cwd()`).
+4.  Corregir `src/lib/auth.ts` para que importe `prisma` desde `@/lib/prisma`.
+
+### Paso 2: Migración de Base de Datos
+1.  Instalar PostgreSQL localmente (o usar un servicio como Supabase/Neon/Railway).
+2.  Cambiar en `schema.prisma`: `provider = "postgresql"`.
+3.  Configurar `.env` con la nueva `DATABASE_URL`.
+4.  Ejecutar `npx prisma migrate dev --name init_postgres`.
+
+### Paso 3: Calidad de Código
+1.  Ejecutar `npm run lint` y corregir todos los errores reportados (ahora que ya no se ignoran).
+2.  Verificar que `tsconfig.json` esté estricto (`"strict": true` ya está, ¡bien!).
+
+### Paso 4: Auditoría de Lógica Financiera
+1.  Revisar `src/app/api/...` donde se maneje saldo.
+2.  Encapsular lógica de saldo en funciones reutilizables que usen `prisma.$transaction`.
+
+### Paso 5: Features Pendientes
+1.  Implementar lógica de "Room Locking" (cuando `lockedAt` se cumple).
+2.  Sistema de sorteo (RNG seguro para determinar ganador).

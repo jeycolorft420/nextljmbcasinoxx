@@ -6,9 +6,12 @@ import RegisterClient from "./RegisterClient";
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen grid place-items-center p-6">Cargando…</main>}>
-      <RegisterClient />
-    </Suspense>
+    <main className="container-page">
+      <Suspense fallback={<div className="grid place-items-center p-6">Cargando…</div>}>
+        <div className="max-w-md mx-auto w-full">
+          <RegisterClient />
+        </div>
+      </Suspense>
+    </main>
   );
 }
-

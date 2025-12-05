@@ -1,49 +1,73 @@
-import { PrismaClient } from "@prisma/client";
+// src/app/api/rooms/[id]/finish/route.ts
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { NextResponse } from "next/server";
 import crypto from "crypto";
-
-const prisma = new PrismaClient();
+import { emitRoomUpdate, emitRoomsIndex } from "@/lib/emit-rooms";
 
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> } // Next 15: params puede venir como Promise
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== "admin") {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as any)?.role as "admin" | "user" | undefined;
+
+    const { id } = await ctx.params;
+
+    // Cargamos sala + entries
+    const room = await prisma.room.findUnique({
+      where: { id },
+      include: { entries: { orderBy: { position: "asc" } } },
+    });
+    if (!room) return NextResponse.json({ error: "Sala no encontrada" }, { status: 404 });
+
+    const isRoulette = room.gameType === "ROULETTE";
+
+    // Idempotencia: si ya está FINISHED, devolvemos ok y emitimos para sincronizar clientes
+    if (room.state === "FINISHED") {
+      await emitRoomUpdate(room.id);
+      await emitRoomsIndex();
+      return NextResponse.json({ ok: true, alreadyFinished: true });
+    }
+
+    // Reglas de acceso:
+    // - Admin: siempre puede forzar
+    // - Usuario normal: solo si es ruleta y la sala está llena/bloqueada lista para sorteo
+    const isFull = room.entries.length === room.capacity;
+    const isReadyByUser = isRoulette && (room.state === "LOCKED" || (room.state === "OPEN" && isFull));
+    if (!(role === "admin" || isReadyByUser)) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+
+    if (!isFull) {
+      return NextResponse.json({ error: "La sala no está completa" }, { status: 400 });
+    }
+
+    // Elegir ganador
+    const winnerIndex = crypto.randomInt(0, room.entries.length);
+    const winner = room.entries[winnerIndex];
+
+    const updated = await prisma.room.update({
+      where: { id: room.id },
+      data: {
+        state: "FINISHED",
+        finishedAt: new Date(),
+        winningEntryId: winner.id,           // ✅ variable correcta
+        prizeCents: room.priceCents * 10,    // payout ruleta
+        preselectedPosition: null,
+      },
+      include: { entries: { include: { user: true }, orderBy: { position: "asc" } } },
+    });
+
+    // Emitir realtime: detalle + índice
+    await emitRoomUpdate(updated.id);
+    await emitRoomsIndex();
+
+    return NextResponse.json({ ok: true, room: updated, winner });
+  } catch (e: any) {
+    console.error("finish error:", e?.message || e);
+    return NextResponse.json({ error: "Error al realizar el sorteo" }, { status: 500 });
   }
-
-  const { id } = params;
-
-  const room = await prisma.room.findUnique({
-    where: { id },
-    include: { entries: true },
-  });
-
-  if (!room) return NextResponse.json({ error: "Sala no encontrada" }, { status: 404 });
-  if (room.state !== "LOCKED")
-    return NextResponse.json({ error: "La sala no está lista para sorteo" }, { status: 400 });
-
-  if (room.entries.length !== room.capacity)
-    return NextResponse.json({ error: "La sala no está completa" }, { status: 400 });
-
-  // elegir ganador al azar
-  const winnerIndex = crypto.randomInt(0, room.entries.length);
-  const winner = room.entries[winnerIndex];
-
-  const updated = await prisma.room.update({
-    where: { id: room.id },
-    data: {
-      state: "FINISHED",
-      finishedAt: new Date(),
-      winningEntryId: winningEntry!.id,
-      prizeCents: room.priceCents * 10,
-      preselectedPosition: null,             // 👈 limpia la preselección
-    },
-    include: { entries: { include: { user: true }, orderBy: { position: "asc" } } },
-  });
-
-  return NextResponse.json({ ok: true, room: updated, winner });
 }

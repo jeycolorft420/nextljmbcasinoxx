@@ -6,7 +6,7 @@ export async function middleware(req: Request) {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  // Permitir estáticos y Next internals
+  // estáticos
   if (
     path.startsWith("/_next") ||
     path.startsWith("/favicon") ||
@@ -15,21 +15,21 @@ export async function middleware(req: Request) {
     return NextResponse.next();
   }
 
-  // 🔓 Dejar públicas: home, rooms, login/registro, auth y GETs de rooms
+  // 🔓 públicas
   if (
     path === "/" ||
     path.startsWith("/rooms") ||
     path.startsWith("/login") ||
     path.startsWith("/register") ||
+    path.startsWith("/support") ||         // <----- AÑADIDO
     path.startsWith("/api/auth")
   ) {
     return NextResponse.next();
   }
 
-  // Proteger dashboard y admin
+  // protegidas
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  // Requiere sesión
   if (path.startsWith("/dashboard") || path.startsWith("/admin")) {
     if (!token) {
       const login = new URL("/login", req.url);
@@ -38,9 +38,8 @@ export async function middleware(req: Request) {
     }
   }
 
-  // Admin-only
   if (path.startsWith("/admin")) {
-    if (token?.role !== "admin") {
+    if ((token as any)?.role !== "admin") {
       return NextResponse.redirect(new URL("/", req.url));
     }
   }
@@ -49,6 +48,5 @@ export async function middleware(req: Request) {
 }
 
 export const config = {
-  // Solo interceptamos estas rutas; el resto (archivos) pasan.
   matcher: ["/((?!.*\\.).*)"],
 };

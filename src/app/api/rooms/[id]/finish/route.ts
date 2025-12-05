@@ -1,155 +1,180 @@
 // src/app/api/rooms/[id]/finish/route.ts
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { walletCredit } from "@/lib/wallet";
+import { emitRoomUpdate } from "@/lib/emit-rooms";
+import { buildRoomPayload } from "@/lib/room-payload";
+import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const prisma = new PrismaClient();
-
-const paramSchema = z.object({ id: z.string().min(1) });
-const bodySchema = z
+const Param = z.object({ id: z.string().min(1) });
+const Body = z
   .object({
     entryId: z.string().min(1).optional(),
     position: z.number().int().min(1).max(100).optional(),
   })
   .optional();
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    // Solo admin
     const session = await getServerSession(authOptions);
-    const role = (session?.user as any)?.role;
-    if (role !== "admin") {
-      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-    }
+    const { id } = Param.parse(await ctx.params);
+    const body = Body.parse(await req.json().catch(() => undefined)) ?? {};
 
-    const { id } = paramSchema.parse(await params);
-    const body = bodySchema.parse(await req.json().catch(() => undefined)) ?? {};
+    // 🔒 Transacción con bloqueo pesimista para evitar "Doble Ganador" (Race Condition)
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Bloquear fila (Postgres)
+      await tx.$executeRaw`SELECT 1 FROM "Room" WHERE "id" = ${id} FOR UPDATE`;
 
-    // Carga sala con entradas y usuarios
-    const room = await prisma.room.findUnique({
-      where: { id },
-      include: {
-        entries: {
-          include: { user: { select: { id: true, name: true, email: true } } },
-          orderBy: { position: "asc" },
-        },
-      },
-    });
-    if (!room) return NextResponse.json({ error: "Sala no encontrada" }, { status: 404 });
+      // 2. Cargar estado fresco
+      const roomHeader = await tx.room.findUnique({ where: { id } });
+      if (!roomHeader) return { error: "Sala no encontrada", status: 404 };
 
-    const isFull = room.entries.length >= room.capacity;
+      // 🛡️ Safeguard: Dice Duel must use /roll, not /finish
+      if (roomHeader.gameType === "DICE_DUEL") {
+        return { error: "Dice Duel uses /roll endpoint", status: 400 };
+      }
 
-    // Si estaba OPEN y se llenó, primero bloquear
-    if (room.state === "OPEN" && isFull) {
-      await prisma.room.update({
-        where: { id: room.id },
-        data: { state: "LOCKED", lockedAt: new Date() },
+      // 3. Idempotencia: Si ya finalizó, retornar éxito con datos actuales
+      if (roomHeader.state === "FINISHED") {
+        const winnerEntry = roomHeader.winningEntryId
+          ? await tx.entry.findUnique({ where: { id: roomHeader.winningEntryId }, include: { user: true } })
+          : null;
+        return { alreadyFinished: true, room: roomHeader, winnerEntry };
+      }
+
+      // 4. Cargar entradas de LA RONDA ACTUAL (Fix Ghost Winner)
+      const currentRound = (roomHeader as any).currentRound ?? 1;
+      const entries = await tx.entry.findMany({
+        where: { roomId: id, round: currentRound },
+        orderBy: { position: "asc" },
+        include: { user: { select: { id: true, name: true, email: true } } },
       });
-      room.state = "LOCKED";
-    }
 
-    // Solo permitimos finalizar si está LOCKED u OPEN (llenándose)
-    if (room.state !== "LOCKED" && room.state !== "OPEN") {
-      return NextResponse.json({ error: "La sala debe estar LOCKED/OPEN" }, { status: 400 });
-    }
+      const room = { ...roomHeader, entries };
 
-    if (room.entries.length === 0) {
-      return NextResponse.json({ error: "No hay participantes" }, { status: 400 });
-    }
+      // 5. Validaciones
+      const role = (session?.user as any)?.role;
+      const isPublicTrigger = room.gameType === "ROULETTE" && entries.length >= room.capacity;
 
-    // Elegir ganador: entryId > position > preselectedPosition > aleatorio
-    let winningEntry = null as (typeof room.entries)[number] | null;
-
-    if (body.entryId) {
-      winningEntry = room.entries.find((e) => e.id === body.entryId) ?? null;
-      if (!winningEntry) {
-        return NextResponse.json({ error: "entryId inválido" }, { status: 400 });
+      if (role !== "admin" && !isPublicTrigger) {
+        return { error: "No autorizado", status: 403 };
       }
-    } else if (body.position) {
-      winningEntry = room.entries.find((e) => e.position === body.position) ?? null;
-      if (!winningEntry) {
-        return NextResponse.json({ error: "position inválida" }, { status: 400 });
+
+      if (room.state === "OPEN" && entries.length >= room.capacity) {
+        await tx.room.update({ where: { id }, data: { state: "LOCKED", lockedAt: new Date() } });
+        room.state = "LOCKED";
       }
-    } else if (room.preselectedPosition) {
-      winningEntry =
-        room.entries.find((e) => e.position === room.preselectedPosition) ?? null;
-      if (!winningEntry) {
-        return NextResponse.json(
-          { error: "La posición preseleccionada no está ocupada" },
-          { status: 400 }
-        );
+
+      if (room.state !== "LOCKED" && room.state !== "OPEN") {
+        return { error: "La sala debe estar LOCKED/OPEN", status: 400 };
       }
-    } else {
-      const idx = Math.floor(Math.random() * room.entries.length);
-      winningEntry = room.entries[idx];
+      if (entries.length === 0) return { error: "No hay participantes", status: 400 };
+
+      // 6. Elegir Ganador
+      let winningEntry: typeof entries[0] | null = null;
+      let newMeta: any = room.gameMeta ?? null;
+      const isRoulette = room.gameType === "ROULETTE";
+      const isDice = room.gameType === "DICE_DUEL";
+
+      if (isRoulette) {
+        if (body.entryId) winningEntry = entries.find(e => e.id === body.entryId) ?? null;
+        else if (body.position) winningEntry = entries.find(e => e.position === body.position) ?? null;
+        else if ((room as any).preselectedPosition) winningEntry = entries.find(e => e.position === (room as any).preselectedPosition) ?? null;
+        else winningEntry = entries[Math.floor(Math.random() * entries.length)];
+
+        if (!winningEntry) return { error: "Ganador inválido (no en ronda actual)", status: 400 };
+      }
+
+      if (isDice) {
+        if (entries.length !== 2) return { error: "Se necesitan 2 jugadores", status: 400 };
+        const top = entries[0];
+        const bottom = entries[1];
+        const rollDie = () => 1 + Math.floor(Math.random() * 6);
+        let tries = 0;
+        let topPair: [number, number] = [0, 0];
+        let bottomPair: [number, number] = [0, 0];
+        do {
+          tries++;
+          topPair = [rollDie(), rollDie()];
+          bottomPair = [rollDie(), rollDie()];
+        } while (topPair[0] + topPair[1] === bottomPair[0] + bottomPair[1] && tries < 50);
+
+        winningEntry = (topPair[0] + topPair[1] > bottomPair[0] + bottomPair[1]) ? top : bottom;
+        newMeta = { ...(room.gameMeta ?? {}), dice: { top: topPair, bottom: bottomPair, tries } };
+      }
+
+      if (!winningEntry) return { error: "Error decidiendo ganador", status: 500 };
+
+      // 7. Commit Update
+      const ROULETTE_MULTIPLIER = 10;
+      const metaObj = (room.gameMeta as any) ?? {};
+      const potFallback = room.priceCents * entries.length;
+      const prizeCents = isRoulette ? room.priceCents * ROULETTE_MULTIPLIER : (typeof metaObj.bankCents === "number" ? metaObj.bankCents : potFallback);
+
+      const updated = await tx.room.update({
+        where: { id },
+        data: {
+          state: "FINISHED",
+          finishedAt: new Date(),
+          winningEntryId: winningEntry.id,
+          prizeCents,
+          preselectedPosition: null,
+          gameMeta: newMeta ?? undefined,
+          gameResults: {
+            create: {
+              winnerUserId: winningEntry.user.id,
+              winnerName: winningEntry.user.name || winningEntry.user.email,
+              prizeCents,
+              roundNumber: currentRound,
+            }
+          }
+        },
+        include: { entries: { include: { user: true }, orderBy: { position: "asc" } } },
+      });
+
+      return { success: true, updated, winningEntry, prizeCents };
+    }, { timeout: 10000 });
+
+    if ((result as any).error) {
+      return NextResponse.json({ error: (result as any).error }, { status: (result as any).status });
     }
 
-    const prizeCents = room.priceCents * 10;
-
-    // Marcar sala como FINISHED y limpiar preselección
-    const updated = await prisma.room.update({
-      where: { id: room.id },
-      data: {
-        state: "FINISHED",
-        finishedAt: new Date(),
-        winningEntryId: winningEntry!.id,
-        prizeCents,
-        preselectedPosition: null, // limpiar preset
-      },
-      include: {
-        entries: { include: { user: true }, orderBy: { position: "asc" } },
-      },
-    });
-
-    const winner = updated.entries.find((e) => e.id === updated.winningEntryId);
-    const winnerUser = winner?.user ?? null;
-    const winnerPosition = winner?.position ?? null;
-    const winnerName = winnerUser?.name ?? winnerUser?.email ?? null;
-
-    // 💸 Acreditar premio al ganador
-    if (winnerUser) {
-      try {
-        await walletCredit({
-          userId: winnerUser.id,
-          amountCents: prizeCents,
-          reason: `Premio sala ${updated.title}`,
-          kind: "WIN_CREDIT",
-          meta: { roomId: updated.id, entryId: winner!.id },
-        });
-      } catch (e) {
-        // si falla el crédito, ya la sala quedó finalizada; logeamos para revisar
-        console.error("walletCredit (finish) error:", e);
-      }
+    // Respuesta Idempotente
+    if ((result as any).alreadyFinished) {
+      const { room, winnerEntry } = result as any;
+      return NextResponse.json({
+        ok: true, roomId: room.id, prizeCents: room.prizeCents, winningEntryId: room.winningEntryId,
+        winner: winnerEntry?.user ? { user: winnerEntry.user, position: winnerEntry.position } : null,
+      });
     }
+
+    // Respuesta Nueva
+    const { updated, winningEntry, prizeCents } = result as any;
+
+    if (winningEntry.user && prizeCents > 0) {
+      walletCredit({
+        userId: winningEntry.user.id,
+        amountCents: prizeCents,
+        reason: `Premio sala ${updated.title}`,
+        kind: "WIN_CREDIT",
+        meta: { roomId: updated.id, entryId: winningEntry.id },
+      }).catch(e => console.error("walletCredit error:", e));
+    }
+
+    const payload = await buildRoomPayload(prisma, updated.id);
+    if (payload) await emitRoomUpdate(updated.id, payload);
 
     return NextResponse.json({
-      ok: true,
-      roomId: updated.id,
-      prizeCents: updated.prizeCents,
-      winningEntryId: updated.winningEntryId,
-
-      // NUEVO: ganador con forma estable para el frontend
-      winner: winnerUser
-        ? {
-            user: { id: winnerUser.id, name: winnerUser.name, email: winnerUser.email },
-            position: winnerPosition,
-          }
-        : null,
-
-      // Redundancia para compatibilidad hacia atrás
-      winnerName,        // "Test User" o "correo@..."
-      winnerPosition,    // número de puesto
+      ok: true, roomId: updated.id, prizeCents, winningEntryId: winningEntry.id,
+      winner: { user: winningEntry.user, position: winningEntry.position },
+      gameMeta: updated.gameMeta,
     });
-    
+
   } catch (e) {
     console.error("finish error:", e);
     return NextResponse.json({ error: "Error al realizar el sorteo" }, { status: 500 });

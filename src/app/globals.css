@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
+/* === TOKENS CLAROS === */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0c10;         /* un negro-azulado elegante */
+  --foreground: #f6f7fb;
+
+  --card: #101218;
+  --card-foreground: #e9ebf2;
+
+  --muted: #151925;
+  --muted-foreground: #9aa3b2;
+
+  --border: #1e2433;
+
+  /* 🎨 PRIMARY en naranja */
+  --primary: #109e28;
+  --primary-foreground: #ffffff;
+
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger:  #ef4444;
+
+  --radius: 16px;
+  --shadow-card: 0 12px 40px -18px rgba(0,0,0,.45);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* === OSCURO AUTOMÁTICO (si usas prefers-color-scheme) === */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0b0c10;
+    --foreground: #f6f7fb;
+
+    --card: #0f121a;
+    --card-foreground: #e9ebf2;
+
+    --muted: #131827;
+    --muted-foreground: #9aa3b2;
+
+    --border: #1a2130;
+
+    /* 🎨 También naranja en dark */
+    --primary: #109e28;
+    --primary-foreground: #ffffff;
   }
 }
 
-body {
+/* === MAPEO A TAILWIND (v4) === */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-xl: var(--radius);
+}
+
+/* === RESETEO BÁSICO === */
+html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
+
+/* === UTILIDADES LISTAS (v4 permite @utility) === */
+@utility container-page {
+  @apply mx-auto max-w-6xl px-4 md:px-6 py-6;
+}
+
+@utility card {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  @apply p-4;
+}
+
+@utility btn {
+  @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+@utility btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: color-mix(in oklab, var(--primary) 65%, black);
+}
+@utility btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+}
+@utility btn-danger {
+  background: color-mix(in oklab, var(--danger) 20%, transparent);
+  border-color: color-mix(in oklab, var(--danger) 35%, black);
+  color: #fecaca;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs border;
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+@utility badge-success { color: #bbf7d0; border-color: #14532d; background: #052e16; }
+@utility badge-warn    { color: #fde68a; border-color: #7c2d12; background: #431407; }
+@utility badge-info    { color: #c7d2fe; border-color: #312e81; background: #1e1b4b; }
+
+@utility progress-track {
+  @apply h-2 w-full rounded-full overflow-hidden;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+@utility progress-bar {
+  @apply h-full;
+  background: var(--primary);
+  transition: width .4s ease;
+}
+/* Oculta barras de scroll (mantiene el scroll funcional) */
+.no-scrollbar {
+  -ms-overflow-style: none;    /* IE y Edge */
+  scrollbar-width: none;       /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;               /* Chrome, Safari, Opera */
+}
+
+/* tipografía base (ya traes Geist desde layout) */
+body { font-family: var(--font-geist-sans), system-ui, -apple-system, Segoe UI, Roboto, Arial; }

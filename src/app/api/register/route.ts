@@ -1,10 +1,8 @@
 // src/app/api/register/route.ts
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 const bodySchema = z.object({
   email: z.string().email(),

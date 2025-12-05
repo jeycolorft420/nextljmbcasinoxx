@@ -2,12 +2,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-const prisma = new PrismaClient();
 
 function makeCode(len = 7) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin I/O/0/1
@@ -22,10 +19,16 @@ export async function GET() {
     const userId = (session?.user as any)?.id as string | undefined;
     if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-    // Trae balance + referralCode real de BD
+    // Trae balance + referralCode + ganancias por referidos
+    console.log("Referral/My - UserID:", userId); // 👈 DEBUG
     let me = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, balanceCents: true, referralCode: true },
+      select: {
+        id: true,
+        balanceCents: true,
+        referralCode: true,
+        referralEarningsCents: true, // 👈 IMPORTANTE
+      },
     });
     if (!me) return NextResponse.json({ error: "Usuario no existe" }, { status: 404 });
 
@@ -38,19 +41,26 @@ export async function GET() {
           me = await prisma.user.update({
             where: { id: userId },
             data: { referralCode: code },
-            select: { id: true, balanceCents: true, referralCode: true },
+            select: {
+              id: true,
+              balanceCents: true,
+              referralCode: true,
+              referralEarningsCents: true,
+            },
           });
           break;
         }
       }
     }
 
-    // (opcional) conteo de referidos
+    // Conteo de referidos
     const referralsCount = await prisma.user.count({ where: { referredById: userId } });
 
+    // Base URL para armar el link
     const base =
-      process.env.NEXT_PUBLIC_BASE_URL ??
-      process.env.NEXTAUTH_URL ??
+      process.env.APP_PUBLIC_URL?.replace(/\/$/, "") ||
+      process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ||
+      process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
       "http://localhost:3000";
 
     return NextResponse.json({
@@ -58,7 +68,7 @@ export async function GET() {
       referralCode: me.referralCode!,
       referralUrl: `${base}/register?ref=${encodeURIComponent(me.referralCode!)}`,
       referralsCount,
-      referralEarningsCents: 0, // por ahora 0; se calculará cuando implementes bonus
+      referralEarningsCents: me.referralEarningsCents ?? 0, // 👈 ahora viene de la BD
     });
   } catch (e) {
     console.error("referral/my error:", e);

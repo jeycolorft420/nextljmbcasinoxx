@@ -1,11 +1,9 @@
 // src/lib/auth.ts
 import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import prisma from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
-
-const prisma = new PrismaClient();
 
 const credentialsSchema = z.object({
   email: z.string().email(),

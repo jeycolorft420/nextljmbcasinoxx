@@ -1,50 +1,77 @@
 // src/app/api/rooms/route.ts
 import { NextResponse } from "next/server";
-import { PrismaClient, RoomState } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { emitRoomsIndex } from "@/lib/emit-rooms";
+import prisma from "@/lib/prisma";
 
-export const dynamic = "force-dynamic"; // evita caché de ruta
-export const revalidate = 0;            // idem (no ISR)
+const ROOM_STATES = ["OPEN", "LOCKED", "FINISHED"] as const;
+const GAME_TYPES = ["ROULETTE", "DICE_DUEL"] as const;
 
-const prisma = new PrismaClient();
+const ALLOWED_TIERS = new Set([100, 500, 1000, 2000, 5000, 10000]);
 
 const createSchema = z.object({
   priceCents: z.number().int().positive(),
-  capacity: z.number().int().min(2).max(100).optional().default(12),
+  capacity: z.number().int().min(2).max(100).optional(),
   title: z.string().min(1).optional(),
+  gameType: z.enum(GAME_TYPES).optional().default("ROULETTE"),
 });
 
-// GET /api/rooms?state=OPEN|LOCKED|DRAWING|FINISHED|ARCHIVED
+// GET /api/rooms?state=&gameType=&take=
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const state = searchParams.get("state") as RoomState | null;
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as any)?.role as string | undefined;
+    const userId = (session?.user as any)?.id as string | undefined;
 
-    const where: Record<string, any> = {};
-    // ✅ soporta todos los estados del enum
-    if (state && (Object.values(RoomState) as string[]).includes(state)) {
-      where.state = state;
+    const { searchParams } = new URL(req.url);
+    const qState = searchParams.get("state") ?? undefined;
+    const qGameType = searchParams.get("gameType") ?? undefined;
+    const qTake = searchParams.get("take") ?? undefined;
+
+    const q = z.object({
+      state: z.enum(ROOM_STATES).optional(),
+      gameType: z.enum(GAME_TYPES).optional(),
+      take: z.coerce.number().int().positive().max(100).optional(),
+    }).parse({ state: qState, gameType: qGameType, take: qTake });
+
+    const where: Record<string, any> = { deletedAt: null };
+    if (q.state) where.state = q.state;
+    if (q.gameType) where.gameType = q.gameType;
+
+    if (q.state === "FINISHED" && role !== "admin") {
+      if (!userId) return NextResponse.json([]);
+      where.entries = { some: { userId } };
     }
 
     const rooms = await prisma.room.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
-      include: { _count: { select: { entries: true } } },
+      take: q.take ?? 30,
     });
 
-    const data = rooms.map((r) => ({
-      id: r.id,
-      title: r.title,
-      priceCents: r.priceCents,
-      state: r.state,
-      capacity: r.capacity,
-      createdAt: r.createdAt,
-      slots: { taken: r._count.entries, free: r.capacity - r._count.entries },
+    // Fix: Count entries only for the CURRENT round of each room
+    const data = await Promise.all(rooms.map(async (r) => {
+      const currentRound = (r as any).currentRound ?? 1;
+      const count = await prisma.entry.count({
+        where: { roomId: r.id, round: currentRound }
+      });
+
+      return {
+        id: r.id,
+        title: r.title,
+        priceCents: r.priceCents,
+        state: r.state,
+        capacity: r.capacity,
+        createdAt: r.createdAt,
+        gameType: r.gameType,
+        slots: { taken: count, free: Math.max(0, r.capacity - count) },
+      };
     }));
 
-    // (opcional) podrías añadir Cache-Control: no-store, pero con dynamic/revalidate ya basta
+    return NextResponse.json(data);
+
     return NextResponse.json(data);
   } catch (e) {
     console.error("rooms GET error:", e);
@@ -62,18 +89,32 @@ export async function POST(req: Request) {
     }
 
     const body = createSchema.parse(await req.json());
+
+    if (!ALLOWED_TIERS.has(body.priceCents)) {
+      return NextResponse.json({ error: "priceCents no permitido" }, { status: 400 });
+    }
+
+    const capacity = body.capacity ?? (body.gameType === "DICE_DUEL" ? 2 : 12);
+
     const title =
-      body.title ?? `Ruleta $${(body.priceCents / 100).toFixed(0)} (${body.capacity} puestos)`;
+      body.title ??
+      (body.gameType === "DICE_DUEL"
+        ? `Dados $${(body.priceCents / 100).toFixed(0)} (1v1)`
+        : `Ruleta $${(body.priceCents / 100).toFixed(0)} (${capacity} puestos)`);
 
     const room = await prisma.room.create({
       data: {
         title,
         priceCents: body.priceCents,
-        capacity: body.capacity,
+        capacity,
         state: "OPEN",
+        gameType: body.gameType,
       },
       include: { _count: { select: { entries: true } } },
     });
+
+    // 👇 realtime índice
+    await emitRoomsIndex();
 
     return NextResponse.json({
       id: room.id,
@@ -82,6 +123,7 @@ export async function POST(req: Request) {
       state: room.state,
       capacity: room.capacity,
       createdAt: room.createdAt,
+      gameType: room.gameType,
       slots: { taken: room._count.entries, free: room.capacity - room._count.entries },
     });
   } catch (e) {

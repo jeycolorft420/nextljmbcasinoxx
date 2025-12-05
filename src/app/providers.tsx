@@ -2,8 +2,18 @@
 'use client';
 
 import { SessionProvider } from "next-auth/react";
+import { WalletProvider } from "@/hooks/use-wallet";
+import { AudioProvider } from "@/context/AudioContext";
 import type { ReactNode } from "react";
 
 export default function Providers({ children }: { children: ReactNode }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <SessionProvider>
+      <WalletProvider>
+        <AudioProvider>
+          {children}
+        </AudioProvider>
+      </WalletProvider>
+    </SessionProvider>
+  );
 }
