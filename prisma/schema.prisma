@@ -87,7 +87,20 @@ model User {
   twoFactorSecret  String?
   twoFactorEnabled Boolean @default(false)
 
+  // 🆔 Verificación
+  verificationStatus VerificationStatus @default(PENDING)
+  profilePhotoUrl    String?
+  documentUrl        String?
+  selfieUrl          String?
+  fullName           String?
+
   @@index([isBot])
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Room {
