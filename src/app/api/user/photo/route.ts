@@ -25,6 +25,13 @@ export async function POST(request: Request) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Validate file type
+    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!validTypes.includes(file.type)) {
+        return NextResponse.json({ error: "Tipo de archivo no válido. Solo se permiten imágenes." }, { status: 400 });
+    }
+
     const ext = path.extname(file.name) || ".jpg";
     const uploadDir = path.join(process.cwd(), "public", "uploads", "profile");
     await fs.mkdir(uploadDir, { recursive: true });

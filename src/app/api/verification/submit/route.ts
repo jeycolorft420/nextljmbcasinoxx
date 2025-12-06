@@ -32,6 +32,12 @@ export async function POST(request: Request) {
 
     // Helper to save a file
     const saveFile = async (file: File, suffix: string) => {
+        // Validate file type
+        const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+        if (!validTypes.includes(file.type)) {
+            throw new Error("Tipo de archivo no válido");
+        }
+
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const ext = path.extname(file.name) || ".jpg";
