@@ -22,7 +22,7 @@ export default function AdminLockScreen() {
 
             if (res.ok) {
                 toast.success("Acceso concedido");
-                router.refresh(); // Reload to pass the layout check
+                window.location.reload(); // Force full reload to ensure cookie is sent
             } else {
                 const d = await res.json();
                 toast.error(d.error || "Código incorrecto");
