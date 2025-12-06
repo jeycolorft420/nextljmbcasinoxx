@@ -14,7 +14,7 @@ async function main() {
             for (let i = 1; i <= 2; i++) {
                 const title = `${game === "DICE_DUEL" ? "Dados" : "Ruleta"} $${amount} #${i}`;
                 const priceCents = amount * 100;
-                const capacity = game === "DICE_DUEL" ? 2 : 100;
+                const capacity = game === "DICE_DUEL" ? 2 : 12;
 
                 await prisma.room.create({
                     data: {
