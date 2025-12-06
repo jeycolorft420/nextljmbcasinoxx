@@ -27,6 +27,11 @@ export default async function AdminHomePage() {
       title: "Soporte",
       desc: "Respondé consultas, tickets o reportes de usuarios.",
     },
+    {
+      href: "/admin/customization",
+      title: "Personalización",
+      desc: "Editar logo, colores, imágenes de juegos y estilos.",
+    },
     // Si luego agregas más secciones, solo suma aquí.
   ];
 

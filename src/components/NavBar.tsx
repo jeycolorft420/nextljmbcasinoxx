@@ -66,11 +66,7 @@ export default function NavBar() {
             <nav className="ml-4 hidden md:flex items-center gap-1">
               <NavItem href="/rooms">Salas</NavItem>
               <NavItem href="/dashboard">Dashboard</NavItem>
-              <NavItem href="/profile">Perfil</NavItem>
               <NavItem href="/shop">Tienda</NavItem>
-              {isAdmin && (
-                <NavItem href="/admin">Admin</NavItem>
-              )}
             </nav>
           )}
         </div>
@@ -175,6 +171,14 @@ export default function NavBar() {
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                           Dashboard
+                        </Link>
+                        <Link
+                          href="/history"
+                          onClick={() => setSidebarOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
+                          Historial
                         </Link>
                         {isAdmin && (
                           <Link

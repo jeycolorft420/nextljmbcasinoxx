@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "777Galaxy",
-  description: "Sistema de ruletas con Next.js",
+  description: "La mejor experiencia de juegos de azar en línea.",
 };
 
 async function getSettings() {
