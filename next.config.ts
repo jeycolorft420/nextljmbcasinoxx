@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  images: {
+    unoptimized: true,
+  },
   webpack: (config, { dev, isServer }) => {
     // Solo ofuscar en producción y en el cliente (para no romper el server si no es necesario)
     // O ofuscar todo si queremos máxima seguridad.
