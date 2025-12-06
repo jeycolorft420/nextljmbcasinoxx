@@ -88,9 +88,10 @@ model User {
   twoFactorEnabled Boolean @default(false)
 
   // 🆔 Verificación
-  verificationStatus VerificationStatus @default(PENDING)
+  verificationStatus String      @default("UNVERIFIED") // UNVERIFIED, PENDING, APPROVED, REJECTED
   profilePhotoUrl    String?
   documentUrl        String?
+  rejectionReason    String?
   selfieUrl          String?
   fullName           String?
 

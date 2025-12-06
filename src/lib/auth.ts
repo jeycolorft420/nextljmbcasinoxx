@@ -10,8 +10,16 @@ const credentialsSchema = z.object({
   password: z.string().min(8),
 });
 
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import GoogleProvider from "next-auth/providers/google";
+
 export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    }),
     Credentials({
       name: "Credentials",
       credentials: {
@@ -47,23 +55,30 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      if (trigger === "update" && session) {
+        return { ...token, ...session.user };
+      }
+
       if (user) {
         token.id = (user as any).id;
         token.email = user.email;
         token.name = user.name;
-        token.role = (user as any).role;
+        token.role = (user as any).role || "user";
         token.avatarUrl = (user as any).avatarUrl;
+        token.verificationStatus = (user as any).verificationStatus;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token, user }) {
+      // Nota: Con strategy="jwt", 'user' es undefined aquí, usamos 'token'.
       if (session.user) {
         (session.user as any).id = token.id;
         session.user.email = token.email as string | undefined;
         session.user.name = token.name as string | null | undefined;
         (session.user as any).role = token.role;
         (session.user as any).avatarUrl = token.avatarUrl;
+        (session.user as any).verificationStatus = (token as any).verificationStatus;
       }
       return session;
     },
