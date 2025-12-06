@@ -1,3 +1,4 @@
+"use client";
 // src/app/verification/page.tsx
 import { useState } from "react";
 import { useRouter } from "next/navigation";
