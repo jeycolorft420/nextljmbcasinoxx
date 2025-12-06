@@ -48,7 +48,8 @@ export async function middleware(req: Request) {
   }
 
   if (path.startsWith("/admin")) {
-    if ((token as any)?.role !== "admin") {
+    const role = (token as any)?.role;
+    if (role !== "admin" && role !== "god") {
       return NextResponse.redirect(new URL("/", req.url));
     }
   }

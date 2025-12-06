@@ -15,12 +15,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role as string | undefined;
   const adminId = (session?.user as any)?.id as string | undefined;
-  if (role !== "admin" || !adminId) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if ((role !== "admin" && role !== "god") || !adminId) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
   const { id } = Param.parse(await ctx.params);
   const { content } = Body.parse(await req.json());
 
-  const th = await prisma.supportThread.findUnique({ where: { id }, select: { status: true }});
+  const th = await prisma.supportThread.findUnique({ where: { id }, select: { status: true } });
   if (!th) return NextResponse.json({ error: "No existe" }, { status: 404 });
   if (th.status === "closed") return NextResponse.json({ error: "Hilo cerrado" }, { status: 400 });
 

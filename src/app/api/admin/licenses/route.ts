@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 export async function GET() {
     const session = await getServerSession(authOptions);
     // @ts-ignore
-    if (session?.user?.role !== "admin") {
+    if (session?.user?.role !== "admin" && session?.user?.role !== "god") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -21,7 +21,7 @@ export async function GET() {
 export async function POST(req: Request) {
     const session = await getServerSession(authOptions);
     // @ts-ignore
-    if (session?.user?.role !== "admin") {
+    if (session?.user?.role !== "admin" && session?.user?.role !== "god") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

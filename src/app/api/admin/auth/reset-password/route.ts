@@ -13,11 +13,11 @@ const Body = z.object({ email: z.string().email() });
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role as string | undefined;
-  if (role !== "admin") return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (role !== "admin" && role !== "god") return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
   const { email } = Body.parse(await req.json());
 
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true }});
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (!user) return NextResponse.json({ error: "No existe usuario con ese correo" }, { status: 404 });
 
   const token = crypto.randomBytes(32).toString("hex");

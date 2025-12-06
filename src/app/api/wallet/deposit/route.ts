@@ -16,7 +16,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
-  if (role !== "admin") return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (role !== "admin" && role !== "god") return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
   const { userId, amountCents, reason, meta } = schema.parse(await req.json());
 

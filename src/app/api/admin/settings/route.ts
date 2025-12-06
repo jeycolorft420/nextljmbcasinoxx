@@ -41,7 +41,8 @@ export async function PUT(req: Request) {
     const session = await getServerSession(authOptions);
 
     // Check Admin
-    if (!session?.user?.email || session.user.role !== "admin") {
+    // @ts-ignore
+    if (!session?.user?.email || (session.user.role !== "admin" && session.user.role !== "god")) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

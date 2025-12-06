@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
     const session = await getServerSession(authOptions);
     // @ts-ignore
-    if (session?.user?.role !== "admin") {
+    if (session?.user?.role !== "admin" && session?.user?.role !== "god") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

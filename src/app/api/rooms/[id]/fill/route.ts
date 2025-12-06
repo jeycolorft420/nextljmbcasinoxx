@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const session = await getServerSession(authOptions);
     const role = (session?.user as any)?.role;
-    if (role !== "admin") {
+    if (role !== "admin" && role !== "god") {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
