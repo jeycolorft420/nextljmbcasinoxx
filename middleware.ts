@@ -18,10 +18,12 @@ export async function middleware(req: Request) {
   // 🔓 públicas
   if (
     path === "/" ||
-    path.startsWith("/rooms") ||
+    path === "/rooms" ||
+    path === "/rooms/dice" ||
+    path === "/rooms/roulette" ||
     path.startsWith("/login") ||
     path.startsWith("/register") ||
-    path.startsWith("/support") ||         // <----- AÑADIDO
+    path.startsWith("/support") ||
     path.startsWith("/api/auth")
   ) {
     return NextResponse.next();
@@ -30,7 +32,14 @@ export async function middleware(req: Request) {
   // protegidas
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  if (path.startsWith("/dashboard") || path.startsWith("/admin")) {
+  // Si intenta acceder a una ruta protegida sin token
+  if (
+    path.startsWith("/dashboard") ||
+    path.startsWith("/admin") ||
+    path.startsWith("/profile") ||
+    path.startsWith("/shop") ||
+    path.startsWith("/rooms/") // Cualquier otra ruta bajo /rooms/ (ej: /rooms/uuid)
+  ) {
     if (!token) {
       const login = new URL("/login", req.url);
       login.searchParams.set("callbackUrl", url.pathname + url.search);
