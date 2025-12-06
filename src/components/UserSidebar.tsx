@@ -52,7 +52,7 @@ export default function UserSidebar({ isOpen, onClose, user }: UserSidebarProps)
                         </div>
                         <h3 className="text-lg font-bold text-white">{user?.name || "Usuario"}</h3>
                         <p className="text-sm text-slate-400">{user?.email}</p>
-                        {user?.role === "admin" && (
+                        {(user?.role === "admin" || user?.role === "god") && (
                             <span className="mt-2 px-3 py-1 bg-primary/20 text-primary text-xs font-bold rounded-full uppercase tracking-wider">
                                 Administrador
                             </span>
@@ -83,7 +83,7 @@ export default function UserSidebar({ isOpen, onClose, user }: UserSidebarProps)
                             <span className="font-medium">Dashboard</span>
                         </Link>
 
-                        {user?.role === "admin" && (
+                        {(user?.role === "admin" || user?.role === "god") && (
                             <Link
                                 href="/admin"
                                 onClick={onClose}
