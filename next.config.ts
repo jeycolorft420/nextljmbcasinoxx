@@ -14,7 +14,8 @@ const nextConfig: NextConfig = {
     // O ofuscar todo si queremos máxima seguridad.
     // Nota: Ofuscar el server puede causar problemas con Next.js (por las rutas dinámicas).
     // Empezamos solo con el cliente.
-    if (!dev && !isServer) {
+    // Solo ofuscar si se habilita explícitamente (ahorra RAM en build)
+    if (!dev && !isServer && process.env.ENABLE_OBFUSCATION === "true") {
       const WebpackObfuscator = require('webpack-obfuscator');
       config.plugins.push(
         new WebpackObfuscator({
