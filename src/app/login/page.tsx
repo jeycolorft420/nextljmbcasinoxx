@@ -14,14 +14,20 @@ export default function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
     const res = await signIn("credentials", {
       email,
       password,
       redirect: false,
     });
+
     setLoading(false);
-    if (res?.ok) router.push("/dashboard");
-    else alert("Credenciales inválidas");
+
+    if (res?.ok) {
+      router.push("/dashboard");
+    } else {
+      alert("Credenciales inválidas");
+    }
   };
 
   return (
@@ -29,12 +35,13 @@ export default function LoginPage() {
       <div className="max-w-sm mx-auto">
         <form onSubmit={submit} className="w-full space-y-4 border p-6 rounded-xl card">
           <h1 className="text-2xl font-semibold">Iniciar sesión</h1>
+
           <input
             className="w-full border p-2 rounded bg-transparent"
             placeholder="Email"
             type="email"
             value={email}
-            onChange={(e)=>setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
           <input
@@ -42,9 +49,10 @@ export default function LoginPage() {
             placeholder="Contraseña"
             type="password"
             value={password}
-            onChange={(e)=>setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
             required
           />
+
           <button disabled={loading} className="w-full btn btn-primary font-medium">
             {loading ? "Entrando..." : "Entrar"}
           </button>

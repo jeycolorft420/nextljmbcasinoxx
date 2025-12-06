@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import BuySeatUI from "@/components/BuySeatUI";
 import ConfirmationModal from "@/components/ConfirmationModal";
+import { useLicense } from "@/context/LicenseContext";
 
 type Entry = {
   id: string;
@@ -49,6 +50,7 @@ function stateBadgeClass(s: Room["state"] | undefined) {
 }
 
 export default function RoomPage() {
+  const { features } = useLicense();
   const { id } = useParams<{ id: string }>();
   const { data: session } = useSession();
   const email = session?.user?.email ?? null;
@@ -481,7 +483,7 @@ export default function RoomPage() {
   const totalUSD = ((room.priceCents * totalUnits) / 100).toFixed(2);
 
   return (
-    <main className="fixed inset-0 z-[100] bg-[#0f172a] overflow-hidden flex flex-col justify-center sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
+    <main className="fixed inset-0 z-[100] bg-background overflow-hidden flex flex-col justify-center sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
 
       {/* Mobile Hamburger */}
       <button
@@ -493,7 +495,7 @@ export default function RoomPage() {
 
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[120] bg-[#0f172a]/95 backdrop-blur-xl animate-in fade-in duration-200 flex flex-col p-6 overflow-y-auto sm:hidden">
+        <div className="fixed inset-0 z-[120] bg-background/95 backdrop-blur-xl animate-in fade-in duration-200 flex flex-col p-6 overflow-y-auto sm:hidden">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg">
@@ -590,7 +592,7 @@ export default function RoomPage() {
 
       {/* Mobile History Overlay */}
       {historyOpen && (
-        <div className="fixed inset-0 z-[120] bg-[#0f172a]/95 backdrop-blur-xl animate-in fade-in duration-200 flex flex-col p-6 overflow-y-auto sm:hidden">
+        <div className="fixed inset-0 z-[120] bg-background/95 backdrop-blur-xl animate-in fade-in duration-200 flex flex-col p-6 overflow-y-auto sm:hidden">
           <div className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
@@ -652,11 +654,17 @@ export default function RoomPage() {
 
         {/* COL IZQUIERDA: CHAT (Solo Desktop) */}
         <div className="hidden lg:block lg:col-span-3 h-[600px] sticky top-4">
-          <ChatWindow
-            roomId={room.id}
-            activePlayerIds={room.entries?.map(e => e.user.id) || []}
-            className="h-full shadow-xl"
-          />
+          {features.includes("chat") ? (
+            <ChatWindow
+              roomId={room.id}
+              activePlayerIds={room.entries?.map(e => e.user.id) || []}
+              className="h-full shadow-xl"
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center bg-white/5 rounded-xl border border-white/10 p-6 text-center">
+              <div className="opacity-50 text-sm">Chat deshabilitado por licencia</div>
+            </div>
+          )}
         </div>
 
         {/* COL CENTRAL: JUEGO */}
@@ -797,8 +805,8 @@ export default function RoomPage() {
           <>
             {/* POPUP */}
             {showMobileBuy && (
-              <div className="fixed inset-x-0 bottom-0 z-[90] p-4 animate-in slide-in-from-bottom duration-300">
-                <div className="bg-[#1e293b] border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative">
+              <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
+                <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-bold text-lg text-white">Unirse a la Sala</h3>
                     <button
@@ -827,7 +835,7 @@ export default function RoomPage() {
             {!showMobileBuy && (
               <button
                 onClick={() => setShowMobileBuy(true)}
-                className="fixed bottom-20 right-4 z-[80] h-12 w-12 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95"
+                className="fixed bottom-20 right-4 z-[190] h-12 w-12 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
               </button>
@@ -837,7 +845,9 @@ export default function RoomPage() {
       </div>
 
       {/* Boton Chat Flotante (Mobile Only) */}
-      <ChatBubble roomId={room.id} activePlayerIds={room.entries?.map(e => e.user.id) || []} />
+      {features.includes("chat") && (
+        <ChatBubble roomId={room.id} activePlayerIds={room.entries?.map(e => e.user.id) || []} />
+      )}
 
       <ConfirmationModal
         isOpen={confirmModal.isOpen}

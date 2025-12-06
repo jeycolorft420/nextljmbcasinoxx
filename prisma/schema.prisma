@@ -38,6 +38,7 @@ model User {
   email     String   @unique
   password  String
   name      String?
+  avatarUrl String?
   role      String   @default("user")
   createdAt DateTime @default(now())
   entries   Entry[]
@@ -81,6 +82,10 @@ model User {
 
   rouletteSkins        RouletteSkin[]
   selectedRouletteSkin String?    // ej: "classic" | "vip" | "cyberpunk"
+
+  // 🔐 2FA
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
 
   @@index([isBot])
 }
@@ -309,4 +314,58 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([roomId, createdAt])
+}
+
+/**
+ * === Sistema de Licencias (Solo para el Dueño/Vendedor) ===
+ */
+model License {
+  id          String    @id @default(cuid())
+  key         String    @unique // Formato: XXXX-YYYY-ZZZZ-WWWW
+  clientName  String
+  
+  // Restricciones (Locking)
+  lockedDomain String?  // Ej: "cliente.com" (Si es null, vale para cualquiera o el primero que la use)
+  lockedIp     String?
+  
+  // Estado
+  isActive    Boolean   @default(true)
+  expiresAt   DateTime? // Null = De por vida
+  
+  // ⭐️ Control de Funciones (Feature Flags)
+  // Ej: ["roulette", "dice", "chat", "vip_support"]
+  features    Json?     
+
+  // Metadatos
+  lastCheckedAt DateTime?
+  lastCheckedIp String?
+  createdAt     DateTime @default(now())
+  
+  @@index([key])
+}
+
+/**
+ * === Configuración del Sistema (Personalización) ===
+ */
+model SystemSettings {
+  id        String   @id @default(cuid())
+  
+  // Branding
+  siteName  String   @default("777 Galaxy")
+  logoUrl   String?
+  faviconUrl String?
+  diceCoverUrl String?
+  rouletteCoverUrl String?
+  
+  // Colors (Hex codes)
+  primaryColor   String @default("#109e28") // The Green
+  secondaryColor String @default("#121212") // The Card Grey
+  accentColor    String @default("#2a2a2a") // The Border Grey
+  backgroundColor String @default("#050505") // Deep Black
+  textColor      String @default("#f5f5f5") // Off-white
+  
+  // Typography
+  fontFamily     String @default("Inter") 
+  
+  updatedAt DateTime @updatedAt
 }

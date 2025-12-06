@@ -6,10 +6,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
-
 import { useWallet } from "@/hooks/use-wallet";
-
-// === Hook: polling de saldo eliminada, usamos contexto ===
 
 export default function NavBar() {
   const { data: session, status } = useSession();
@@ -21,6 +18,21 @@ export default function NavBar() {
   const onRegister = pathname?.startsWith("/register");
 
   const [open, setOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+
+  // Fetch settings for logo
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) setSettings(data);
+      })
+      .catch(err => console.error("Failed to load settings", err));
+  }, []);
+
+  const logoUrl = settings?.logoUrl || "/logo.png";
+  const siteName = settings?.siteName || "777Galaxy";
 
   // Usar contexto global
   const { balanceCents } = useWallet();
@@ -30,18 +42,23 @@ export default function NavBar() {
   const showMainNav = status === "authenticated";
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-black/70 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-between">
         {/* Brand */}
         <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
-              src="/logo.png"
-              alt="Logo"
-              width={60}
-              height={60}
-              className="rounded"
-            />
+          <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+            <div className="relative w-16 h-16">
+              <Image
+                src={logoUrl}
+                alt={siteName}
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+            <span className="font-bold text-2xl tracking-tight hidden sm:block text-foreground">
+              {siteName}
+            </span>
           </Link>
 
           {/* Nav (desktop) */}
@@ -98,17 +115,90 @@ export default function NavBar() {
               </>
             )}
             {status === "authenticated" && (
-              <>
-                <span className="text-gray-300 text-sm">
-                  {user?.name || user?.email} {isAdmin ? "· admin" : ""}
-                </span>
+              <div className="relative">
                 <button
-                  onClick={() => signOut({ callbackUrl: "/" })}
-                  className="px-3 py-1.5 rounded-md text-sm bg-white/10 text-white hover:bg-white/20"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className="relative h-10 w-10 rounded-full overflow-hidden border border-white/10 hover:border-primary/50 transition-colors"
+                  title="Mi Cuenta"
                 >
-                  Cerrar sesión
+                  {user?.avatarUrl ? (
+                    <Image
+                      src={user.avatarUrl}
+                      alt={user.name || "User"}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-white/10 flex items-center justify-center text-white">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                  )}
                 </button>
-              </>
+
+                {sidebarOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setSidebarOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-64 bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden ring-1 ring-white/5">
+                      <div className="p-4 border-b border-white/10 bg-white/5 flex items-center gap-3">
+                        <div className="relative h-10 w-10 rounded-full overflow-hidden border border-white/10 shrink-0">
+                          {user?.avatarUrl ? (
+                            <Image
+                              src={user.avatarUrl}
+                              alt={user.name || "User"}
+                              fill
+                              className="object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full bg-white/10 flex items-center justify-center text-white">
+                              <span className="text-xs font-bold">{user?.name?.[0]?.toUpperCase() || "U"}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="font-bold text-white truncate">{user?.name || "Usuario"}</p>
+                          <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                        </div>
+                      </div>
+                      <div className="p-2 space-y-1">
+                        <Link
+                          href="/profile"
+                          onClick={() => setSidebarOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                          Mi Perfil
+                        </Link>
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setSidebarOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                          Dashboard
+                        </Link>
+                        {isAdmin && (
+                          <Link
+                            href="/admin"
+                            onClick={() => setSidebarOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.74 5.88-5.74 5.88-5.74-5.88z"></path><path d="M11 12.69l5.74 5.88-5.74 5.88-5.74-5.88z"></path></svg>
+                            Panel Admin
+                          </Link>
+                        )}
+                        <div className="h-px bg-white/10 my-1" />
+                        <button
+                          onClick={() => signOut({ callbackUrl: "/" })}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                          Cerrar Sesión
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 

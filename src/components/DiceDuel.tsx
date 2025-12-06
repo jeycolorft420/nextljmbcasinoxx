@@ -74,8 +74,8 @@ function DiceBox({
         md:p-4 md:gap-2 md:rounded-2xl
         
         ${isWinner
-        ? "bg-[#0f172a] border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.15)]"
-        : "bg-[#0f172a] border-white/5"}
+        ? "bg-background border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+        : "bg-background border-white/5"}
         ${isGhost ? "opacity-80" : "opacity-100"}
      `}>
 
@@ -182,14 +182,14 @@ export default function DiceDuel({
       <div className="w-full max-w-[220px] md:max-w-[280px] z-20 shrink-0 my-2 md:my-0">
         {winnerDisplay ? (
           // WINNER STATE
-          <div className="bg-[#0f172a] border border-emerald-500/30 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl shadow-emerald-500/20 animate-in zoom-in duration-300 relative">
+          <div className="bg-background border border-emerald-500/30 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl shadow-emerald-500/20 animate-in zoom-in duration-300 relative">
             <div className="text-emerald-400 text-[10px] md:text-[10px] font-bold uppercase tracking-widest mb-1">¡Ronda Ganada!</div>
             <div className="text-xl md:text-2xl font-bold text-white mb-1">{winnerDisplay.name}</div>
             <div className="text-emerald-400 font-mono font-bold text-base md:text-lg">{winnerDisplay.amount}</div>
           </div>
         ) : (
           // GAME STATE
-          <div className="bg-[#1e293b] border border-white/10 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl relative overflow-hidden group">
+          <div className="bg-card border border-white/10 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl relative overflow-hidden group">
             {/* Glow Effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
 

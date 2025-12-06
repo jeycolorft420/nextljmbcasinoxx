@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
 import Link from "next/link";
 import { pusherClient } from "@/lib/pusher-client"; // 👈 NUEVO
+import { useLicense } from "@/context/LicenseContext";
 
 type State = "OPEN" | "LOCKED" | "FINISHED" | "ARCHIVED" | "DRAWING";
 type GameType = "ROULETTE" | "DICE_DUEL";
@@ -45,6 +46,7 @@ function gameBadge(gt: GameType) {
 }
 
 export default function AdminRoomsPage() {
+  const { features } = useLicense();
   const { data: session, status } = useSession();
   const role = (session?.user as any)?.role as "admin" | "user" | undefined;
 
@@ -109,8 +111,8 @@ export default function AdminRoomsPage() {
     ch.bind("rooms:index", onIndex);
 
     return () => {
-      try { ch.unbind("rooms:index", onIndex); } catch {}
-      try { pusherClient.unsubscribe("private-rooms"); } catch {}
+      try { ch.unbind("rooms:index", onIndex); } catch { }
+      try { pusherClient.unsubscribe("private-rooms"); } catch { }
     };
   }, [status, role, game]); // 👈 si cambias el filtro de juego, el handler se re-crea
 
@@ -246,31 +248,39 @@ export default function AdminRoomsPage() {
       {/* Acciones rápidas */}
       <div className="card p-3 space-y-3">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <span className="text-xs opacity-70 shrink-0">Crear Ruleta:</span>
-          {TIERS.map((p) => (
-            <button
-              key={`r-${p}`}
-              onClick={() => createRoom(p, "ROULETTE")}
-              className="btn btn-primary whitespace-nowrap"
-              title={`Crear ruleta $${p / 100}`}
-            >
-              Ruleta ${p / 100}
-            </button>
-          ))}
+          {features.includes("roulette") && (
+            <>
+              <span className="text-xs opacity-70 shrink-0">Crear Ruleta:</span>
+              {TIERS.map((p) => (
+                <button
+                  key={`r-${p}`}
+                  onClick={() => createRoom(p, "ROULETTE")}
+                  className="btn btn-primary whitespace-nowrap"
+                  title={`Crear ruleta $${p / 100}`}
+                >
+                  Ruleta ${p / 100}
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <span className="text-xs opacity-70 shrink-0">Crear Dados 1v1:</span>
-          {TIERS.map((p) => (
-            <button
-              key={`d-${p}`}
-              onClick={() => createRoom(p, "DICE_DUEL")}
-              className="btn btn-primary whitespace-nowrap"
-              title={`Crear dados $${p / 100} (capacidad 2)`}
-            >
-              Dados ${p / 100}
-            </button>
-          ))}
+          {features.includes("dice") && (
+            <>
+              <span className="text-xs opacity-70 shrink-0">Crear Dados 1v1:</span>
+              {TIERS.map((p) => (
+                <button
+                  key={`d-${p}`}
+                  onClick={() => createRoom(p, "DICE_DUEL")}
+                  className="btn btn-primary whitespace-nowrap"
+                  title={`Crear dados $${p / 100} (capacidad 2)`}
+                >
+                  Dados ${p / 100}
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Filtro por estado */}
@@ -291,7 +301,11 @@ export default function AdminRoomsPage() {
 
         {/* Filtro por juego */}
         <div className="mt-1 flex gap-2 overflow-x-auto no-scrollbar">
-          {GAME_TABS.map((t) => (
+          {GAME_TABS.filter(t => {
+            if (t.key === "ROULETTE" && !features.includes("roulette")) return false;
+            if (t.key === "DICE_DUEL" && !features.includes("dice")) return false;
+            return true;
+          }).map((t) => (
             <button
               key={t.key}
               onClick={() => setGame(t.key as any)}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useWallet } from "@/hooks/use-wallet";
+import { useLicense } from "@/context/LicenseContext";
 
 type ShopState = {
   balanceCents: number;
@@ -34,7 +35,17 @@ const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 export default function ShopPage() {
   const { balanceCents, refreshBalance } = useWallet();
+  const { features, loading: licenseLoading } = useLicense();
   const [activeTab, setActiveTab] = useState<"dice" | "roulette">("dice");
+
+  useEffect(() => {
+    if (licenseLoading) return;
+    if (activeTab === "dice" && !features.includes("dice")) {
+      if (features.includes("roulette")) setActiveTab("roulette");
+    } else if (activeTab === "roulette" && !features.includes("roulette")) {
+      if (features.includes("dice")) setActiveTab("dice");
+    }
+  }, [features, licenseLoading, activeTab]);
   const [state, setState] = useState<ShopState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -110,20 +121,24 @@ export default function ShopPage() {
 
       {/* Tabs */}
       <div className="flex gap-4 mb-6 border-b border-white/10">
-        <button
-          onClick={() => setActiveTab("dice")}
-          className={`pb-2 px-4 text-sm font-medium transition-colors ${activeTab === "dice" ? "text-white border-b-2 border-orange-500" : "text-gray-400 hover:text-white"
-            }`}
-        >
-          Dados
-        </button>
-        <button
-          onClick={() => setActiveTab("roulette")}
-          className={`pb-2 px-4 text-sm font-medium transition-colors ${activeTab === "roulette" ? "text-white border-b-2 border-orange-500" : "text-gray-400 hover:text-white"
-            }`}
-        >
-          Ruleta
-        </button>
+        {features.includes("dice") && (
+          <button
+            onClick={() => setActiveTab("dice")}
+            className={`pb-2 px-4 text-sm font-medium transition-colors ${activeTab === "dice" ? "text-white border-b-2 border-primary" : "text-gray-400 hover:text-white"
+              }`}
+          >
+            Dados
+          </button>
+        )}
+        {features.includes("roulette") && (
+          <button
+            onClick={() => setActiveTab("roulette")}
+            className={`pb-2 px-4 text-sm font-medium transition-colors ${activeTab === "roulette" ? "text-white border-b-2 border-primary" : "text-gray-400 hover:text-white"
+              }`}
+          >
+            Ruleta
+          </button>
+        )}
       </div>
 
       {loading && <div className="text-center py-10 opacity-50">Cargando ítems...</div>}

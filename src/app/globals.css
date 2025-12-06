@@ -2,45 +2,63 @@
 
 /* === TOKENS CLAROS === */
 :root {
-  --background: #0b0c10;         /* un negro-azulado elegante */
-  --foreground: #f6f7fb;
+  /* 🎨 PALETA DE 5 COLORES (777Galaxy Theme) */
 
-  --card: #101218;
-  --card-foreground: #e9ebf2;
+  /* 1. Fondo Principal (Galaxy Void) */
+  --background: #050b14;
 
-  --muted: #151925;
-  --muted-foreground: #9aa3b2;
+  /* 2. Superficies/Tarjetas (Deep Space Navy) */
+  --card: #0f172a;
+  --card-foreground: #ffffff;
 
-  --border: #1e2433;
+  /* 3. Bordes/Acentos (Starlight Grey) */
+  --border: #1e293b;
+  --muted: #0f172a;
+  --muted-foreground: #94a3b8;
 
-  /* 🎨 PRIMARY en naranja */
-  --primary: #109e28;
+  /* 4. Color Principal (Nebula Green) */
+  --primary: #10b981;
   --primary-foreground: #ffffff;
 
-  --success: #16a34a;
-  --warning: #f59e0b;
-  --danger:  #ef4444;
+  /* 5. Texto Principal */
+  --foreground: #f8fafc;
+
+  /* Extras */
+  --success: #10b981;
+  --warning: #eab308;
+  --danger: #ef4444;
 
   --radius: 16px;
-  --shadow-card: 0 12px 40px -18px rgba(0,0,0,.45);
+  --shadow-card: 0 8px 32px -8px rgba(0, 0, 0, 0.5);
+
+  /* Mapeo para Tailwind v4 */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-xl: var(--radius);
 }
 
-/* === OSCURO AUTOMÁTICO (si usas prefers-color-scheme) === */
+/* === OSCURO AUTOMÁTICO === */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b0c10;
-    --foreground: #f6f7fb;
-
-    --card: #0f121a;
-    --card-foreground: #e9ebf2;
-
-    --muted: #131827;
-    --muted-foreground: #9aa3b2;
-
-    --border: #1a2130;
-
-    /* 🎨 También naranja en dark */
-    --primary: #109e28;
+    --background: #050b14;
+    --foreground: #f8fafc;
+    --card: #0f172a;
+    --card-foreground: #ffffff;
+    --muted: #0f172a;
+    --muted-foreground: #94a3b8;
+    --border: #1e293b;
+    --primary: #10b981;
     --primary-foreground: #ffffff;
   }
 }
@@ -64,12 +82,16 @@
 }
 
 /* === RESETEO BÁSICO === */
-html, body {
+html,
+body {
   background: var(--background);
+  background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #050b14 60%);
+  background-attachment: fixed;
   color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
 
-/* === UTILIDADES LISTAS (v4 permite @utility) === */
+/* === UTILIDADES === */
 @utility container-page {
   @apply mx-auto max-w-6xl px-4 md:px-6 py-6;
 }
@@ -89,15 +111,18 @@ html, body {
   background: var(--muted);
   color: var(--foreground);
 }
+
 @utility btn-primary {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: color-mix(in oklab, var(--primary) 65%, black);
 }
+
 @utility btn-ghost {
   background: transparent;
   color: var(--foreground);
 }
+
 @utility btn-danger {
   background: color-mix(in oklab, var(--danger) 20%, transparent);
   border-color: color-mix(in oklab, var(--danger) 35%, black);
@@ -110,28 +135,43 @@ html, body {
   background: var(--muted);
   color: var(--muted-foreground);
 }
-@utility badge-success { color: #bbf7d0; border-color: #14532d; background: #052e16; }
-@utility badge-warn    { color: #fde68a; border-color: #7c2d12; background: #431407; }
-@utility badge-info    { color: #c7d2fe; border-color: #312e81; background: #1e1b4b; }
+
+@utility badge-success {
+  color: #bbf7d0;
+  border-color: #14532d;
+  background: #052e16;
+}
+
+@utility badge-warn {
+  color: #fde68a;
+  border-color: #7c2d12;
+  background: #431407;
+}
+
+@utility badge-info {
+  color: #c7d2fe;
+  border-color: #312e81;
+  background: #1e1b4b;
+}
 
 @utility progress-track {
   @apply h-2 w-full rounded-full overflow-hidden;
   background: var(--muted);
   border: 1px solid var(--border);
 }
+
 @utility progress-bar {
   @apply h-full;
   background: var(--primary);
   transition: width .4s ease;
 }
-/* Oculta barras de scroll (mantiene el scroll funcional) */
+
+/* Oculta barras de scroll */
 .no-scrollbar {
-  -ms-overflow-style: none;    /* IE y Edge */
-  scrollbar-width: none;       /* Firefox */
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;               /* Chrome, Safari, Opera */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* tipografía base (ya traes Geist desde layout) */
-body { font-family: var(--font-geist-sans), system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
