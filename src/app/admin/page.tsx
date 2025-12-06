@@ -43,6 +43,12 @@ export default async function AdminHomePage() {
     //   desc: "Gestión de licencias (Ctrl+Alt+7)",
     //   roles: ["god"],
     // },
+    {
+      href: "/admin/configurations",
+      title: "Configuraciones",
+      desc: "Gestionar verificaciones de usuarios pendientes y aprobar/rechazar.",
+      roles: ["admin", "god"],
+    },
   ];
 
   const cards = allCards.filter(c => c.roles.includes(role));

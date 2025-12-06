@@ -152,18 +152,8 @@ export default function RoomPage() {
   // 🛡️ Logic centralizada de actualización (Pusher + Polling + Manual)
   const handleRoomUpdate = (payload: Room) => {
     // 1. Validar finalización automática (Auto-Start)
-    if (
-      payload.gameType === "ROULETTE" &&
-      payload.state === "LOCKED" &&
-      (payload.entries?.length ?? 0) >= payload.capacity &&
-      !payload.winningEntryId &&
-      !finishInFlightRef.current
-    ) {
-      finishInFlightRef.current = true;
-      fetch(`/api/rooms/${payload.id}/finish`, { method: "POST" })
-        .catch(() => { })
-        .finally(() => setTimeout(() => { finishInFlightRef.current = false; }, 1500));
-    }
+    // MOVIDO AL SERVER (join/route.ts) para evitar Thundering Herd.
+    // El cliente ya no dispara /finish.
 
     // 2. Actualizar Estado React
     setRoom((prev) => {
@@ -185,7 +175,7 @@ export default function RoomPage() {
     // RoomPage solo pasa el estado actualizado.
   };
 
-  // Carga inicial + Polling de seguridad (2s)
+  // Carga inicial + Polling de seguridad (5s)
   useEffect(() => {
     load().then(d => {
       if (d) {
@@ -195,13 +185,14 @@ export default function RoomPage() {
     });
 
     const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return; // Ahorrar recursos si tab inactivo
       fetch(`/api/rooms/${id}`, { cache: "no-store" })
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) handleRoomUpdate(data);
         })
         .catch(e => console.error("Polling error", e));
-    }, 2000);
+    }, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);

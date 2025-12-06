@@ -7,9 +7,9 @@ import { authOptions } from "@/lib/auth";
 
 import { emitRoomUpdate, emitRoomsIndex } from "@/lib/emit-rooms";
 import { buildRoomPayload } from "@/lib/room-payload";
-import { walletCredit } from "@/lib/wallet"; // para acreditar premio
 import { ratelimit } from "@/lib/ratelimit";
 import prisma from "@/lib/prisma";
+import { finishRoom, processWinnerPayout } from "@/lib/game-logic";
 
 const Param = z.object({ id: z.string().min(1) });
 
@@ -53,9 +53,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         currentRound: true,
         entries: {
           select: { position: true, id: true, userId: true, round: true },
-          // Filtrar entries de la ronda actual es mejor hacerlo en el query, pero
-          // entries es un relation, para filtarlo necesitamos un include where o hacerlo manual
-          // aqui haremos fetch manual luego o filtro JS si son pocas.
         },
       },
     });
@@ -171,12 +168,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
       let newState: RoomState = room.state;
 
-      // ... (rest of logic unchanged from here for locking, dice duel, etc.)
-
       if (after.length >= room.capacity || (room.gameType === "DICE_DUEL" && after.length === 2)) {
         newState = RoomState.LOCKED;
 
-        // ... (previous logic for dice duel locking copied below for completeness if needed, but context suggests I am replacing partial)
         if (room.gameType === "DICE_DUEL" && after.length === 2) {
           const p1 = after[0].userId;
           const p2 = after[1].userId;
@@ -210,25 +204,26 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
 
     // Emit detalle + índice tras cada join
-    // Optimizacion: emitRoomUpdate manda refresh signal, no payload.
     await emitRoomUpdate(room.id);
     await emitRoomsIndex();
 
-    // NOTA: El autofinish de ruleta se maneja en finish/route.ts o trigger externo
-    // pero aqui habia un bloque de autofinish si se llena ruleta?
-    // Sí, lines 211-262.
-    // Debemos mantener ese bloque o moverlo a un endpoint dedicado.
-    // El código original lo tenía. Vamos a conservarlo pero llamar al endpoint /finish
-    // OJO: El usuario pidió que NO quede en FINISHED, sino se re-abra.
-    // Eso implica cambiar la lógica de ese bloque (o del finish route).
-    // Si dejamos este bloque aquí, duplicamos lógica. Mejor llamar a fetch /finish como hace el frontend
-    // o simplemente no hacer nada y dejar que el frontend o un cron lo dispare.
-    // El frontend RoomPage tiene un `tryAutoFinishRoulette`.
-    // Pero si queremos robustez, deberíamos hacerlo aquí si se llenó.
-
-    // Para simplificar y cumplir el "autofinish", vamos a dejar que el frontend o el worker dispare /finish
-    // ya que /finish tendrá la lógica compleja de reset. 
-    // ELIMINAMOS el bloque de autofinish inline de aquí para no duplicar la lógica de "GameResult + Reset".
+    // 🚀 AUTO-FINISH TRIGGER (Server-Side)
+    // Si la sala se llenó y es Ruleta, disparamos el finish inmediatamente.
+    // Esto evita que 50 clientes intenten llamar a /finish al mismo tiempo.
+    if (result.newState === RoomState.LOCKED && room.gameType === "ROULETTE") {
+      // Ejecutamos finishRoom de forma asíncrona pero "await" para asegurar que se procese
+      // antes de que el cliente reciba la respuesta (o podríamos hacerlo fire-and-forget).
+      // Dado que es VPS (Node), fire-and-forget es seguro si no queremos bloquear al usuario que hizo el último join.
+      // Pero para UX inmediata (que vea que giró), mejor await.
+      try {
+        const finishResult = await finishRoom(room.id);
+        await processWinnerPayout(finishResult);
+      } catch (err) {
+        console.error("Auto-finish error in join:", err);
+        // No fallamos el join si falla el finish, el estado ya es LOCKED
+        // y un cron o admin podrá desbloquearlo.
+      }
+    }
 
     return NextResponse.json({
       ok: true,
