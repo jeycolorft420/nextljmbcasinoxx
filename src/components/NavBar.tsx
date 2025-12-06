@@ -11,7 +11,7 @@ import { useWallet } from "@/hooks/use-wallet";
 export default function NavBar() {
   const { data: session, status } = useSession();
   const user = session?.user as any | undefined;
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "god";
   const pathname = usePathname();
 
   const onLogin = pathname?.startsWith("/login");

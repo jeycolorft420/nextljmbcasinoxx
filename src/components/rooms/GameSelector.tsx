@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import GameImageEditor from "@/components/admin/GameImageEditor";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 
 export default function GameSelector({ initialDiceCover, initialRouletteCover, isAdmin }: Props) {
     const router = useRouter();
+    const { status } = useSession();
     const [diceCover, setDiceCover] = useState(initialDiceCover);
     const [rouletteCover, setRouletteCover] = useState(initialRouletteCover);
 
@@ -51,7 +53,13 @@ export default function GameSelector({ initialDiceCover, initialRouletteCover, i
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                 {/* Dice Card */}
                 <div
-                    onClick={() => router.push("/rooms/dice")}
+                    onClick={() => {
+                        if (status === "unauthenticated") {
+                            router.push("/login");
+                        } else {
+                            router.push("/rooms/dice");
+                        }
+                    }}
                     className="relative group overflow-hidden rounded-2xl border-2 border-white/10 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(16,185,129,0.2)] transition-all duration-300 h-64 cursor-pointer"
                 >
                     <div
@@ -82,7 +90,13 @@ export default function GameSelector({ initialDiceCover, initialRouletteCover, i
 
                 {/* Roulette Card */}
                 <div
-                    onClick={() => router.push("/rooms/roulette")}
+                    onClick={() => {
+                        if (status === "unauthenticated") {
+                            router.push("/login");
+                        } else {
+                            router.push("/rooms/roulette");
+                        }
+                    }}
                     className="relative group overflow-hidden rounded-2xl border-2 border-white/10 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(16,185,129,0.2)] transition-all duration-300 h-64 cursor-pointer"
                 >
                     <div

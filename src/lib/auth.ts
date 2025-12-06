@@ -1,4 +1,3 @@
-// src/lib/auth.ts
 import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import prisma from "@/lib/prisma";
@@ -35,7 +34,13 @@ export const authOptions: NextAuthOptions = {
         if (!ok) return null;
 
         // Retornar datos mínimos para sesión
-        return { id: user.id, email: user.email, name: user.name ?? null, role: user.role };
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name ?? null,
+          role: user.role,
+          avatarUrl: user.avatarUrl
+        };
       },
     }),
   ],
@@ -48,6 +53,7 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.name = user.name;
         token.role = (user as any).role;
+        token.avatarUrl = (user as any).avatarUrl;
       }
       return token;
     },
@@ -57,6 +63,7 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string | undefined;
         session.user.name = token.name as string | null | undefined;
         (session.user as any).role = token.role;
+        (session.user as any).avatarUrl = token.avatarUrl;
       }
       return session;
     },

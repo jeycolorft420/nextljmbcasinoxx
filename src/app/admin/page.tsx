@@ -8,32 +8,44 @@ export default async function AdminHomePage() {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
 
-  // Solo admins
-  if (role !== "admin") redirect("/");
+  // Solo admins o god
+  if (role !== "admin" && role !== "god") redirect("/");
 
-  const cards = [
+  const allCards = [
     {
       href: "/admin/rooms",
       title: "Salas",
       desc: "Crear y gestionar salas, ver ocupación y estados.",
+      roles: ["admin", "god"],
     },
     {
       href: "/admin/withdrawals",
       title: "Retiros",
       desc: "Aprobar o rechazar retiros de usuarios en tiempo real.",
+      roles: ["admin", "god"],
     },
     {
       href: "/admin/support",
       title: "Soporte",
       desc: "Respondé consultas, tickets o reportes de usuarios.",
+      roles: ["admin", "god"],
     },
     {
       href: "/admin/customization",
       title: "Personalización",
       desc: "Editar logo, colores, imágenes de juegos y estilos.",
+      roles: ["admin", "god"],
     },
-    // Si luego agregas más secciones, solo suma aquí.
+    // Herramientas GOD (ejemplo, si hubiera más)
+    // {
+    //   href: "/admin/licenses",
+    //   title: "Licencias",
+    //   desc: "Gestión de licencias (Ctrl+Alt+7)",
+    //   roles: ["god"],
+    // },
   ];
+
+  const cards = allCards.filter(c => c.roles.includes(role));
 
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">

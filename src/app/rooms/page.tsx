@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; // Adjust path if necessary
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import GameSelector from "@/components/rooms/GameSelector";
 
@@ -8,10 +8,9 @@ export const dynamic = "force-dynamic";
 export default async function RoomsPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user as any;
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "god";
 
   const settings = await prisma.systemSettings.findFirst();
-
   const diceCover = settings?.diceCoverUrl || "/dice-cover.png";
   const rouletteCover = settings?.rouletteCoverUrl || "/roulette-cover.png";
 

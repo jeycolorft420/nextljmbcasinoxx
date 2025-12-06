@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { pusherClient } from "@/lib/pusher-client";
+import Image from "next/image";
 
 type RefSummary = {
   balanceCents: number;
@@ -58,6 +59,7 @@ export default function DashboardPage() {
       userId={user?.id}
       userName={user?.name}
       userEmail={user?.email}
+      userAvatar={user?.avatarUrl}
     />
   );
 }
@@ -67,13 +69,16 @@ function DashboardAuthed({
   userId,
   userName,
   userEmail,
+  userAvatar,
 }: {
   userId: string;
   userName?: string | null;
   userEmail?: string | null;
+  userAvatar?: string | null;
 }) {
   // ---- STATE ----
   const [summary, setSummary] = useState<RefSummary | null>(null);
+  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw" | "transfer">("deposit");
 
   // Recarga (USD)
   const [topUpUsd, setTopUpUsd] = useState("15.00");
@@ -101,25 +106,25 @@ function DashboardAuthed({
     try {
       const r = await fetch("/api/referral/my", { cache: "no-store" });
       if (r.ok) setSummary(await r.json());
-    } catch {}
+    } catch { }
   };
   const loadWithdrawals = async () => {
     try {
       const r = await fetch("/api/me/withdrawals", { cache: "no-store" });
       if (r.ok) setMyWithdrawals(await r.json());
-    } catch {}
+    } catch { }
   };
   const loadPayments = async () => {
     try {
       const r = await fetch("/api/me/payments", { cache: "no-store" });
       if (r.ok) setMyPayments(await r.json());
-    } catch {}
+    } catch { }
   };
   const loadTransfers = async () => {
     try {
       const r = await fetch("/api/me/transfers", { cache: "no-store" });
       if (r.ok) setMyTransfers(await r.json());
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -162,7 +167,7 @@ function DashboardAuthed({
       });
       // si tu backend devuelve saldo al rechazar, actualiza el resumen
       if (p.status === "rejected" || p.status === "finished") {
-        loadSummary().catch(() => {});
+        loadSummary().catch(() => { });
       }
     };
 
@@ -184,7 +189,7 @@ function DashboardAuthed({
         channel.unbind("withdrawal:updated", onWithdrawal);
         channel.unbind("payment:finished", onPaymentFinished);
         pusherClient.unsubscribe(channelName);
-      } catch {}
+      } catch { }
     };
   }, [userId]);
 
@@ -294,278 +299,338 @@ function DashboardAuthed({
 
   // ---- UI ----
   return (
-    <main className="max-w-5xl mx-auto space-y-4 px-2">
-      {/* encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-        <h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
-        <div className="text-sm opacity-80">{userName || userEmail}</div>
-      </div>
-
-      {/* tarjetas superiores */}
-      <section className="grid sm:grid-cols-3 gap-3">
-        <div className="card py-3">
-          <div className="text-xs opacity-70">Saldo</div>
-          <div className="text-2xl font-semibold mt-1">${balance}</div>
-        </div>
-        <div className="card py-3">
-          <div className="text-xs opacity-70">Ganancias por referidos</div>
-          <div className="text-2xl font-semibold mt-1">${refEarn}</div>
-        </div>
-        <div className="card py-3">
-          <div className="text-xs opacity-70">Referidos activos</div>
-          <div className="text-2xl font-semibold mt-1">
-            {summary?.referralsCount ?? 0}
-          </div>
-        </div>
-      </section>
-
-      {/* referido */}
-      <section className="card space-y-2">
-        <h2 className="font-semibold text-base">Tu enlace de referido</h2>
-        <div className="text-xs opacity-80">
-          Código: <code>{summary?.referralCode}</code>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            readOnly
-            value={summary?.referralUrl ?? ""}
-            className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-          />
-          <button onClick={copyReferral} className="btn px-3 py-2">
-            {copied ? "¡Copiado!" : "Copiar"}
-          </button>
-        </div>
-      </section>
-
-      {/* recarga */}
-      <section className="card space-y-3">
-        <h2 className="font-semibold text-base">Recargar con crypto</h2>
-        <p className="text-xs opacity-80">
-          Escribe el monto en <strong>USD</strong> (mínimo <strong>$15.00</strong>). Se abrirá el
-          checkout de NOWPayments.
-        </p>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <input
-            type="number"
-            min={15}
-            step="0.01"
-            value={topUpUsd}
-            onChange={(e) => setTopUpUsd(e.target.value)}
-            className="w-full sm:w-56 bg-transparent border rounded px-3 py-2 text-right text-sm"
-            placeholder="15.00"
-          />
-          <button
-            disabled={loadingTopUp}
-            onClick={doDeposit}
-            className="btn btn-primary w-full sm:w-auto disabled:opacity-50"
-          >
-            {loadingTopUp ? "Creando orden…" : "Recargar"}
-          </button>
-        </div>
-        <div className="text-[11px] opacity-70">
-          El 10% del depósito se acredita automáticamente al referidor cuando el pago queda
-          <strong> CONFIRMED</strong>.
-        </div>
-      </section>
-
-      {/* transferir */}
-      <section className="card space-y-3">
-        <h2 className="font-semibold text-base">Transferir saldo</h2>
-        <p className="text-xs opacity-80">
-          Envía saldo a otro usuario usando su correo. Mínimo <strong>$1.00</strong>.
-        </p>
-
-        <div className="grid sm:grid-cols-3 gap-2">
-          <div className="space-y-1 sm:col-span-2">
-            <label className="text-xs opacity-70">Email del destinatario</label>
-            <input
-              value={toEmail}
-              onChange={(e) => setToEmail(e.target.value)}
-              className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-              placeholder="destinatario@correo.com"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs opacity-70">Monto (USD)</label>
-            <input
-              type="number"
-              min={1}
-              step="0.01"
-              value={trUsd}
-              onChange={(e) => setTrUsd(e.target.value)}
-              className="w-full bg-transparent border rounded px-3 py-2 text-right text-sm"
-              placeholder="1.00"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs opacity-70">Nota (opcional)</label>
-          <input
-            value={trNote}
-            onChange={(e) => setTrNote(e.target.value)}
-            className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-            placeholder="Gracias / Pago de sala / etc."
-            maxLength={200}
-          />
-        </div>
-
-        <div>
-          <button
-            disabled={loadingTr}
-            onClick={doTransfer}
-            className="btn btn-primary w-full sm:w-auto disabled:opacity-50"
-          >
-            {loadingTr ? "Enviando…" : "Enviar transferencia"}
-          </button>
-        </div>
-      </section>
-
-      {/* retirar */}
-      <section className="card space-y-3">
-        <h2 className="font-semibold text-base">Retirar</h2>
-        <p className="text-xs opacity-80">
-          Mínimo <strong>$10</strong>. <strong>Importante</strong> su wallet de retiro debe ser
-          exclusivamente <strong>USDT</strong> en la red <strong>Polygon</strong>.
-        </p>
-
-        <div className="grid sm:grid-cols-3 gap-2">
-          <div className="space-y-1">
-            <label className="text-xs opacity-70">Monto (USD)</label>
-            <input
-              type="number"
-              min={10}
-              step="0.01"
-              value={wdUsd}
-              onChange={(e) => setWdUsd(e.target.value)}
-              className="w-full bg-transparent border rounded px-3 py-2 text-right text-sm"
-              placeholder="10.00"
-            />
-          </div>
-          <div className="sm:col-span-2 space-y-1">
-            <label className="text-xs opacity-70">Wallet destino</label>
-            <input
-              value={wdWallet}
-              onChange={(e) => setWdWallet(e.target.value)}
-              className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-              placeholder="Tu dirección"
-            />
-          </div>
-        </div>
-
-        <div>
-          <button
-            disabled={loadingWd}
-            onClick={doWithdraw}
-            className="btn btn-primary w-full sm:w-auto disabled:opacity-50"
-          >
-            {loadingWd ? "Creando retiro…" : "Solicitar retiro"}
-          </button>
-        </div>
-
-        {/* Historial de retiros */}
-        <div className="mt-2">
-          <h3 className="font-medium text-sm mb-1">Tus últimos retiros</h3>
-          {myWithdrawals.length === 0 ? (
-            <div className="text-xs opacity-70">Sin retiros aún.</div>
+    <main className="max-w-6xl mx-auto space-y-6 px-4 py-6">
+      {/* Header */}
+      <header className="flex items-center gap-4">
+        <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-white/10 shadow-lg">
+          {userAvatar ? (
+            <Image src={userAvatar} alt="Avatar" fill className="object-cover" />
           ) : (
-            <div className="grid gap-2">
-              {myWithdrawals.map((w) => (
-                <div
-                  key={w.id}
-                  className="flex items-center justify-between border rounded px-3 py-2 text-sm"
-                >
-                  <div>
-                    <div className="font-medium">
-                      ${(w.amountCents / 100).toFixed(2)}
-                    </div>
-                    <div className="text-[11px] opacity-70">
-                      {new Date(w.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[11px] opacity-80">{w.wallet}</div>
-                    <div
-                      className={`badge ${
-                        w.status === "finished"
-                          ? "badge-success"
-                          : w.status === "rejected"
-                          ? "badge-warn"
-                          : ""
-                      }`}
-                    >
-                      {w.status.toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold">
+              {userName?.[0]?.toUpperCase() || "U"}
             </div>
           )}
         </div>
+        <div>
+          <h1 className="text-2xl font-bold">Hola, {userName || "Jugador"}</h1>
+          <p className="text-sm opacity-60">{userEmail}</p>
+        </div>
+      </header>
+
+      {/* Stats Grid */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
+          <div className="text-sm font-medium text-emerald-400 mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+            Saldo Disponible
+          </div>
+          <div className="text-3xl font-bold text-white">${balance}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm font-medium opacity-70 mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" x2="20" y1="8" y2="14" /><line x1="23" x2="17" y1="11" y2="11" /></svg>
+            Ganancias Referidos
+          </div>
+          <div className="text-3xl font-bold">${refEarn}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm font-medium opacity-70 mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+            Referidos Activos
+          </div>
+          <div className="text-3xl font-bold">{summary?.referralsCount ?? 0}</div>
+        </div>
       </section>
 
-      {/* historial de recargas */}
-      <section className="card space-y-2">
-        <h2 className="font-semibold text-base">Historial de recargas</h2>
-        {myPayments.length === 0 ? (
-          <div className="text-xs opacity-70">Sin recargas aún.</div>
-        ) : (
-          <div className="grid gap-2">
-            {myPayments.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between border rounded px-3 py-2 text-sm"
-              >
-                <div>
-                  <div className="font-medium">
-                    ${(p.amountCents / 100).toFixed(2)} — {p.status.toUpperCase()}
-                  </div>
-                  <div className="text-[11px] opacity-70">
-                    {new Date(p.createdAt).toLocaleString()}
-                  </div>
-                </div>
-                <div className="text-right text-[11px] opacity-80">
-                  orden: {p.orderId}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-      {/* historial de transferencias */}
-      <section className="card space-y-2">
-        <h2 className="font-semibold text-base">Historial de transferencias</h2>
-        {myTransfers.length === 0 ? (
-          <div className="text-xs opacity-70">Sin transferencias aún.</div>
-        ) : (
-          <div className="grid gap-2">
-            {myTransfers.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between border rounded px-3 py-2 text-sm"
+        {/* Left Column: Action Center */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="card p-0 overflow-hidden border-white/10">
+            {/* Tabs */}
+            <div className="flex border-b border-white/10">
+              <button
+                onClick={() => setActiveTab("deposit")}
+                className={`flex-1 py-4 text-sm font-medium transition-colors relative
+                  ${activeTab === "deposit" ? "text-white bg-white/5" : "text-white/50 hover:text-white hover:bg-white/5"}`}
               >
-                <div>
-                  <div className="font-medium">
-                    {t.direction === "out" ? "Enviado a" : "Recibido de"} {t.counterparty}
+                Recargar
+                {activeTab === "deposit" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+              <button
+                onClick={() => setActiveTab("withdraw")}
+                className={`flex-1 py-4 text-sm font-medium transition-colors relative
+                  ${activeTab === "withdraw" ? "text-white bg-white/5" : "text-white/50 hover:text-white hover:bg-white/5"}`}
+              >
+                Retirar
+                {activeTab === "withdraw" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+              <button
+                onClick={() => setActiveTab("transfer")}
+                className={`flex-1 py-4 text-sm font-medium transition-colors relative
+                  ${activeTab === "transfer" ? "text-white bg-white/5" : "text-white/50 hover:text-white hover:bg-white/5"}`}
+              >
+                Transferir
+                {activeTab === "transfer" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6 min-h-[300px]">
+              {activeTab === "deposit" && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-green-500/10 rounded-xl text-green-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold">Recargar Saldo</h2>
+                      <p className="text-sm opacity-60">Aceptamos criptomonedas vía NOWPayments.</p>
+                    </div>
                   </div>
-                  <div className="text-[11px] opacity-70">
-                    {new Date(t.createdAt).toLocaleString()}
-                    {t.note ? ` · ${t.note}` : ""}
+
+                  <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                    <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Monto a recargar (USD)</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50">$</span>
+                        <input
+                          type="number"
+                          min={15}
+                          step="0.01"
+                          value={topUpUsd}
+                          onChange={(e) => setTopUpUsd(e.target.value)}
+                          className="w-full bg-black/20 border border-white/10 rounded-lg pl-7 pr-3 py-3 text-lg font-bold focus:ring-2 focus:ring-primary/50 outline-none transition"
+                          placeholder="15.00"
+                        />
+                      </div>
+                      <button
+                        disabled={loadingTopUp}
+                        onClick={doDeposit}
+                        className="btn btn-primary px-6"
+                      >
+                        {loadingTopUp ? "Procesando..." : "Pagar"}
+                      </button>
+                    </div>
+                    <p className="text-xs opacity-50 mt-2">Mínimo $15.00 USD. Se acredita automáticamente tras 1 confirmación.</p>
                   </div>
                 </div>
-                <div
-                  className={`font-semibold ${
-                    t.direction === "out" ? "text-red-300" : "text-green-300"
-                  }`}
-                >
-                  {t.direction === "out" ? "-" : "+"}${(t.amountCents / 100).toFixed(2)}
+              )}
+
+              {activeTab === "withdraw" && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-orange-500/10 rounded-xl text-orange-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold">Solicitar Retiro</h2>
+                      <p className="text-sm opacity-60">Retiros en USDT (Red Polygon).</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Monto (USD)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50">$</span>
+                        <input
+                          type="number"
+                          min={10}
+                          step="0.01"
+                          value={wdUsd}
+                          onChange={(e) => setWdUsd(e.target.value)}
+                          className="w-full bg-black/20 border border-white/10 rounded-lg pl-7 pr-3 py-3 font-bold outline-none focus:border-primary/50 transition"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Dirección de Wallet (Polygon)</label>
+                      <input
+                        value={wdWallet}
+                        onChange={(e) => setWdWallet(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-3 font-mono text-sm outline-none focus:border-primary/50 transition"
+                        placeholder="0x..."
+                      />
+                    </div>
+                    <button
+                      disabled={loadingWd}
+                      onClick={doWithdraw}
+                      className="btn btn-primary w-full py-3 mt-2"
+                    >
+                      {loadingWd ? "Solicitando..." : "Confirmar Retiro"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+
+              {activeTab === "transfer" && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></svg>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold">Transferencia Interna</h2>
+                      <p className="text-sm opacity-60">Envía saldo a otro usuario sin comisiones.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Email del destinatario</label>
+                      <input
+                        value={toEmail}
+                        onChange={(e) => setToEmail(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-3 outline-none focus:border-primary/50 transition"
+                        placeholder="usuario@email.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Monto (USD)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50">$</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step="0.01"
+                          value={trUsd}
+                          onChange={(e) => setTrUsd(e.target.value)}
+                          className="w-full bg-black/20 border border-white/10 rounded-lg pl-7 pr-3 py-3 font-bold outline-none focus:border-primary/50 transition"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase opacity-50 mb-1.5 block">Nota (Opcional)</label>
+                      <input
+                        value={trNote}
+                        onChange={(e) => setTrNote(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-3 outline-none focus:border-primary/50 transition"
+                        placeholder="Regalo, Pago, etc."
+                      />
+                    </div>
+                  </div>
+                  <button
+                    disabled={loadingTr}
+                    onClick={doTransfer}
+                    className="btn btn-primary w-full py-3 mt-2"
+                  >
+                    {loadingTr ? "Enviando..." : "Enviar Fondos"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+        </div>
+
+        {/* Right Column: Sidebar Info */}
+        <div className="space-y-6">
+
+          {/* Referral Card */}
+          <div className="card p-5 space-y-4 bg-gradient-to-b from-white/5 to-transparent">
+            <h3 className="font-bold flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" x2="19" y1="8" y2="14" /><line x1="22" x2="16" y1="11" y2="11" /></svg>
+              Invita y Gana
+            </h3>
+            <p className="text-xs opacity-60">
+              Comparte tu código y gana el 10% de todos los depósitos de tus referidos.
+            </p>
+
+            <div className="bg-black/30 rounded-lg p-3 border border-white/5">
+              <div className="text-xs opacity-50 mb-1">Tu Código</div>
+              <div className="text-xl font-mono font-bold tracking-widest text-primary">{summary?.referralCode || "..."}</div>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={summary?.referralUrl ?? ""}
+                className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 text-xs text-white/70 truncate"
+              />
+              <button onClick={copyReferral} className="btn btn-sm btn-outline">
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+          </div>
+
+          {/* Recent Activity Feed */}
+          <div className="card p-0 overflow-hidden">
+            <div className="p-4 border-b border-white/10 bg-white/5">
+              <h3 className="font-bold text-sm">Actividad Reciente</h3>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+              {/* Combine and sort lists locally for display if needed, or just show sections */}
+
+              {/* Withdrawals */}
+              {myWithdrawals.map((w) => (
+                <div key={w.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold">Retiro</div>
+                      <div className="text-[10px] opacity-50">{new Date(w.createdAt).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold">-${(w.amountCents / 100).toFixed(2)}</div>
+                    <div className={`text-[10px] uppercase ${w.status === 'finished' ? 'text-green-400' : 'text-yellow-400'}`}>{w.status}</div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Payments */}
+              {myPayments.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold">Recarga</div>
+                      <div className="text-[10px] opacity-50">{new Date(p.createdAt).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-green-400">+${(p.amountCents / 100).toFixed(2)}</div>
+                    <div className="text-[10px] opacity-50 uppercase">{p.status}</div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Transfers */}
+              {myTransfers.map((t) => (
+                <div key={t.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold">{t.direction === "out" ? "Envío" : "Recepción"}</div>
+                      <div className="text-[10px] opacity-50">{t.counterparty}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${t.direction === "out" ? "text-red-400" : "text-green-400"}`}>
+                      {t.direction === "out" ? "-" : "+"}${(t.amountCents / 100).toFixed(2)}
+                    </div>
+                    <div className="text-[10px] opacity-50">{new Date(t.createdAt).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+
+              {myWithdrawals.length === 0 && myPayments.length === 0 && myTransfers.length === 0 && (
+                <div className="p-4 text-center text-xs opacity-50">
+                  Sin actividad reciente.
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
     </main>
   );
 }
