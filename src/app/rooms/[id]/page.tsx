@@ -537,7 +537,7 @@ export default function RoomPage() {
               <Link href="/shop" className="block px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">
                 Tienda
               </Link>
-              {(session?.user as any)?.role === "admin" && (
+              {((session?.user as any)?.role === "admin" || (session?.user as any)?.role === "god") && (
                 <Link href="/admin" className="block px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium text-yellow-400/90">
                   Admin Panel
                 </Link>

@@ -37,7 +37,7 @@ export async function POST(
     // - Usuario normal: solo si es ruleta y la sala está llena/bloqueada lista para sorteo
     const isFull = room.entries.length === room.capacity;
     const isReadyByUser = isRoulette && (room.state === "LOCKED" || (room.state === "OPEN" && isFull));
-    if (!(role === "admin" || isReadyByUser)) {
+    if (!(role === "admin" || role === "god" || isReadyByUser)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 

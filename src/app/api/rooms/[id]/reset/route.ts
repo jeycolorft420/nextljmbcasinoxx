@@ -13,7 +13,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const session = await getServerSession(authOptions);
     const role = (session?.user as any)?.role;
     // Permisos: Admin siempre, o Usuario si la sala está FINISHED hace > 8 seg
-    const isAdmin = role === "admin";
+    const isAdmin = role === "admin" || role === "god";
 
     const { id } = paramSchema.parse(await params);
 

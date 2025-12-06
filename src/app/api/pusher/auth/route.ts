@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
   const isRoomChannel = channelName?.startsWith("private-room-");
 
-  const isAdminRooms = channelName === "private-rooms" && user?.role === "admin";
+  const isAdminRooms = channelName === "private-rooms" && (user?.role === "admin" || user?.role === "god");
 
   if (!(isUserChannel || isRoomChannel || isAdminRooms)) {
     return new NextResponse("Forbidden", { status: 403 });
