@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
     // Check Admin
     const user = session?.user as any;
-    if (!user?.email || user.role !== "admin") {
+    if (!user?.email || (user.role !== "admin" && user.role !== "god")) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
