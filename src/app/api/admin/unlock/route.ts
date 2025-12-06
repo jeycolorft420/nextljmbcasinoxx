@@ -35,7 +35,8 @@ export async function POST(req: Request) {
     }
 
     // Set Cookie
-    cookies().set("admin_unlocked", "true", {
+    // Set Cookie
+    (await cookies()).set("admin_unlocked", "true", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
