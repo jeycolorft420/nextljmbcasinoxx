@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     // Set Cookie
     (await cookies()).set("admin_unlocked", "true", {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NEXTAUTH_URL?.startsWith("https") ?? false,
         sameSite: "strict",
         maxAge: 60 * 60 * 4, // 4 hours
         path: "/",
