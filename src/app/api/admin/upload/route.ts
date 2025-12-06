@@ -11,7 +11,14 @@ export async function POST(req: Request) {
 
     // Check Admin
     const user = session?.user as any;
+    console.log("UPLOAD DEBUG:", {
+        hasSession: !!session,
+        email: user?.email,
+        role: user?.role
+    });
+
     if (!user?.email || (user.role !== "admin" && user.role !== "god")) {
+        console.log("UPLOAD BLOCKED: Role mismatch or no session");
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
