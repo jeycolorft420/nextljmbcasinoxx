@@ -10,7 +10,7 @@ export default async function AdminRoomsPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user as any;
 
-  if (user?.role !== "admin") {
+  if (user?.role !== "admin" && user?.role !== "god") {
     redirect("/");
   }
 
