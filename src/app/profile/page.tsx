@@ -35,11 +35,17 @@ export default function ProfilePage() {
   const load = async () => {
     try {
       const r = await fetch("/api/me/profile", { cache: "no-store" });
-      if (r.ok) {
-        const d = await r.json();
+      const d = await r.json().catch(() => null);
+
+      if (r.ok && d) {
         setMe(d);
         setName(d?.name ?? "");
+      } else {
+        toast.error(d?.error || "Error al cargar perfil");
       }
+    } catch (e) {
+      console.error(e);
+      toast.error("Error de conexión");
     } finally {
       setLoading(false);
     }
@@ -107,6 +113,18 @@ export default function ProfilePage() {
     return (
       <main className="max-w-4xl mx-auto px-3 py-6 text-center">
         <p>Inicia sesión para ver tu perfil.</p>
+      </main>
+    );
+  }
+
+  if (!loading && !me) {
+    return (
+      <main className="max-w-4xl mx-auto px-3 py-6 text-center">
+        <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-xl">
+          <h2 className="text-xl font-bold text-red-500">Error al cargar perfil</h2>
+          <p className="text-white/60 mt-2">No se pudo obtener la información del usuario.</p>
+          <button onClick={load} className="btn btn-primary mt-4">Reintentar</button>
+        </div>
       </main>
     );
   }
