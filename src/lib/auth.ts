@@ -63,6 +63,7 @@ export const authOptions: NextAuthOptions = {
           token.role = freshUser.role;
           token.verificationStatus = freshUser.verificationStatus;
           token.avatarUrl = freshUser.avatarUrl;
+          (token as any).username = freshUser.username;
         }
         return token;
       }
@@ -74,6 +75,7 @@ export const authOptions: NextAuthOptions = {
         token.role = (user as any).role || "user";
         token.avatarUrl = (user as any).avatarUrl;
         token.verificationStatus = (user as any).verificationStatus;
+        (token as any).username = (user as any).username;
       }
       return token;
     },
@@ -86,6 +88,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).role = token.role;
         (session.user as any).avatarUrl = token.avatarUrl;
         (session.user as any).verificationStatus = (token as any).verificationStatus;
+        (session.user as any).username = (token as any).username;
       }
       return session;
     },

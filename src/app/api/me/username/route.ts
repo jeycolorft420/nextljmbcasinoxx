@@ -31,6 +31,12 @@ export async function PUT(req: Request) {
         });
 
         if (existing) {
+            // If the existing username belongs to THIS user, it's fine (idempotent success)
+            // ... waiting for prisma result which returns full user object
+            const currentUser = await prisma.user.findUnique({ where: { email: session.user.email } });
+            if (existing.id === currentUser?.id) {
+                return NextResponse.json({ success: true, username: existing.username });
+            }
             return NextResponse.json({ error: "Este usuario ya está en uso" }, { status: 409 });
         }
 
