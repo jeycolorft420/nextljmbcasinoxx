@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { walletCredit } from "@/lib/wallet";
 import { emitRoomUpdate } from "@/lib/emit-rooms";
 import { buildRoomPayload } from "@/lib/room-payload";
+import { calculateRouletteOutcome, generateServerSeed, generateHash } from "@/lib/provably-fair";
 
 export async function finishRoom(roomId: string) {
     // 🔒 Transacción con bloqueo pesimista
@@ -55,7 +56,19 @@ export async function finishRoom(roomId: string) {
         if ((room as any).preselectedPosition) {
             winningEntry = entries.find(e => e.position === (room as any).preselectedPosition) ?? null;
         } else {
-            winningEntry = entries[Math.floor(Math.random() * entries.length)];
+            // PROVABLY FAIR SELECTION
+            let sSeed = room.currentServerSeed;
+            // Fallback for legacy rooms without seed
+            if (!sSeed) {
+                sSeed = generateServerSeed();
+            }
+
+            // Construct Client Seed from Entropy (e.g., concatenated Entry IDs to ensure participation affects outcome)
+            // In a real scenario, this might come from a block hash, but internal entropy is better than Math.random()
+            const clientSeed = entries.map(e => e.id).sort().join("-");
+
+            const outcomeIndex = calculateRouletteOutcome(sSeed, clientSeed, currentRound, entries.length);
+            winningEntry = entries[outcomeIndex];
         }
 
         if (!winningEntry) throw new Error("Ganador inválido (no en ronda actual)");

@@ -15,6 +15,7 @@ type Room = {
     capacity: number;
     gameType: GameType;
     slots?: { taken: number; free: number };
+    autoLockAt?: string; // Serialized date
 };
 
 function stateBadgeClass(s: State) {
@@ -26,6 +27,28 @@ function stateBadgeClass(s: State) {
 
 function gameBadge(gt: GameType) {
     return <span className="badge text-[10px]">{gt === "ROULETTE" ? "Ruleta" : "Dados"}</span>;
+}
+
+function Countdown({ target }: { target: string }) {
+    const [left, setLeft] = useState("");
+
+    useEffect(() => {
+        const end = new Date(target).getTime();
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const diff = end - now;
+            if (diff <= 0) {
+                setLeft("00:00");
+                return;
+            }
+            const m = Math.floor(diff / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            setLeft(`${m}:${s.toString().padStart(2, "0")}`);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [target]);
+
+    return <span>{left}</span>;
 }
 
 interface RoomListProps {
@@ -183,8 +206,8 @@ export default function RoomList({ gameType }: RoomListProps) {
                                                         key={r.id}
                                                         href={`/rooms/${r.id}`}
                                                         className={`group relative overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${isFull
-                                                                ? "border-white/5 bg-white/5 opacity-60"
-                                                                : "border-white/10 bg-[#131b2e] hover:border-primary/50 hover:shadow-primary/20"
+                                                            ? "border-white/5 bg-white/5 opacity-60"
+                                                            : "border-white/10 bg-[#131b2e] hover:border-primary/50 hover:shadow-primary/20"
                                                             }`}
                                                     >
                                                         {/* Background Gradient Effect */}
@@ -213,6 +236,11 @@ export default function RoomList({ gameType }: RoomListProps) {
                                                                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
                                                                     Entrada
                                                                 </div>
+                                                                {r.autoLockAt && r.state === "OPEN" && (
+                                                                    <div className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full mt-2 font-mono">
+                                                                        ⏳ <Countdown target={r.autoLockAt} />
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             {/* Footer: Players & Action */}
@@ -232,8 +260,8 @@ export default function RoomList({ gameType }: RoomListProps) {
                                                                 </div>
 
                                                                 <button className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${isFull
-                                                                        ? "bg-white/5 text-slate-500 cursor-not-allowed"
-                                                                        : "bg-primary text-black hover:bg-primary-focus shadow-lg shadow-primary/20"
+                                                                    ? "bg-white/5 text-slate-500 cursor-not-allowed"
+                                                                    : "bg-primary text-black hover:bg-primary-focus shadow-lg shadow-primary/20"
                                                                     }`}>
                                                                     {isFull ? "LLENA" : "JUGAR"}
                                                                 </button>

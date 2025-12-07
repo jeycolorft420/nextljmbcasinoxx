@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { emitRoomsIndex } from "@/lib/emit-rooms";
 import prisma from "@/lib/prisma";
+import { generateServerSeed, generateHash } from "@/lib/provably-fair";
 
 const ROOM_STATES = ["OPEN", "LOCKED", "FINISHED"] as const;
 const GAME_TYPES = ["ROULETTE", "DICE_DUEL"] as const;
@@ -51,6 +52,19 @@ export async function GET(req: Request) {
       take: q.take ?? 30,
     });
 
+    // 🔒 LAZY LOCKING: Check if any room has expired and needs to be LOCKED
+    const now = new Date();
+    await Promise.all(rooms.map(async (r) => {
+      if (r.state === "OPEN" && r.autoLockAt && r.autoLockAt < now) {
+        await prisma.room.update({
+          where: { id: r.id },
+          data: { state: "LOCKED", lockedAt: now }
+        });
+        r.state = "LOCKED"; // Update object in memory so the response is correct
+        r.lockedAt = now;
+      }
+    }));
+
     // Fix: Count entries only for the CURRENT round of each room
     const data = await Promise.all(rooms.map(async (r) => {
       const currentRound = (r as any).currentRound ?? 1;
@@ -67,6 +81,7 @@ export async function GET(req: Request) {
         createdAt: r.createdAt,
         gameType: r.gameType,
         slots: { taken: count, free: Math.max(0, r.capacity - count) },
+        autoLockAt: r.autoLockAt,
       };
     }));
 
@@ -102,6 +117,9 @@ export async function POST(req: Request) {
         ? `Dados $${(body.priceCents / 100).toFixed(0)} (1v1)`
         : `Ruleta $${(body.priceCents / 100).toFixed(0)} (${capacity} puestos)`);
 
+    const serverSeed = generateServerSeed();
+    const serverHash = generateHash(serverSeed);
+
     const room = await prisma.room.create({
       data: {
         title,
@@ -109,6 +127,8 @@ export async function POST(req: Request) {
         capacity,
         state: "OPEN",
         gameType: body.gameType,
+        currentServerSeed: serverSeed,
+        currentServerHash: serverHash,
       },
       include: { _count: { select: { entries: true } } },
     });
