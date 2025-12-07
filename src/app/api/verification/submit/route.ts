@@ -27,6 +27,15 @@ async function saveImage(base64Data: string, prefix: string) {
     return `/uploads/kyc/${fileName}`;
 }
 
+// Increase body size limit for base64 images
+export const config = {
+    api: {
+        bodyParser: {
+            sizeLimit: '10mb',
+        },
+    },
+};
+
 export async function POST(req: Request) {
     try {
         const session = await getServerSession(authOptions);

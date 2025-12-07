@@ -35,7 +35,9 @@ export default function NavBar() {
 
   // Wallet balance
   const { balanceCents } = useWallet();
-  const saldo = typeof balanceCents === "number" ? `$${(balanceCents / 100).toFixed(2)}` : null;
+  const saldo = typeof balanceCents === "number"
+    ? `$${(balanceCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null;
 
   const showMainNav = status === "authenticated";
 

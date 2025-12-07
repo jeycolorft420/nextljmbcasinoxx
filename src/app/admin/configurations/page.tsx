@@ -56,22 +56,24 @@ export default async function ValidationsPage() {
                                 {/* Datos Texto */}
                                 <div className="flex-1 min-w-[300px] space-y-3">
                                     <div className="flex items-center gap-4 mb-4">
-                                        <div className="avatar placeholder">
-                                            <div className="bg-neutral-focus text-neutral-content rounded-full w-12 h-12 relative overflow-hidden">
-                                                {user.profilePhotoUrl ? (
-                                                    <Image src={user.profilePhotoUrl} alt="Avatar" layout="fill" objectFit="cover" />
-                                                ) : <span className="text-xl">{user.fullName?.[0]}</span>}
-                                            </div>
+                                        <div className="relative w-12 h-12 rounded-full overflow-hidden bg-neutral border border-white/10">
+                                            {user.profilePhotoUrl ? (
+                                                <Image src={user.profilePhotoUrl} alt="Avatar" fill className="object-cover" />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-xl font-bold text-white bg-slate-700">
+                                                    {user.fullName?.[0] || "?"}
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-lg">{user.fullName}</h3>
+                                            <h3 className="font-bold text-lg">{user.fullName || "Sin Nombre"}</h3>
                                             <p className="text-sm text-slate-400">{user.email}</p>
                                         </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                         <div className="text-slate-500">Documento ID:</div>
-                                        <div className="font-mono">{user.documentId}</div>
+                                        <div className="font-mono">{user.documentId || "N/A"}</div>
 
                                         <div className="text-slate-500">Fecha Nacimiento:</div>
                                         <div>{user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'}</div>
@@ -80,7 +82,7 @@ export default async function ValidationsPage() {
                                         <div>{user.issueDate ? new Date(user.issueDate).toLocaleDateString() : 'N/A'}</div>
 
                                         <div className="text-slate-500">Teléfono:</div>
-                                        <div>{user.phoneNumber}</div>
+                                        <div>{user.phoneNumber || "N/A"}</div>
                                     </div>
                                 </div>
 
@@ -95,7 +97,8 @@ export default async function ValidationsPage() {
                                             <div className="text-xs font-bold uppercase text-slate-500 text-center">{img.label}</div>
                                             {img.src ? (
                                                 <a href={img.src} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-black rounded-lg overflow-hidden border border-white/20 hover:border-primary transition-colors hover:scale-105 transform duration-200">
-                                                    <Image src={img.src} alt={img.label} layout="fill" objectFit="cover" />
+                                                    {/* Using regular img tag to avoid next/image issues with external/uploaded urls sometimes */}
+                                                    <img src={img.src} alt={img.label} className="w-full h-full object-cover" />
                                                 </a>
                                             ) : (
                                                 <div className="h-28 bg-white/5 rounded-lg flex items-center justify-center text-slate-600 text-xs">Sin foto</div>

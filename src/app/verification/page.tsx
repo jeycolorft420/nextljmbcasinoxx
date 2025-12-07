@@ -48,7 +48,7 @@ export default function VerificationPage() {
             toast.success("Verificación enviada correctamente");
             router.push("/verification/pending");
         } catch (error) {
-            toast.error("Ocurrió un error. Intenta nuevamente.");
+            toast.error("Error: Verifique el tamaño de las imágenes o su conexión.");
         } finally {
             setLoading(false);
         }
@@ -58,110 +58,144 @@ export default function VerificationPage() {
     const prevStep = () => setStep(s => s - 1);
 
     return (
-        <div className="min-h-screen bg-[#0f172a] text-white flex flex-col items-center justify-center p-4">
-            <div className="w-full max-w-2xl bg-[#1e293b] rounded-2xl p-6 shadow-2xl border border-white/10">
-                <div className="mb-8 text-center">
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1B2735] via-[#090A0F] to-[#090A0F] text-white flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-black/40 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-white/10 ring-1 ring-white/5">
+                <div className="mb-10 text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/20 text-primary mb-4 border border-primary/20 shadow-[0_0_30px_-5px_var(--primary-color)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>
+                    </div>
+                    <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-br from-white to-slate-400 bg-clip-text text-transparent">
                         Verificación de Identidad
                     </h1>
-                    <p className="text-slate-400 text-sm mt-2">
-                        Paso {step} de 4: {step === 1 ? "Datos Personales" : step === 2 ? "Fotos Documento" : step === 3 ? "Selfie" : "Revisión"}
+                    <p className="text-slate-400 mt-2 font-medium">
+                        Completa el proceso para desbloquear todas las funciones.
                     </p>
-                    {/* Progress Bar */}
-                    <div className="w-full h-1 bg-white/10 mt-4 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }} />
+
+                    {/* Progress Steps */}
+                    <div className="flex items-center justify-between mt-8 max-w-md mx-auto relative px-2">
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-white/10 rounded-full -z-10" />
+                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary rounded-full transition-all duration-500 -z-10`} style={{ width: `${((step - 1) / 3) * 100}%` }} />
+
+                        {[1, 2, 3, 4].map((s) => (
+                            <div key={s} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ring-4 ring-[#090A0F] ${step >= s ? "bg-primary text-black scale-110" : "bg-slate-800 text-slate-400"}`}>
+                                {s}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-between max-w-md mx-auto text-[10px] text-slate-500 uppercase font-bold mt-2 tracking-wider">
+                        <span>Datos</span>
+                        <span>Docs</span>
+                        <span>Selfie</span>
+                        <span>Fin</span>
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} className="min-h-[400px]">
                     {step === 1 && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase text-slate-500">Nombre Completo (Como en ID)</label>
-                                    <input required name="fullName" value={formData.fullName} onChange={handleChange} className="input input-bordered w-full bg-black/20" placeholder="Juan Pérez" />
+                                    <label className="text-xs font-bold uppercase text-slate-400 tracking-wider ml-1">Nombre Completo</label>
+                                    <input required name="fullName" value={formData.fullName} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-slate-600" placeholder="Ej: Juan Pérez" />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase text-slate-500">Cédula / DNI</label>
-                                    <input required name="documentId" value={formData.documentId} onChange={handleChange} className="input input-bordered w-full bg-black/20" placeholder="1234567890" />
+                                    <label className="text-xs font-bold uppercase text-slate-400 tracking-wider ml-1">Doc. Identidad</label>
+                                    <input required name="documentId" value={formData.documentId} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-slate-600" placeholder="Ej: 1122334455" />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase text-slate-500">Fecha Nacimiento</label>
-                                    <input required type="date" name="dob" value={formData.dob} onChange={handleChange} className="input input-bordered w-full bg-black/20" />
+                                    <label className="text-xs font-bold uppercase text-slate-400 tracking-wider ml-1">Fecha Nacimiento</label>
+                                    <input required type="date" name="dob" value={formData.dob} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-slate-300" />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase text-slate-500">Fecha Expedición</label>
-                                    <input required type="date" name="issueDate" value={formData.issueDate} onChange={handleChange} className="input input-bordered w-full bg-black/20" />
+                                    <label className="text-xs font-bold uppercase text-slate-400 tracking-wider ml-1">Fecha Expedición</label>
+                                    <input required type="date" name="issueDate" value={formData.issueDate} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-slate-300" />
                                 </div>
                                 <div className="space-y-2 col-span-full">
-                                    <label className="text-xs font-bold uppercase text-slate-500">Teléfono</label>
-                                    <input required type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} className="input input-bordered w-full bg-black/20" placeholder="+57 300 123 4567" />
+                                    <label className="text-xs font-bold uppercase text-slate-400 tracking-wider ml-1">Teléfono</label>
+                                    <input required type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-slate-600" placeholder="+57 300 ..." />
                                 </div>
                             </div>
-                            <button type="button" onClick={nextStep} className="btn btn-primary w-full mt-6">Siguiente</button>
+                            <button type="button" onClick={nextStep} className="w-full bg-primary hover:bg-primary/90 text-black font-bold py-4 rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] mt-4">
+                                Continuar ➔
+                            </button>
                         </div>
                     )}
 
                     {step === 2 && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                            <div className="alert alert-info text-xs">
-                                📸 Usa la cámara para tomar foto frontal y trasera de tu documento.
+                        <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+                                <span className="text-xl">📸</span>
+                                <p className="text-sm text-blue-200">Usa buena iluminación. Asegúrate que el texto de tu documento sea legible y no tenga brillos.</p>
                             </div>
-                            <div className="grid md:grid-cols-2 gap-4">
+                            <div className="grid md:grid-cols-2 gap-6">
                                 <CameraCapture label="Frente del Documento" onCapture={(img) => handleCapture("photoIdFront", img)} />
                                 <CameraCapture label="Reverso del Documento" onCapture={(img) => handleCapture("photoIdBack", img)} />
                             </div>
-                            <div className="flex gap-2 mt-6">
-                                <button type="button" onClick={prevStep} className="btn btn-ghost flex-1">Atrás</button>
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={prevStep} className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-all">Atrás</button>
                                 <button
                                     type="button"
                                     onClick={nextStep}
-                                    className="btn btn-primary flex-1"
+                                    className="flex-1 bg-primary hover:bg-primary/90 text-black font-bold py-3 rounded-xl shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={!formData.photoIdFront || !formData.photoIdBack}
                                 >
-                                    Siguiente
+                                    Siguiente Paso
                                 </button>
                             </div>
                         </div>
                     )}
 
                     {step === 3 && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                            <div className="alert alert-warning text-xs">
-                                🤳 Tómate una selfie sosteniendo tu documento al lado de tu rostro.
+                        <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+                            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
+                                <span className="text-xl">🤳</span>
+                                <p className="text-sm text-yellow-200">Sostén tu documento al lado de tu rostro. Ambos deben verse claramente.</p>
                             </div>
-                            <div className="max-w-sm mx-auto">
+                            <div className="max-w-md mx-auto">
                                 <CameraCapture label="Selfie con Documento" onCapture={(img) => handleCapture("photoSelfie", img)} />
                             </div>
-                            <div className="flex gap-2 mt-6">
-                                <button type="button" onClick={prevStep} className="btn btn-ghost flex-1">Atrás</button>
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={prevStep} className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-all">Atrás</button>
                                 <button
                                     type="button"
                                     onClick={nextStep}
-                                    className="btn btn-primary flex-1"
+                                    className="flex-1 bg-primary hover:bg-primary/90 text-black font-bold py-3 rounded-xl shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={!formData.photoSelfie}
                                 >
-                                    Revisar
+                                    Revisar Todo
                                 </button>
                             </div>
                         </div>
                     )}
 
                     {step === 4 && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 text-center">
-                            <div className="py-10">
-                                <p className="text-lg">¡Todo listo para enviar!</p>
-                                <p className="text-sm text-slate-400">Tus datos serán revisados manualmente por un administrador.</p>
+                        <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500 text-center">
+                            <div className="py-12 bg-white/5 rounded-3xl border border-dashed border-white/10">
+                                <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl shadow-[0_0_30px_-10px_rgba(74,222,128,0.5)]">
+                                    ✓
+                                </div>
+                                <h3 className="text-2xl font-bold text-white mb-2">¡Todo Listo!</h3>
+                                <p className="text-slate-400 max-w-sm mx-auto">
+                                    Tus documentos serán enviados de forma segura para revisión manual. Este proceso suele tomar menos de 24 horas.
+                                </p>
                             </div>
 
-                            <div className="flex gap-2 mt-6">
-                                <button type="button" onClick={prevStep} className="btn btn-ghost flex-1">Atrás</button>
+                            <div className="flex gap-4">
+                                <button type="button" onClick={prevStep} className="px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-all">
+                                    Corregir
+                                </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="btn btn-primary flex-1"
+                                    className="flex-1 bg-gradient-to-r from-primary to-emerald-400 hover:from-primary/90 hover:to-emerald-400/90 text-black font-extrabold py-4 rounded-xl shadow-lg shadow-primary/20 transition-all transform hover:scale-[1.02]"
                                 >
-                                    {loading ? "Enviando..." : "Confirmar y Enviar"}
+                                    {loading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="loading loading-spinner loading-sm"></span> Enviando...
+                                        </span>
+                                    ) : (
+                                        "CONFIRMAR Y ENVIAR"
+                                    )}
                                 </button>
                             </div>
                         </div>
