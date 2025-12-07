@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { authenticator } from "otplib";
+import { authenticator } from "otplib"; // Reserved for 2FA if needed
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -59,6 +59,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (trigger === "update" && token.email) {
         // Fetch fresh data from DB
+        console.log("JWT Update Triggered for:", token.email);
         const freshUser = await prisma.user.findUnique({ where: { email: token.email } });
         if (freshUser) {
           token.role = freshUser.role;

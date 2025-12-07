@@ -38,7 +38,7 @@ export default function VerificationAlert() {
                         Ver/Corregir Datos
                     </Link>
                     <button onClick={() => update()} className="text-yellow-500 hover:text-yellow-400 underline opacity-80">
-                        Actualizar estado
+                        🔄 Actualizar
                     </button>
                 </div>
             </div>
