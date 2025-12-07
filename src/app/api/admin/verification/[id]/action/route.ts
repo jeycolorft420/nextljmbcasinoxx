@@ -39,7 +39,10 @@ export async function POST(
         revalidatePath("/admin/configurations");
 
         // Redirect back to admin panel
-        return NextResponse.redirect(new URL("/admin/configurations", req.url));
+        // Redirect back to admin panel using correct host
+        const host = req.headers.get("host") || "localhost:3000";
+        const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+        return NextResponse.redirect(`${protocol}://${host}/admin/configurations`);
 
     } catch (error) {
         console.error("Verification action error:", error);
