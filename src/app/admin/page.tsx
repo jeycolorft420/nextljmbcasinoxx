@@ -45,8 +45,8 @@ export default async function AdminHomePage() {
     // },
     {
       href: "/admin/configurations",
-      title: "Configuraciones",
-      desc: "Gestionar verificaciones de usuarios pendientes y aprobar/rechazar.",
+      title: "Validaciones KYC",
+      desc: "Gestionar verificaciones de usuarios pendientes (Documentos, Selfies).",
       roles: ["admin", "god"],
     },
   ];

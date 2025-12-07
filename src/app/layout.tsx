@@ -6,6 +6,9 @@ import Providers from "./providers";
 import NavBar from "@/components/NavBar";
 import { Toaster } from "sonner";
 import prisma from "@/lib/prisma";
+import dynamic from "next/dynamic";
+
+const VerificationAlertWrapper = dynamic(() => import("@/components/verification/VerificationAlert"), { ssr: false });
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -60,6 +63,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       >
         <Providers>
           <NavBar />
+          <div className="w-full">
+            {/* Dynamic verification alert loaded safely inside Providers */}
+            <VerificationAlertWrapper />
+          </div>
           <div className="container-page">
             {children}
           </div>
