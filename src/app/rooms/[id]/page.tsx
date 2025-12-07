@@ -714,7 +714,7 @@ export default function RoomPage() {
         </div >
 
         {/* COL DERECHA: Puestos + Historial */}
-        < div className="hidden lg:block lg:col-span-4 space-y-4" >
+        <div className="col-span-1 lg:col-span-4 space-y-4">
           {/* Puestos */}
           < div className="card" >
             <div className="flex items-end justify-between gap-2 mb-2">

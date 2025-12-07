@@ -25,6 +25,9 @@ export default function VerificationAlert() {
     // @ts-ignore
     const status = session.user.verificationStatus;
 
+    // Si status no está definido aún, no mostrar nada
+    if (!status) return null;
+
     if (status === "APPROVED") return null;
 
     if (status === "PENDING") {

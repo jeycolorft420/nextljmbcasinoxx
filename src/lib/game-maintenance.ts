@@ -27,14 +27,18 @@ export async function checkAndMaintenanceRoom(room: any) {
     if (!freshRoom || freshRoom.state !== "OPEN") return room;
 
     const now = new Date();
+
     // Double check time expiry on fresh object
     if (!freshRoom.autoLockAt || now < freshRoom.autoLockAt) return freshRoom;
 
     const playerCount = freshRoom._count.entries;
 
     // SCENARIO A: Insufficient players (<= 1)
-    // Action: Extend timer
-    if (playerCount <= 1) {
+    // Action: Extend timer UNLESS it's a DICE DUEL (1v1) where 1 player is waiting for opponent
+    const isDiceDuel = freshRoom.gameType === "DICE_DUEL";
+    const isWaitingForOpponent = isDiceDuel && playerCount === 1;
+
+    if (playerCount <= 1 && !isWaitingForOpponent) {
         console.log(`[Maintenance] Room ${roomId} has ${playerCount} players. Extending timer.`);
         const newLockTime = new Date(now.getTime() + 5 * 60 * 1000); // +5 minutes
 
