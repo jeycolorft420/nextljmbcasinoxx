@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { cookies } from "next/headers";
-
-const GOD_PIN = process.env.GOD_MODE_PIN || "777777";
+import prisma from "@/lib/prisma";
+import { authenticator } from "otplib";
 
 export async function POST(req: Request) {
     try {
@@ -16,8 +16,30 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        if (body.code !== GOD_PIN) {
-            return NextResponse.json({ error: "Código incorrecto" }, { status: 400 });
+        const token = body.code;
+
+        // Fetch full user to get the secret
+        const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { twoFactorSecret: true, twoFactorEnabled: true }
+        });
+
+        if (!dbUser || !dbUser.twoFactorEnabled || !dbUser.twoFactorSecret) {
+            return NextResponse.json({ error: "2FA no activado en perfil" }, { status: 403 });
+        }
+
+        // Verify TOTP
+        try {
+            const isValid = authenticator.verify({
+                token,
+                secret: dbUser.twoFactorSecret
+            });
+
+            if (!isValid) {
+                return NextResponse.json({ error: "Código 2FA incorrecto" }, { status: 400 });
+            }
+        } catch (err) {
+            return NextResponse.json({ error: "Error verificando código" }, { status: 400 });
         }
 
         // Set unlock cookie
@@ -31,6 +53,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true });
     } catch (e) {
+        console.error("Unlock Error:", e);
         return NextResponse.json({ error: "Server Error" }, { status: 500 });
     }
 }

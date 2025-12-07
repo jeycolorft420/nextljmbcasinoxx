@@ -204,13 +204,15 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 2FA */}
-          <div className="card bg-[#131b2e] border border-white/10 p-6 rounded-2xl">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <span className="text-primary">🛡️</span> Seguridad
-            </h3>
-            <TwoFactorSetup enabled={!!me?.twoFactorEnabled} onToggle={() => load()} />
-          </div>
+          {/* 2FA - Solo para GOD */}
+          {me?.role === "god" && (
+            <div className="card bg-[#131b2e] border border-white/10 p-6 rounded-2xl">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <span className="text-primary">🛡️</span> Seguridad
+              </h3>
+              <TwoFactorSetup enabled={!!me?.twoFactorEnabled} onToggle={() => load()} />
+            </div>
+          )}
         </div>
 
       </div>
