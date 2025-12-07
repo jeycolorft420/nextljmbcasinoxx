@@ -138,6 +138,57 @@ export function LicenseManager() {
         <div className="p-6 max-w-6xl mx-auto bg-background rounded-xl border border-white/10 shadow-2xl">
             <h1 className="text-3xl font-bold mb-6 text-white">License Manager</h1>
 
+            {/* My License Activation */}
+            <div className="bg-slate-900 border border-emerald-500/30 p-6 rounded-xl mb-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /></svg>
+                </div>
+                <h2 className="text-xl font-bold text-emerald-400 mb-4 flex items-center gap-2">
+                    🔑 Activar Licencia de la Plataforma
+                </h2>
+                <div className="flex gap-4 items-end max-w-2xl relative z-10">
+                    <div className="flex-1">
+                        <label className="block text-sm text-slate-400 mb-1">Tu clave de licencia</label>
+                        <input
+                            type="text"
+                            placeholder="XXXX-YYYY-ZZZZ-WWWW"
+                            className="w-full bg-black/40 text-white p-3 rounded-lg border border-white/10 font-mono text-lg focus:border-emerald-500 transition-colors"
+                            id="myLicenseKey"
+                        />
+                    </div>
+                    <button
+                        onClick={async () => {
+                            const input = document.getElementById("myLicenseKey") as HTMLInputElement;
+                            const key = input.value;
+                            if (!key) return toast.error("Ingresa una licencia");
+                            const toastId = toast.loading("Verificando...");
+                            try {
+                                const res = await fetch("/api/admin/license/update", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ key })
+                                });
+                                const data = await res.json();
+                                if (res.ok && data.result?.valid) {
+                                    toast.success("¡Licencia Activada! Las funciones han sido habilitadas.", { id: toastId });
+                                    setTimeout(() => window.location.reload(), 1500); // Reload to refresh context
+                                } else {
+                                    toast.error(`Error: ${data.result?.features?.length ? 'Parcialmente válida' : 'Licencia Inválida'}`, { id: toastId });
+                                }
+                            } catch (e) {
+                                toast.error("Error de conexión", { id: toastId });
+                            }
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-bold shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+                    >
+                        Validar y Activar
+                    </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-4 max-w-xl">
+                    Usa esto para activar las funciones <b>(Roulette, Dice, etc.)</b> en este servidor. Si el servidor de licencias aprueba la clave, las salas aparecerán automáticamente.
+                </p>
+            </div>
+
             {/* Creator */}
             <div className="bg-slate-800 p-4 rounded-lg mb-8">
                 <div className="flex gap-4 items-end mb-4">

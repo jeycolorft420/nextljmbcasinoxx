@@ -1,35 +1,51 @@
 import { headers } from "next/headers";
+import prisma from "@/lib/prisma";
 
-const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || "https://777galaxy.online"; // Default to your server
-const LICENSE_KEY = process.env.LICENSE_KEY;
+const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || "https://777galaxy.online";
 
 export async function verifyLicense() {
-    if (!LICENSE_KEY) {
-        console.error("❌ [LICENSE] No LICENSE_KEY found in .env");
-        return false;
+    // 1. Get Settings from DB
+    const settings = await prisma.systemSettings.findFirst();
+    const dbKey = settings?.licenseKey;
+    const envKey = process.env.LICENSE_KEY;
+
+    // Prefer DB key, fallback to env
+    const keyToUse = dbKey || envKey;
+
+    if (!keyToUse) {
+        console.error("❌ [LICENSE] No LICENSE_KEY found in DB or .env");
+        return { valid: false, features: [] };
     }
 
     try {
-        // En producción, obtenemos el dominio real. En dev, usamos localhost.
-        // Nota: En Next.js App Router, obtener el dominio en 'instrumentation' o server-side puro puede ser truculento.
-        // Para simplificar, enviamos una señal o dejamos que el servidor detecte la IP.
-        // Si queremos enviar el dominio, necesitamos pasarlo como argumento o configurarlo en .env
         const domain = process.env.NEXT_PUBLIC_APP_URL || "unknown-domain";
 
         const res = await fetch(`${LICENSE_SERVER_URL}/api/license/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ key: LICENSE_KEY, domain }),
-            cache: "no-store", // Importante: no cachear
+            body: JSON.stringify({ key: keyToUse, domain }),
+            cache: "no-store",
         });
 
         if (!res.ok) {
             const data = await res.json();
             console.error(`❌ [LICENSE] Verification failed: ${data.message}`);
-            return false;
+            return { valid: false, features: [] };
         }
 
         const data = await res.json();
+
+        // Update DB with latest status if we have settings
+        if (settings) {
+            await prisma.systemSettings.update({
+                where: { id: settings.id },
+                data: {
+                    licenseData: data,
+                    lastLicenseCheck: new Date()
+                }
+            });
+        }
+
         if (data.valid) {
             console.log("✅ [LICENSE] License verified successfully.");
             return { valid: true, features: data.features || [] };
@@ -39,9 +55,14 @@ export async function verifyLicense() {
         }
     } catch (error) {
         console.error("❌ [LICENSE] Error connecting to license server:", error);
-        // Fallback: ¿Permitir si el servidor está caído? 
-        // Por seguridad estricta: NO. Por usabilidad: Tal vez (con un grace period).
-        // Aquí denegamos por defecto.
+
+        // Optional: Fallback to cached data if server is down?
+        if (settings?.licenseData) {
+            console.log("⚠️ [LICENSE] Using cached license data due to error.");
+            const cached = settings.licenseData as any;
+            return { valid: cached.valid, features: cached.features || [] };
+        }
+
         return { valid: false, features: [] };
     }
 }

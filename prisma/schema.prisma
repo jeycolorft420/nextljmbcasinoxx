@@ -392,5 +392,10 @@ model SystemSettings {
   // Typography
   fontFamily     String @default("Inter") 
   
+  // License
+  licenseKey     String?
+  licenseData    Json? // To cache features locally if needed
+  lastLicenseCheck DateTime? 
+  
   updatedAt DateTime @updatedAt
 }
