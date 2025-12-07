@@ -266,145 +266,144 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                     </div>
 
-                </div>
 
-                {/* SECURITY & ROLE MANAGEMENT */}
-                <div className="bg-[#131b2e] border border-white/10 rounded-3xl p-6">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">🛡️ Seguridad y Roles (Admin Zone)</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* SECURITY & ROLE MANAGEMENT */}
+                    <div className="bg-[#131b2e] border border-white/10 rounded-3xl p-6">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">🛡️ Seguridad y Roles (Admin Zone)</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                        {/* Role Changer */}
-                        <div className="bg-black/20 p-4 rounded-xl border border-white/5">
-                            <p className="text-xs text-slate-500 uppercase font-bold mb-2">Rol del Usuario</p>
-                            <div className="flex gap-2">
-                                <select
-                                    className="select select-sm select-bordered w-full bg-black/40 text-white"
-                                    value={user.role}
-                                    disabled={user.role === 'god'} // Cannot change specific GOD user
-                                    onChange={async (e) => {
-                                        if (!confirm("¿Estás seguro de cambiar el rol?")) return;
+                            {/* Role Changer */}
+                            <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                                <p className="text-xs text-slate-500 uppercase font-bold mb-2">Rol del Usuario</p>
+                                <div className="flex gap-2">
+                                    <select
+                                        className="select select-sm select-bordered w-full bg-black/40 text-white"
+                                        value={user.role}
+                                        disabled={user.role === 'god'} // Cannot change specific GOD user
+                                        onChange={async (e) => {
+                                            if (!confirm("¿Estás seguro de cambiar el rol?")) return;
+                                            try {
+                                                const res = await fetch(`/api/admin/users/${id}/role`, {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ role: e.target.value })
+                                                });
+                                                const d = await res.json();
+                                                if (d.error) toast.error(d.error);
+                                                else {
+                                                    toast.success("Rol actualizado");
+                                                    fetchUser();
+                                                }
+                                            } catch (err) { toast.error("Error al cambiar rol"); }
+                                        }}
+                                    >
+                                        <option value="user">User (Jugador)</option>
+                                        <option value="admin">Admin (Staff)</option>
+                                        <option value="god" disabled>GOD (Intocable)</option>
+                                    </select>
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-2">
+                                    * Solo GOD puede nombrar otros Admins/Gods.
+                                </p>
+                            </div>
+
+                            {/* Verification Reset */}
+                            <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-2">
+                                <p className="text-xs text-slate-500 uppercase font-bold mb-2">Resetear Verificación</p>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm("¿Solo pedir verificar otra vez? (Mantiene datos)")) return;
                                         try {
-                                            const res = await fetch(`/api/admin/users/${id}/role`, {
+                                            const res = await fetch(`/api/admin/users/${id}/reset-verification`, {
                                                 method: "POST",
                                                 headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ role: e.target.value })
+                                                body: JSON.stringify({ clearData: false })
                                             });
-                                            const d = await res.json();
-                                            if (d.error) toast.error(d.error);
-                                            else {
-                                                toast.success("Rol actualizado");
-                                                fetchUser();
-                                            }
-                                        } catch (err) { toast.error("Error al cambiar rol"); }
+                                            if (res.ok) { toast.success("Usuario puesto en UNVERIFIED"); fetchUser(); }
+                                        } catch (e) { toast.error("Error"); }
                                     }}
+                                    className="btn btn-xs btn-warning w-full"
                                 >
-                                    <option value="user">User (Jugador)</option>
-                                    <option value="admin">Admin (Staff)</option>
-                                    <option value="god" disabled>GOD (Intocable)</option>
-                                </select>
+                                    🔄 Pedir Validar (Solo Status)
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm("🚨 ¿BORRAR fotos, documentos y pedir todo de nuevo?")) return;
+                                        try {
+                                            const res = await fetch(`/api/admin/users/${id}/reset-verification`, {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ clearData: true })
+                                            });
+                                            if (res.ok) { toast.success("Datos borrados y status reset"); fetchUser(); }
+                                        } catch (e) { toast.error("Error"); }
+                                    }}
+                                    className="btn btn-xs btn-error btn-outline w-full"
+                                >
+                                    🗑️ Borrar Datos y Pedir Todo
+                                </button>
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-2">
-                                * Solo GOD puede nombrar otros Admins/Gods.
-                            </p>
-                        </div>
 
-                        {/* Verification Reset */}
-                        <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-2">
-                            <p className="text-xs text-slate-500 uppercase font-bold mb-2">Resetear Verificación</p>
-                            <button
-                                onClick={async () => {
-                                    if (!confirm("¿Solo pedir verificar otra vez? (Mantiene datos)")) return;
-                                    try {
-                                        const res = await fetch(`/api/admin/users/${id}/reset-verification`, {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ clearData: false })
-                                        });
-                                        if (res.ok) { toast.success("Usuario puesto en UNVERIFIED"); fetchUser(); }
-                                    } catch (e) { toast.error("Error"); }
-                                }}
-                                className="btn btn-xs btn-warning w-full"
-                            >
-                                🔄 Pedir Validar (Solo Status)
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!confirm("🚨 ¿BORRAR fotos, documentos y pedir todo de nuevo?")) return;
-                                    try {
-                                        const res = await fetch(`/api/admin/users/${id}/reset-verification`, {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ clearData: true })
-                                        });
-                                        if (res.ok) { toast.success("Datos borrados y status reset"); fetchUser(); }
-                                    } catch (e) { toast.error("Error"); }
-                                }}
-                                className="btn btn-xs btn-error btn-outline w-full"
-                            >
-                                🗑️ Borrar Datos y Pedir Todo
-                            </button>
-                        </div>
-
-                    </div>
-                </div>
-
-            </div>
-        </div>
-
-            {/* Balance Modal */ }
-    {
-        balanceModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                <div className="bg-[#1e293b] border border-white/10 rounded-2xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                    <h3 className="text-2xl font-bold mb-6">Ajustar Saldo Manual</h3>
-
-                    <div className="flex gap-2 p-1 bg-black/40 rounded-xl mb-6">
-                        <button
-                            onClick={() => setBalanceAction("CREDIT")}
-                            className={`flex-1 py-2 rounded-lg font-bold transition-all ${balanceAction === "CREDIT" ? "bg-green-600 text-white shadow" : "text-slate-500 hover:text-white"}`}
-                        >
-                            + Agregar (Credit)
-                        </button>
-                        <button
-                            onClick={() => setBalanceAction("DEBIT")}
-                            className={`flex-1 py-2 rounded-lg font-bold transition-all ${balanceAction === "DEBIT" ? "bg-red-600 text-white shadow" : "text-slate-500 hover:text-white"}`}
-                        >
-                            - Quitar (Debit)
-                        </button>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-xs uppercase font-bold text-slate-500">Monto (USD/COP)</label>
-                            <input
-                                type="number"
-                                value={amount}
-                                onChange={e => setAmount(e.target.value)}
-                                placeholder="0.00"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xl font-mono focus:border-primary outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs uppercase font-bold text-slate-500">Razón / Nota (Obligatorio)</label>
-                            <textarea
-                                value={reason}
-                                onChange={e => setReason(e.target.value)}
-                                placeholder="Ej: Bono de fidelidad, Corrección de error, Depósito manual..."
-                                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 resize-none focus:border-primary outline-none"
-                            ></textarea>
                         </div>
                     </div>
 
-                    <div className="flex gap-4 mt-8">
-                        <button onClick={() => setBalanceModalOpen(false)} className="flex-1 btn btn-ghost text-slate-400">Cancelar</button>
-                        <button onClick={handleBalanceAdjust} className={`flex-1 btn ${balanceAction === 'CREDIT' ? 'btn-success text-white' : 'btn-error text-white'}`}>
-                            Confirmar {balanceAction === 'CREDIT' ? 'Recarga' : 'Retiro'}
-                        </button>
-                    </div>
                 </div>
             </div>
-        )
-    }
+
+            {/* Balance Modal */}
+            {
+                balanceModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                        <div className="bg-[#1e293b] border border-white/10 rounded-2xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                            <h3 className="text-2xl font-bold mb-6">Ajustar Saldo Manual</h3>
+
+                            <div className="flex gap-2 p-1 bg-black/40 rounded-xl mb-6">
+                                <button
+                                    onClick={() => setBalanceAction("CREDIT")}
+                                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${balanceAction === "CREDIT" ? "bg-green-600 text-white shadow" : "text-slate-500 hover:text-white"}`}
+                                >
+                                    + Agregar (Credit)
+                                </button>
+                                <button
+                                    onClick={() => setBalanceAction("DEBIT")}
+                                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${balanceAction === "DEBIT" ? "bg-red-600 text-white shadow" : "text-slate-500 hover:text-white"}`}
+                                >
+                                    - Quitar (Debit)
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs uppercase font-bold text-slate-500">Monto (USD/COP)</label>
+                                    <input
+                                        type="number"
+                                        value={amount}
+                                        onChange={e => setAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xl font-mono focus:border-primary outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs uppercase font-bold text-slate-500">Razón / Nota (Obligatorio)</label>
+                                    <textarea
+                                        value={reason}
+                                        onChange={e => setReason(e.target.value)}
+                                        placeholder="Ej: Bono de fidelidad, Corrección de error, Depósito manual..."
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 h-24 resize-none focus:border-primary outline-none"
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 mt-8">
+                                <button onClick={() => setBalanceModalOpen(false)} className="flex-1 btn btn-ghost text-slate-400">Cancelar</button>
+                                <button onClick={handleBalanceAdjust} className={`flex-1 btn ${balanceAction === 'CREDIT' ? 'btn-success text-white' : 'btn-error text-white'}`}>
+                                    Confirmar {balanceAction === 'CREDIT' ? 'Recarga' : 'Retiro'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div >
     );
 }
