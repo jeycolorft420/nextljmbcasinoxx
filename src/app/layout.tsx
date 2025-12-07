@@ -6,9 +6,8 @@ import Providers from "./providers";
 import NavBar from "@/components/NavBar";
 import { Toaster } from "sonner";
 import prisma from "@/lib/prisma";
-import dynamic from "next/dynamic";
+import VerificationAlert from "@/components/verification/VerificationAlert";
 
-const VerificationAlertWrapper = dynamic(() => import("@/components/verification/VerificationAlert"), { ssr: false });
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -58,21 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-background text-foreground`}
-        style={settings?.fontFamily ? { fontFamily: `var(--font-primary)` } : {}}
-      >
-        <Providers>
-          <NavBar />
-          <div className="w-full">
-            {/* Dynamic verification alert loaded safely inside Providers */}
-            <VerificationAlertWrapper />
-          </div>
-          <div className="container-page">
-            {children}
-          </div>
-          <Toaster position="top-center" richColors />
-        </Providers>
       </body>
-    </html>
+    </html >
   );
 }
