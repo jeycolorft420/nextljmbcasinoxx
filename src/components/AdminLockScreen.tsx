@@ -43,33 +43,32 @@ export default function AdminLockScreen() {
 
                 <div>
                     <h1 className="text-2xl font-bold text-white">Área Restringida</h1>
-                    <p className="text-white/60 mt-2">
-                        Esta sección requiere autenticación adicional. Ingresa tu código 2FA.
-                    </p>
-                </div>
+                    Esta sección requiere autenticación adicional. Ingresa tu PIN de Seguridad GOD.
+                </p>
+            </div>
 
-                <form onSubmit={unlock} className="space-y-4">
-                    <input
-                        type="text"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="000000"
-                        className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] focus:outline-none focus:border-primary transition"
-                        autoFocus
-                    />
+            <form onSubmit={unlock} className="space-y-4">
+                <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] focus:outline-none focus:border-primary transition"
+                    autoFocus
+                />
 
-                    <button
-                        disabled={loading || code.length !== 6}
-                        className="btn btn-primary w-full py-3 font-bold text-lg shadow-lg shadow-primary/20"
-                    >
-                        {loading ? "Verificando..." : "Desbloquear"}
-                    </button>
-                </form>
+                <button
+                    disabled={loading || code.length !== 6}
+                    className="btn btn-primary w-full py-3 font-bold text-lg shadow-lg shadow-primary/20"
+                >
+                    {loading ? "Verificando..." : "Desbloquear"}
+                </button>
+            </form>
 
-                <div className="text-xs opacity-40">
-                    Si no tienes acceso, contacta al administrador principal.
-                </div>
+            <div className="text-xs opacity-40">
+                Si no tienes acceso, contacta al administrador principal.
             </div>
         </div>
+        </div >
     );
 }

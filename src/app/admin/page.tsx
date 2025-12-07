@@ -37,12 +37,12 @@ export default async function AdminHomePage() {
       roles: ["admin", "god"],
     },
     // Herramientas GOD (ejemplo, si hubiera más)
-    // {
-    //   href: "/admin/licenses",
-    //   title: "Licencias",
-    //   desc: "Gestión de licencias (Ctrl+Alt+7)",
-    //   roles: ["god"],
-    // },
+    {
+      href: "/admin/licenses",
+      title: "Licencias",
+      desc: "Gestión avanzada de licencias del sistema.",
+      roles: ["god"],
+    },
     {
       href: "/admin/configurations",
       title: "Validaciones KYC",

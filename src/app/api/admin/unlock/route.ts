@@ -1,48 +1,36 @@
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { authenticator } from "otplib";
 import { cookies } from "next/headers";
 
+const GOD_PIN = process.env.GOD_MODE_PIN || "777777";
+
 export async function POST(req: Request) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    try {
+        const session = await getServerSession(authOptions);
+        const user = session?.user as any;
+
+        if (!user || user.role !== "god") {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
+        const body = await req.json();
+        if (body.code !== GOD_PIN) {
+            return NextResponse.json({ error: "Código incorrecto" }, { status: 400 });
+        }
+
+        // Set unlock cookie
+        const cookieStore = await cookies();
+        cookieStore.set("admin_unlocked", "true", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 60 * 60 * 4, // 4 hours
+            path: "/"
+        });
+
+        return NextResponse.json({ success: true });
+    } catch (e) {
+        return NextResponse.json({ error: "Server Error" }, { status: 500 });
     }
-
-    const { code } = await req.json();
-    if (!code) return NextResponse.json({ error: "Código requerido" }, { status: 400 });
-
-    const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-    });
-
-    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
-        // If user is admin but has NO 2FA enabled, should we allow?
-        // The requirement is "security code to enter admin".
-        // If they haven't set it up, they should go to profile first.
-        return NextResponse.json({ error: "2FA no configurado. Ve a tu perfil." }, { status: 403 });
-    }
-
-    const isValid = authenticator.verify({
-        token: code,
-        secret: user.twoFactorSecret,
-    });
-
-    if (!isValid) {
-        return NextResponse.json({ error: "Código inválido" }, { status: 400 });
-    }
-
-    // Set Cookie
-    // Set Cookie
-    (await cookies()).set("admin_unlocked", "true", {
-        httpOnly: true,
-        secure: process.env.NEXTAUTH_URL?.startsWith("https") ?? false,
-        sameSite: "lax",
-        maxAge: 60 * 60 * 4, // 4 hours
-        path: "/",
-    });
-
-    return NextResponse.json({ success: true });
 }
