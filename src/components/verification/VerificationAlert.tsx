@@ -60,6 +60,9 @@ export default function VerificationAlert() {
             >
                 ¿Ya lo hiciste?
             </button>
+            <div className="text-[10px] text-white/40 mt-1 font-mono text-center">
+                DEBUG: st="{status}" | role="{(session.user as any).role}" | email="{session.user.email}"
+            </div>
         </div>
     );
 }
