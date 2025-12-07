@@ -4,8 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import Image from "next/image";
 
-export default function TwoFactorSetup({ onEnabled }: { onEnabled?: () => void }) {
-    const [step, setStep] = useState<"idle" | "qr" | "success">("idle");
+export default function TwoFactorSetup({ enabled, onEnabled }: { enabled?: boolean; onEnabled?: () => void }) {
+    const [step, setStep] = useState<"idle" | "qr" | "success">(enabled ? "success" : "idle");
     const [qrCode, setQrCode] = useState("");
     const [token, setToken] = useState("");
     const [loading, setLoading] = useState(false);

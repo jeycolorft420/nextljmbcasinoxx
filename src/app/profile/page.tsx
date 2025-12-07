@@ -210,7 +210,7 @@ export default function ProfilePage() {
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <span className="text-primary">🛡️</span> Seguridad
               </h3>
-              <TwoFactorSetup enabled={!!me?.twoFactorEnabled} onToggle={() => load()} />
+              <TwoFactorSetup enabled={!!me?.twoFactorEnabled} onEnabled={() => load()} />
             </div>
           )}
         </div>
