@@ -32,23 +32,61 @@ export default function VerificationPage() {
         setFormData({ ...formData, [field]: dataUrl });
     };
 
+    // Compression Utility
+    const compressImage = (base64Str: string, maxWidth = 1000, quality = 0.7): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = base64Str;
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                ctx?.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+            };
+            img.onerror = () => resolve(base64Str); // Fallback
+        });
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
         try {
+            // Compress images before sending
+            const compressedData = {
+                ...formData,
+                photoProfile: formData.photoProfile ? await compressImage(formData.photoProfile) : "",
+                photoIdFront: formData.photoIdFront ? await compressImage(formData.photoIdFront) : "",
+                photoIdBack: formData.photoIdBack ? await compressImage(formData.photoIdBack) : "",
+                photoSelfie: formData.photoSelfie ? await compressImage(formData.photoSelfie) : "",
+            };
+
             const res = await fetch("/api/verification/submit", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(compressedData)
             });
 
-            if (!res.ok) throw new Error("Error al enviar");
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || "Error al enviar");
+            }
 
             toast.success("Verificación enviada correctamente");
             router.push("/verification/pending");
-        } catch (error) {
-            toast.error("Error: Verifique el tamaño de las imágenes o su conexión.");
+        } catch (error: any) {
+            toast.error(error.message || "Error: Verifique el tamaño de las imágenes o su conexión.");
         } finally {
             setLoading(false);
         }
@@ -191,7 +229,7 @@ export default function VerificationPage() {
                                 >
                                     {loading ? (
                                         <span className="flex items-center justify-center gap-2">
-                                            <span className="loading loading-spinner loading-sm"></span> Enviando...
+                                            <span className="loading loading-spinner loading-sm"></span> Comprimiendo y Enviando...
                                         </span>
                                     ) : (
                                         "CONFIRMAR Y ENVIAR"
