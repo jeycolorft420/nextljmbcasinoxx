@@ -4,14 +4,9 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-    const email = process.argv[2];
+    const email = process.argv[2] || "jeyco@gmail.com";
 
-    if (!email) {
-        console.log("\n❌ Error: Debes especificar el email.");
-        console.log("Uso: npx tsx scripts/make-god.ts <email>");
-        console.log("Ejemplo: npx tsx scripts/make-god.ts admin@casino.com\n");
-        process.exit(1);
-    }
+    // if (!email) check removed since we have default
 
     console.log(`🔍 Buscando usuario: ${email}...`);
 
