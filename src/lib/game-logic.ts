@@ -14,8 +14,15 @@ export async function finishRoom(roomId: string) {
         const roomHeader = await tx.room.findUnique({ where: { id: roomId } });
         if (!roomHeader) throw new Error("Sala no encontrada");
 
-        // 🛡️ Safeguard: Dice Duel uses /roll
-        if (roomHeader.gameType === "DICE_DUEL") {
+        // 🛡️ Safeguard: Dice Duel uses /roll but we handle PvE here
+        const isDiceDuel = roomHeader.gameType === "DICE_DUEL";
+
+        // Excepción: Si es DADOS y hay 1 usuario esperando y ya pasó el tiempo (Lazy Lock o forzado)
+        // Permitimos que finishRoom orqueste la entrada del bot
+        // El flujo normal de dados es por endpoints /roll, pero el "Rescate por Bot" pasa por aquí.
+        if (isDiceDuel && roomHeader.state !== "FINISHED") {
+            // Logic continúa abajo...
+        } else if (isDiceDuel) {
             throw new Error("Dice Duel uses /roll endpoint");
         }
 
@@ -79,7 +86,29 @@ export async function finishRoom(roomId: string) {
                     },
                     include: { user: { select: { id: true, name: true, email: true } } }
                 });
-                entries.push(botEntry as any); // Add to local array for winner selection
+                entries.push(botEntry as any);
+
+                // 🎲 DADOS: Si es Dice Duel, el bot debe "Tirar" inmediatamente simulando juego
+                if (room.gameType === "DICE_DUEL") {
+                    // 1. Calcular roll del bot
+                    // Usamos crypto random simple o el server seed si quisieramos ser estrictos (simplificado aquí)
+                    const botRoll1 = Math.floor(Math.random() * 6) + 1;
+                    const botRoll2 = Math.floor(Math.random() * 6) + 1;
+
+                    // 2. Guardar en gameMeta (DiceDuel state)
+                    // Asumimos estructura: { rolls: { [userId]: [r1, r2] } }
+                    const currentMeta = (room.gameMeta as any) || { rolls: {} };
+                    currentMeta.rolls = currentMeta.rolls || {};
+                    currentMeta.rolls[bots[i].id] = [botRoll1, botRoll2];
+
+                    await tx.room.update({
+                        where: { id: roomId },
+                        data: { gameMeta: currentMeta }
+                    });
+
+                    // Actualizar referencia local
+                    room.gameMeta = currentMeta;
+                }
             }
         }
 

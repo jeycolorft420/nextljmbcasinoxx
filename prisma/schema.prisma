@@ -36,6 +36,7 @@ enum GameType {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  username  String?  @unique // @username
   password  String
   name      String?
   avatarUrl String?
@@ -87,13 +88,23 @@ model User {
   twoFactorSecret  String?
   twoFactorEnabled Boolean @default(false)
 
-  // 🆔 Verificación
+  // 🆔 Verificación (KYC Estricto)
   verificationStatus String      @default("UNVERIFIED") // UNVERIFIED, PENDING, APPROVED, REJECTED
-  profilePhotoUrl    String?
-  documentUrl        String?
-  rejectionReason    String?
-  selfieUrl          String?
+  
+  // Datos Personales
   fullName           String?
+  dob                DateTime?   // Fecha de nacimiento
+  documentId         String?     // Número de cédula/ID
+  issueDate          DateTime?   // Fecha de expedición
+  phoneNumber        String?
+
+  // Evidencias (Fotos tomadas con cámara)
+  profilePhotoUrl    String?     // Foto de perfil normal
+  idFrontUrl         String?     // Foto frontal del documento
+  idBackUrl          String?     // Foto trasera del documento
+  selfieUrl          String?     // Selfie sosteniendo el documento (o solo rostro)
+  
+  rejectionReason    String?
 
   @@index([isBot])
 }

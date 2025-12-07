@@ -129,6 +129,9 @@ export async function POST(req: Request) {
         gameType: body.gameType,
         currentServerSeed: serverSeed,
         currentServerHash: serverHash,
+        autoLockAt: body.gameType === "DICE_DUEL"
+          ? new Date(Date.now() + 10 * 60 * 1000) // 10 minutes for Dice
+          : new Date(Date.now() + 30 * 60 * 1000), // 30 minutes for Roulette
       },
       include: { _count: { select: { entries: true } } },
     });

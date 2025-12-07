@@ -13,6 +13,11 @@ export async function walletDebit(opts: {
   const { userId, amountCents, reason, kind, meta } = opts;
   if (amountCents <= 0) throw new Error("amountCents debe ser > 0");
 
+  const userCheck = await prisma.user.findUnique({ where: { id: userId }, select: { verificationStatus: true } });
+  if (userCheck?.verificationStatus !== "APPROVED") {
+    throw new Error("KYC Requerido: Debes verificar tu identidad para jugar.");
+  }
+
   return await prisma.$transaction(async (tx) => {
     const u = await tx.user.findUnique({ where: { id: userId }, select: { balanceCents: true } });
     if (!u) throw new Error("Usuario no encontrado");
@@ -47,6 +52,11 @@ export async function walletCredit(opts: {
 }) {
   const { userId, amountCents, reason, kind, meta } = opts;
   if (amountCents <= 0) throw new Error("amountCents debe ser > 0");
+
+  const userCheck = await prisma.user.findUnique({ where: { id: userId }, select: { verificationStatus: true } });
+  if (userCheck?.verificationStatus !== "APPROVED") {
+    throw new Error("KYC Requerido: Debes verificar tu identidad para jugar.");
+  }
 
   return await prisma.$transaction(async (tx) => {
     const u = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });

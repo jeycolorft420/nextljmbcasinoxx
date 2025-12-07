@@ -66,9 +66,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const me = await prisma.user.findUnique({
       where: { email: session.user.email! },
-      select: { id: true, balanceCents: true },
+      select: { id: true, balanceCents: true, verificationStatus: true },
     });
     if (!me) return NextResponse.json({ error: "Usuario no existe" }, { status: 400 });
+
+    // 🔒 KYC BLOCK
+    if (me.verificationStatus !== "APPROVED") {
+      return NextResponse.json({ error: "KYC Requerido: Verifica tu identidad para jugar." }, { status: 403 });
+    }
 
     const takenSet = new Set(currentRoundEntries.map((e) => e.position));
     const freePositionsNow = Array.from({ length: room.capacity })
