@@ -9,32 +9,38 @@ import { v4 as uuidv4 } from "uuid";
 
 // Helper to save base64 image
 async function saveImage(base64Data: string, prefix: string) {
+    if (!base64Data) return null;
+
+    // Check if it's already a URL (in case of re-submission or edit)
+    if (base64Data.startsWith("http") || base64Data.startsWith("/")) {
+        return base64Data;
+    }
+
     const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
-        throw new Error("Invalid base64 data");
+        // Fallback or error
+        console.error("Invalid base64 for", prefix);
+        return null;
     }
 
     const buffer = Buffer.from(matches[2], "base64");
     const fileName = `${prefix}-${uuidv4()}.jpg`;
 
     // Ensure directory exists
+    // Using process.cwd()/public/uploads/kyc
     const uploadDir = join(process.cwd(), "public", "uploads", "kyc");
-    await mkdir(uploadDir, { recursive: true });
-
-    const filePath = join(uploadDir, fileName);
-    await writeFile(filePath, buffer);
+    try {
+        await mkdir(uploadDir, { recursive: true });
+        const filePath = join(uploadDir, fileName);
+        await writeFile(filePath, buffer);
+        console.log(`Saved ${prefix} to ${filePath}`);
+    } catch (err) {
+        console.error(`Error saving file ${fileName}:`, err);
+        throw new Error(`Failed to save image ${prefix}`);
+    }
 
     return `/uploads/kyc/${fileName}`;
 }
-
-// Increase body size limit for base64 images
-export const config = {
-    api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
-    },
-};
 
 export async function POST(req: Request) {
     try {
@@ -49,24 +55,43 @@ export async function POST(req: Request) {
             photoProfile, photoIdFront, photoIdBack, photoSelfie
         } = body;
 
+        console.log("Received KYC submission:", {
+            fullName, dob, documentId, issueDate,
+            hasProfile: !!photoProfile,
+            hasFront: !!photoIdFront
+        });
+
         // Basic validation
-        if (!fullName || !documentId || !photoSelfie) {
-            return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        if (!fullName || !documentId) {
+            return NextResponse.json({ error: "Faltan campos obligatorios (Nombre o ID)" }, { status: 400 });
+        }
+
+        // Validate Dates
+        const dateOfBirth = dob ? new Date(dob) : null;
+        const dateIssue = issueDate ? new Date(issueDate) : null;
+
+        if (dob && isNaN(dateOfBirth?.getTime() || 0)) {
+            return NextResponse.json({ error: "Fecha de nacimiento inválida" }, { status: 400 });
+        }
+        if (issueDate && isNaN(dateIssue?.getTime() || 0)) {
+            return NextResponse.json({ error: "Fecha de expedición inválida" }, { status: 400 });
         }
 
         // Save images
-        const profileUrl = photoProfile ? await saveImage(photoProfile, "profile") : null;
-        const frontUrl = photoIdFront ? await saveImage(photoIdFront, "front") : null;
-        const backUrl = photoIdBack ? await saveImage(photoIdBack, "back") : null;
-        const selfieUrl = photoSelfie ? await saveImage(photoSelfie, "selfie") : null;
+        const profileUrl = await saveImage(photoProfile, "profile");
+        const frontUrl = await saveImage(photoIdFront, "front");
+        const backUrl = await saveImage(photoIdBack, "back");
+        const selfieUrl = await saveImage(photoSelfie, "selfie");
+
+        console.log("Images saved, updating DB...");
 
         await prisma.user.update({
             where: { id: session.user.id },
             data: {
                 fullName,
-                dob: new Date(dob),
+                dob: dateOfBirth,
                 documentId,
-                issueDate: new Date(issueDate),
+                issueDate: dateIssue,
                 phoneNumber,
                 profilePhotoUrl: profileUrl,
                 idFrontUrl: frontUrl,
@@ -77,8 +102,11 @@ export async function POST(req: Request) {
         });
 
         return NextResponse.json({ success: true });
-    } catch (e) {
+    } catch (e: any) {
         console.error("KYC Upload Error:", e);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        // Return the actual error message to help debugging
+        return NextResponse.json({
+            error: "Error interno del servidor: " + (e.message || e.toString())
+        }, { status: 500 });
     }
 }
