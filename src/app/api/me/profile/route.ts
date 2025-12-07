@@ -14,13 +14,21 @@ export async function GET() {
     const email = session?.user?.email;
     if (!email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-    const me = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
       select: {
         id: true, name: true, email: true, role: true, createdAt: true, referralCode: true, twoFactorEnabled: true,
-        verificationStatus: true, documentUrl: true, rejectionReason: true, avatarUrl: true
+        verificationStatus: true, idFrontUrl: true, rejectionReason: true, avatarUrl: true
       },
     });
+
+    if (!user) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+
+    // Map for frontend compatibility (frontend expects documentUrl)
+    const me = {
+      ...user,
+      documentUrl: user.idFrontUrl
+    };
 
     return NextResponse.json(me);
   } catch (error) {
