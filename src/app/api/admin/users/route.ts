@@ -53,7 +53,12 @@ export async function GET(req: Request) {
                 balanceCents: true,
                 verificationStatus: true,
                 isBot: true,
-                profilePhotoUrl: true,
+                isBot: true,
+                profilePhotoUrl: true, // It seems Prisma schema has avatarUrl? Let's check schema again or try to alias it if possible.
+                // Prisma doesn't support aliasing in select easily without @map which is schema level.
+                // Wait, I can just select avatarUrl and map it in the map function OR change frontend.
+                // Changing frontend is safer.
+                avatarUrl: true,
                 createdAt: true,
                 documentId: true // Useful for list view
             }

@@ -12,7 +12,7 @@ export async function GET(
         const session = await getServerSession(authOptions);
         const role = (session?.user as any)?.role;
 
-        if (role !== "god") {
+        if (role !== "god" && role !== "admin") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }
 
@@ -87,12 +87,20 @@ export async function PATCH(
         const session = await getServerSession(authOptions);
         const role = (session?.user as any)?.role;
 
-        if (role !== "god") {
+        if (role !== "god" && role !== "admin") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }
 
         const { id } = await params;
         const body = await req.json();
+
+        // Security: Prevent ADMIN from modifying GOD
+        if (role === 'admin') {
+            const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+            if (target?.role === 'god') {
+                return NextResponse.json({ error: "No puedes editar a un Admin Supremo (GOD)" }, { status: 403 });
+            }
+        }
 
         // Allowed fields to update directly
         const { role: newRole, fullName, documentId, email, username, twoFactorEnabled } = body;

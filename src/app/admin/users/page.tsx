@@ -149,8 +149,8 @@ export default function UserConfigPage() {
                                             <div className="flex items-center gap-4">
                                                 <div className="avatar placeholder">
                                                     <div className="bg-neutral text-neutral-content rounded-full w-10 h-10 border border-white/10">
-                                                        {u.profilePhotoUrl ? (
-                                                            <img src={u.profilePhotoUrl} alt={u.fullName || "?"} />
+                                                        {u.avatarUrl ? (
+                                                            <img src={u.avatarUrl} alt={u.fullName || "?"} />
                                                         ) : (
                                                             <span className="text-xs">{u.email[0].toUpperCase()}</span>
                                                         )}
@@ -184,9 +184,9 @@ export default function UserConfigPage() {
                                         </td>
                                         <td className="p-6">
                                             <div className={`badge font-bold ${u.verificationStatus === 'APPROVED' ? 'badge-success text-white' :
-                                                    u.verificationStatus === 'PENDING' ? 'badge-warning' :
-                                                        u.verificationStatus === 'REJECTED' ? 'badge-error text-white' :
-                                                            'badge-ghost text-slate-500' // UNVERIFIED
+                                                u.verificationStatus === 'PENDING' ? 'badge-warning' :
+                                                    u.verificationStatus === 'REJECTED' ? 'badge-error text-white' :
+                                                        'badge-ghost text-slate-500' // UNVERIFIED
                                                 }`}>
                                                 {u.verificationStatus}
                                             </div>
