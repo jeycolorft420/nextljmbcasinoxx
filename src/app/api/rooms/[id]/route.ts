@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { buildRoomPayload } from "@/lib/room-payload";
+import { checkAndMaintenanceRoom } from "@/lib/game-maintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,13 @@ export async function GET(
 ) {
   try {
     const { id } = Param.parse(await params);
+
+    // 🔒 LAZY MAINTENANCE: Trigger game start/bot fill if time expired
+    // We do this before building payload so user sees the result immediately
+    const roomHeader = await prisma.room.findUnique({ where: { id } });
+    if (roomHeader) {
+      await checkAndMaintenanceRoom(roomHeader);
+    }
 
     const payload = await buildRoomPayload(prisma, id);
 

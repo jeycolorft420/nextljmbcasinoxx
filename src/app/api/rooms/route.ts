@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { emitRoomsIndex } from "@/lib/emit-rooms";
 import prisma from "@/lib/prisma";
 import { generateServerSeed, generateHash } from "@/lib/provably-fair";
+import { checkAndMaintenanceRoom } from "@/lib/game-maintenance";
 
 const ROOM_STATES = ["OPEN", "LOCKED", "FINISHED"] as const;
 const GAME_TYPES = ["ROULETTE", "DICE_DUEL"] as const;
@@ -52,17 +53,11 @@ export async function GET(req: Request) {
       take: q.take ?? 30,
     });
 
-    // 🔒 LAZY LOCKING: Check if any room has expired and needs to be LOCKED
-    const now = new Date();
+    // 🔒 LAZY LOCKING & MAINTENANCE
+    // Check if any room has expired and needs maintenance (Lock, Bot Fill, Finish, or Extend)
     await Promise.all(rooms.map(async (r) => {
-      if (r.state === "OPEN" && r.autoLockAt && r.autoLockAt < now) {
-        await prisma.room.update({
-          where: { id: r.id },
-          data: { state: "LOCKED", lockedAt: now }
-        });
-        r.state = "LOCKED"; // Update object in memory so the response is correct
-        r.lockedAt = now;
-      }
+      // Logic moved to shared helper
+      await checkAndMaintenanceRoom(r);
     }));
 
     // Fix: Count entries only for the CURRENT round of each room
