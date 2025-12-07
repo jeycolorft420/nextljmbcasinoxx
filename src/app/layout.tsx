@@ -1,4 +1,4 @@
-// src/app/layout.tsx
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -7,7 +7,6 @@ import NavBar from "@/components/NavBar";
 import { Toaster } from "sonner";
 import prisma from "@/lib/prisma";
 import VerificationAlert from "@/components/verification/VerificationAlert";
-
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -57,7 +56,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body
         suppressHydrationWarning
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-background text-foreground`}
+        style={settings?.fontFamily ? { fontFamily: `var(--font-primary)` } : {}}
+      >
+        <Providers>
+          <NavBar />
+          <div className="w-full">
+            <VerificationAlert />
+          </div>
+          <div className="container-page">
+            {children}
+          </div>
+          <Toaster position="top-center" richColors />
+        </Providers>
       </body>
-    </html >
+    </html>
   );
 }
