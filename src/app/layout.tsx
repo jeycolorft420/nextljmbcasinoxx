@@ -60,11 +60,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-background text-foreground`}
         style={settings?.fontFamily ? { fontFamily: `var(--font-primary)` } : {}}
       >
-        import UsernameModal from "@/components/UsernameModal";
 
-        // ... (existing imports)
-
-        // ... inside Users body ...
         <Providers>
           <UsernameModal />
           <NavBar />
