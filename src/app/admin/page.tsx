@@ -44,6 +44,12 @@ export default async function AdminHomePage() {
       roles: ["god"],
     },
     {
+      href: "/admin/users",
+      title: "Gestión de Usuarios",
+      desc: "God Mode: Editar saldos, perfiles y ver estadísticas.",
+      roles: ["god"],
+    },
+    {
       href: "/admin/configurations",
       title: "Validaciones KYC",
       desc: "Gestionar verificaciones de usuarios pendientes (Documentos, Selfies).",
