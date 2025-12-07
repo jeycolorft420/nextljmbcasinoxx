@@ -11,7 +11,7 @@ export async function GET(req: Request) {
         const session = await getServerSession(authOptions);
         const role = (session?.user as any)?.role;
 
-        if (role !== "god") {
+        if (role !== "god" && role !== "admin") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }
 

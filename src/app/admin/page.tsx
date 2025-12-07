@@ -46,8 +46,8 @@ export default async function AdminHomePage() {
     {
       href: "/admin/users",
       title: "Gestión de Usuarios",
-      desc: "God Mode: Editar saldos, perfiles y ver estadísticas.",
-      roles: ["god"],
+      desc: "Editar saldos, perfiles y ver estadísticas.",
+      roles: ["god", "admin"],
     },
     {
       href: "/admin/configurations",
