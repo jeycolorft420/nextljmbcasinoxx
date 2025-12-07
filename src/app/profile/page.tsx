@@ -173,8 +173,8 @@ export default function ProfilePage() {
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-white/40 ml-1">Email</label>
                 <input
-                  className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white/50 text-sm font-mono cursor-not-allowed"
-                  value={me?.email || ""}
+                  className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white text-sm font-mono cursor-not-allowed opacity-80"
+                  value={me?.email || "Cargando..."}
                   disabled
                 />
               </div>
@@ -201,6 +201,11 @@ export default function ProfilePage() {
                 hasDocuments={!!me?.documentUrl}
                 rejectionReason={me?.rejectionReason ?? undefined}
               />
+              {me?.verificationStatus === "PENDING" && me?.documentUrl && (
+                <div className="px-6 pb-4 text-xs text-yellow-400/80 text-center">
+                  (Esperando aprobación manual del Administrador)
+                </div>
+              )}
             </div>
           </div>
 
