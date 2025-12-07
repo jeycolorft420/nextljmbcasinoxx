@@ -48,6 +48,41 @@ export async function finishRoom(roomId: string) {
         }
         if (entries.length === 0) throw new Error("No hay participantes");
 
+        // 🤖 BOTS: Fill empty slots
+        // Only if Room is mostly empty to simulate traffic? Or always fill?
+        // Plan says: "Fill empty slots automatically"
+        if (entries.length < room.capacity) {
+            const needed = room.capacity - entries.length;
+            // Select random bots that are NOT already in the room
+            const existingUserIds = entries.map(e => e.userId);
+            const bots = await tx.user.findMany({
+                where: { isBot: true, id: { notIn: existingUserIds } },
+                take: needed,
+                orderBy: { id: 'asc' } // random selection difficult in Prisma w/o raw SQL, simplified here
+            });
+
+            // Add bots to entries
+            for (let i = 0; i < bots.length; i++) {
+                // Determine next available position
+                // ROULETTE implies positions 1..Capacity. Find holes.
+                const takenPositions = new Set(entries.map(e => e.position));
+                let pos = 1;
+                while (takenPositions.has(pos)) pos++;
+                takenPositions.add(pos); // mark as taken for next iter
+
+                const botEntry = await tx.entry.create({
+                    data: {
+                        roomId,
+                        userId: bots[i].id,
+                        position: pos,
+                        round: currentRound
+                    },
+                    include: { user: { select: { id: true, name: true, email: true } } }
+                });
+                entries.push(botEntry as any); // Add to local array for winner selection
+            }
+        }
+
         // 6. Elegir Ganador
         let winningEntry: typeof entries[0] | null = null;
         let newMeta: any = room.gameMeta ?? null;
