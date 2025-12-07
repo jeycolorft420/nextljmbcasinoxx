@@ -47,7 +47,7 @@ export async function POST(req: Request) {
         cookieStore.set("admin_unlocked", "true", {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            maxAge: 60 * 60 * 4, // 4 hours
+            maxAge: 60 * 10, // 10 minutes
             path: "/"
         });
 
