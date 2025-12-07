@@ -7,109 +7,106 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
 
+// Force Dynamic (fixes some static gen issues)
+export const dynamic = 'force-dynamic';
+
 // Helper to save base64 image
-async function saveImage(base64Data: string, prefix: string) {
+async function saveImage(base64Data: string | null | undefined, prefix: string) {
     if (!base64Data) return null;
 
-    if (base64Data.startsWith("http") || base64Data.startsWith("/")) {
+    // If it's a URL, return it
+    if (typeof base64Data === 'string' && (base64Data.startsWith("http") || base64Data.startsWith("/"))) {
         return base64Data;
     }
 
+    // Validate format
     const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
-        throw new Error(`Invalid base64 format for ${prefix}`);
+        console.error(`Invalid base64 header for ${prefix}`);
+        return null; // Don't throw, just skip saving this one
     }
 
     const buffer = Buffer.from(matches[2], "base64");
     const fileName = `${prefix}-${uuidv4()}.jpg`;
 
-    // DEBUG: Log the path we are trying to use
     const uploadDir = join(process.cwd(), "public", "uploads", "kyc");
-    console.log(`Attempting to save ${prefix} to ${uploadDir}`);
 
     try {
         await mkdir(uploadDir, { recursive: true });
         const filePath = join(uploadDir, fileName);
         await writeFile(filePath, buffer);
-        console.log(`Success: Saved ${filePath}`);
+        console.log(`Saved: ${fileName}`);
+        return `/uploads/kyc/${fileName}`;
     } catch (err: any) {
-        console.error(`Filesystem Error (${prefix}):`, err);
-        throw new Error(`FS Error: ${err.message}`);
+        console.error(`Save Error (${prefix}):`, err);
+        throw new Error(`Write Failed: ${err.message}`);
     }
-
-    return `/uploads/kyc/${fileName}`;
 }
 
 export async function POST(req: Request) {
+    console.log("KYC Submit: Request received"); // LOG 1
+
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) {
             return NextResponse.json({ success: false, error: "No autorizado" }, { status: 401 });
         }
 
-        const body = await req.json();
+        console.log("KYC Submit: Reading body...");
+
+        let body;
+        try {
+            body = await req.json();
+            console.log("KYC Submit: Body parsed. Keys:", Object.keys(body));
+        } catch (parseError: any) {
+            console.error("JSON Parse Error:", parseError);
+            return NextResponse.json({ success: false, error: "Payload demasiado grande o JSON inválido" }, { status: 400 });
+        }
+
         const {
             fullName, dob, documentId, issueDate, phoneNumber,
             photoProfile, photoIdFront, photoIdBack, photoSelfie
         } = body;
 
-        // Basic validation
+        // Validations
         if (!fullName || !documentId) {
-            return NextResponse.json({ success: false, error: "Faltan campos (Nombre/ID)" }, { status: 400 });
+            return NextResponse.json({ success: false, error: "Faltan datos personales" }, { status: 400 });
         }
 
-        // Validate Dates
-        const dateOfBirth = dob ? new Date(dob) : null;
-        const dateIssue = issueDate ? new Date(issueDate) : null;
+        // Processing Images
+        console.log("KYC Submit: Saving images...");
 
-        if (dob && isNaN(dateOfBirth?.getTime() || 0)) {
-            return NextResponse.json({ success: false, error: "Fecha nacimiento inválida" }, { status: 400 });
-        }
-        if (issueDate && isNaN(dateIssue?.getTime() || 0)) {
-            return NextResponse.json({ success: false, error: "Fecha expedición inválida" }, { status: 400 });
-        }
+        const profileUrl = await saveImage(photoProfile, "profile");
+        const frontUrl = await saveImage(photoIdFront, "front");
+        const backUrl = await saveImage(photoIdBack, "back");
+        const selfieUrl = await saveImage(photoSelfie, "selfie");
 
-        // Save images with specific error catching
-        let profileUrl, frontUrl, backUrl, selfieUrl;
-        try {
-            profileUrl = await saveImage(photoProfile, "profile");
-            frontUrl = await saveImage(photoIdFront, "front");
-            backUrl = await saveImage(photoIdBack, "back");
-            selfieUrl = await saveImage(photoSelfie, "selfie");
-        } catch (imgErr: any) {
-            return NextResponse.json({ success: false, error: `Error guardando fotos: ${imgErr.message}` }, { status: 200 });
-        }
+        // Database
+        console.log("KYC Submit: Updating DB...");
+        await prisma.user.update({
+            where: { id: session.user.id },
+            data: {
+                fullName,
+                dob: dob ? new Date(dob) : null,
+                documentId,
+                issueDate: issueDate ? new Date(issueDate) : null,
+                phoneNumber,
+                profilePhotoUrl: profileUrl,
+                idFrontUrl: frontUrl,
+                idBackUrl: backUrl,
+                selfieUrl: selfieUrl,
+                verificationStatus: "PENDING"
+            }
+        });
 
-        // Database Update
-        try {
-            await prisma.user.update({
-                where: { id: session.user.id },
-                data: {
-                    fullName,
-                    dob: dateOfBirth,
-                    documentId,
-                    issueDate: dateIssue,
-                    phoneNumber,
-                    profilePhotoUrl: profileUrl,
-                    idFrontUrl: frontUrl,
-                    idBackUrl: backUrl,
-                    selfieUrl: selfieUrl,
-                    verificationStatus: "PENDING"
-                }
-            });
-        } catch (dbErr: any) {
-            console.error("DB Error:", dbErr);
-            return NextResponse.json({ success: false, error: `Error base de datos: ${dbErr.message}` }, { status: 200 });
-        }
-
+        console.log("KYC Submit: Success!");
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("Critical KYC Error:", e);
-        // Return 200 so the client can read the JSON error message
+        console.error("KYC CRITICAL FAILURE:", e);
         return NextResponse.json({
             success: false,
-            error: `CRITICAL ERROR: ${e.message}`
+            error: `Error Servidor: ${e.message}`
         }, { status: 200 });
     }
 }
