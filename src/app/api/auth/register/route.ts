@@ -15,7 +15,7 @@ export async function POST(request: Request) {
                 email,
                 password: hashed,
                 name: name ?? null,
-                verificationStatus: "PENDING",
+                verificationStatus: "UNVERIFIED",
             },
         });
         return NextResponse.json({

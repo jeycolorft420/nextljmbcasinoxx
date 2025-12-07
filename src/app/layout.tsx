@@ -7,6 +7,7 @@ import NavBar from "@/components/NavBar";
 import { Toaster } from "sonner";
 import prisma from "@/lib/prisma";
 import VerificationAlert from "@/components/verification/VerificationAlert";
+import UsernameModal from "@/components/UsernameModal";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -59,7 +60,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-background text-foreground`}
         style={settings?.fontFamily ? { fontFamily: `var(--font-primary)` } : {}}
       >
+        import UsernameModal from "@/components/UsernameModal";
+
+        // ... (existing imports)
+
+        // ... inside Users body ...
         <Providers>
+          <UsernameModal />
           <NavBar />
           <div className="w-full">
             <VerificationAlert />

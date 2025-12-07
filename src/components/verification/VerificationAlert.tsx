@@ -29,13 +29,18 @@ export default function VerificationAlert() {
 
     if (status === "PENDING") {
         return (
-            <div className="bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-4 text-center flex justify-between items-center">
+            <div className="bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-4 text-center flex justify-between items-center gap-4">
                 <p className="text-yellow-400 text-sm">
                     ⏳ Tu verificación está <strong>pendiente de revisión</strong>.
                 </p>
-                <button onClick={() => update()} className="text-xs underline text-yellow-500 hover:text-yellow-400">
-                    Actualizar estado
-                </button>
+                <div className="flex gap-3 text-xs">
+                    <Link href="/verification" className="text-yellow-500 hover:text-yellow-400 underline">
+                        Ver/Corregir Datos
+                    </Link>
+                    <button onClick={() => update()} className="text-yellow-500 hover:text-yellow-400 underline opacity-80">
+                        Actualizar estado
+                    </button>
+                </div>
             </div>
         );
     }
