@@ -30,13 +30,14 @@ export default function UserConfigPage() {
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [hideBots, setHideBots] = useState(true);
 
     const debouncedSearch = useDebounceValue(search, 500);
 
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/admin/users?q=${debouncedSearch}&page=${page}`);
+            const res = await fetch(`/api/admin/users?q=${debouncedSearch}&page=${page}&hideBots=${hideBots}`);
             const data = await res.json();
 
             if (data.error) {
@@ -47,7 +48,6 @@ export default function UserConfigPage() {
             setUsers(data.users);
             setStats(data.stats);
             // Simple pagination logic assuming limit 20
-            // logic for total pages? API returned hasMore, let's just use simple next/prev
         } catch (error) {
             toast.error("Error al cargar usuarios");
         } finally {
@@ -57,7 +57,7 @@ export default function UserConfigPage() {
 
     useEffect(() => {
         fetchUsers();
-    }, [debouncedSearch, page]);
+    }, [debouncedSearch, page, hideBots]);
 
     return (
         <main className="max-w-7xl mx-auto p-6 space-y-8 text-white min-h-screen">
@@ -102,17 +102,31 @@ export default function UserConfigPage() {
                 </section>
             )}
 
-            {/* Search & Filters */}
-            <div className="flex gap-4 bg-white/5 p-4 rounded-2xl border border-white/10">
-                <div className="flex-1 relative">
+
+
+            {/* Controls Row */}
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-[#131b2e] p-4 rounded-xl border border-white/10">
+                <div className="relative w-full md:w-1/3">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
                     <input
                         type="text"
-                        placeholder="Buscar por ID, Email, Nombre o Cédula..."
-                        className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white focus:outline-none focus:border-primary transition-all"
+                        placeholder="Buscar por ID, Email, Nombre..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-12 pr-4 text-white focus:outline-none focus:border-primary transition-all text-sm"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <label className="label cursor-pointer flex gap-3 p-0">
+                        <span className="label-text text-slate-400 font-semibold">Ocultar Bots</span>
+                        <input
+                            type="checkbox"
+                            className="toggle toggle-primary"
+                            checked={hideBots}
+                            onChange={(e) => setHideBots(e.target.checked)}
+                        />
+                    </label>
                 </div>
             </div>
 
@@ -148,11 +162,18 @@ export default function UserConfigPage() {
                                         <td className="p-6">
                                             <div className="flex items-center gap-4">
                                                 <div className="avatar placeholder">
-                                                    <div className="bg-neutral text-neutral-content rounded-full w-10 h-10 border border-white/10">
+                                                    <div className="relative w-10 h-10 rounded-full overflow-hidden border border-white/10 bg-neutral text-neutral-content">
                                                         {u.avatarUrl ? (
-                                                            <img src={u.avatarUrl} alt={u.fullName || "?"} />
+                                                            <Image
+                                                                src={u.avatarUrl}
+                                                                alt={u.fullName || "Avatar"}
+                                                                fill
+                                                                className="object-cover"
+                                                            />
                                                         ) : (
-                                                            <span className="text-xs">{u.email[0].toUpperCase()}</span>
+                                                            <div className="w-full h-full flex items-center justify-center bg-primary text-white font-bold text-xs">
+                                                                {(u.fullName?.[0] || u.email?.[0] || "?").toUpperCase()}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -226,6 +247,6 @@ export default function UserConfigPage() {
                     </button>
                 </div>
             </div>
-        </main>
+        </main >
     );
 }

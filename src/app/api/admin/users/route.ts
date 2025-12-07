@@ -17,6 +17,7 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const q = searchParams.get("q") || "";
+        const hideBots = searchParams.get("hideBots") === "true";
         const page = parseInt(searchParams.get("page") || "1");
         const limit = 20;
         const skip = (page - 1) * limit;
@@ -29,15 +30,18 @@ export async function GET(req: Request) {
         ]);
 
         // Search Filter
-        const whereClause = q ? {
-            OR: [
-                { email: { contains: q, mode: 'insensitive' as const } },
-                { fullName: { contains: q, mode: 'insensitive' as const } },
-                { documentId: { contains: q } },
-                { username: { contains: q, mode: 'insensitive' as const } },
-                { id: { contains: q } } // Search by ID too
-            ]
-        } : {};
+        const whereClause: any = {
+            ...(hideBots ? { isBot: false } : {}), // Filter bots if requested
+            ...(q ? {
+                OR: [
+                    { email: { contains: q, mode: 'insensitive' as const } },
+                    { fullName: { contains: q, mode: 'insensitive' as const } },
+                    { documentId: { contains: q } },
+                    { username: { contains: q, mode: 'insensitive' as const } },
+                    { id: { contains: q } } // Search by ID too
+                ]
+            } : {})
+        };
 
         const users = await prisma.user.findMany({
             where: whereClause,
