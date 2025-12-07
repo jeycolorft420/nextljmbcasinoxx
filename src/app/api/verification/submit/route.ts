@@ -10,6 +10,14 @@ import { v4 as uuidv4 } from "uuid";
 // Force Dynamic (fixes some static gen issues)
 export const dynamic = 'force-dynamic';
 
+export const config = {
+    api: {
+        bodyParser: {
+            sizeLimit: '50mb',
+        },
+    },
+};
+
 // Helper to save base64 image
 async function saveImage(base64Data: string | null | undefined, prefix: string) {
     if (!base64Data) return null;
