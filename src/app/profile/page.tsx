@@ -148,13 +148,13 @@ export default function ProfilePage() {
               </div>
 
               <div className="grid grid-cols-5 gap-2">
-                {AVATARS.slice(0, 5).map((url, i) => (
+                {AVATARS.slice(0, 5).map((avatar, i) => (
                   <button
                     key={i}
-                    onClick={() => selectAvatar(url)}
+                    onClick={() => selectAvatar(avatar.src)}
                     className="w-8 h-8 rounded-full overflow-hidden border border-white/10 hover:scale-110 transition-transform bg-black/40 hover:border-white/50"
                   >
-                    <Image src={url} alt={`Avatar ${i}`} width={32} height={32} />
+                    <Image src={avatar.src} alt={avatar.name} width={32} height={32} />
                   </button>
                 ))}
               </div>
