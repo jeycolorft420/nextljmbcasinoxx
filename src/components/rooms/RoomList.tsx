@@ -110,9 +110,9 @@ export default function RoomList({ gameType }: RoomListProps) {
         const groups: Record<number, Room[]> = {};
 
         data.forEach(r => {
-            // Double check feature flags? No, let's show whatever the API gave us.
-            // if (r.gameType === "ROULETTE" && !features.includes("roulette")) return;
-            // if (r.gameType === "DICE_DUEL" && !features.includes("dice")) return;
+            // Double check feature flags just in case
+            if (r.gameType === "ROULETTE" && !features.includes("roulette")) return;
+            if (r.gameType === "DICE_DUEL" && !features.includes("dice")) return;
 
             if (!groups[r.priceCents]) groups[r.priceCents] = [];
             groups[r.priceCents].push(r);
