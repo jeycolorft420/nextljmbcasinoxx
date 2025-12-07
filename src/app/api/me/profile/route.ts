@@ -9,19 +9,24 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  try {
+    const session = await getServerSession(authOptions);
+    const email = session?.user?.email;
+    if (!email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const me = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true, name: true, email: true, role: true, createdAt: true, referralCode: true, twoFactorEnabled: true,
-      verificationStatus: true, documentUrl: true, rejectionReason: true
-    },
-  });
+    const me = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true, name: true, email: true, role: true, createdAt: true, referralCode: true, twoFactorEnabled: true,
+        verificationStatus: true, documentUrl: true, rejectionReason: true, avatarUrl: true
+      },
+    });
 
-  return NextResponse.json(me);
+    return NextResponse.json(me);
+  } catch (error) {
+    console.error("Profile GET Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 const Body = z.object({
