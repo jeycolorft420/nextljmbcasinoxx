@@ -17,6 +17,7 @@ import BuySeatUI from "@/modules/rooms/components/BuySeatUI";
 import ConfirmationModal from "@/modules/ui/components/ConfirmationModal";
 import { useLicense } from "@/context/LicenseContext";
 import ThemeSelector from "@/modules/games/roulette/components/ThemeSelector";
+import DiceSkinSelector from "@/modules/games/dice/components/DiceSkinSelector";
 
 type Entry = {
   id: string;
@@ -91,6 +92,10 @@ export default function RoomPage() {
   const [currentTheme, setCurrentTheme] = useState("default");
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
 
+  // DICE SKIN STATE
+  const [currentDiceSkin, setCurrentDiceSkin] = useState("white");
+  const [diceSelectorOpen, setDiceSelectorOpen] = useState(false);
+
   // Extract skins
   const ownedSkins: string[] = useMemo(() => {
     const u = session?.user as any;
@@ -100,8 +105,13 @@ export default function RoomPage() {
   }, [session]);
 
   useEffect(() => {
-    if (session?.user && (session.user as any).selectedRouletteSkin) {
-      setCurrentTheme((session.user as any).selectedRouletteSkin);
+    if (session?.user) {
+      if ((session.user as any).selectedRouletteSkin) {
+        setCurrentTheme((session.user as any).selectedRouletteSkin);
+      }
+      if ((session.user as any).selectedDiceColor) {
+        setCurrentDiceSkin((session.user as any).selectedDiceColor);
+      }
     }
   }, [session]);
 
@@ -117,6 +127,24 @@ export default function RoomPage() {
         updateSession();
       } else {
         toast.error("Error al guardar skin");
+      }
+    } catch {
+      toast.error("Error de red");
+    }
+  };
+
+  const handleDiceSkinChange = async (skin: string) => {
+    setCurrentDiceSkin(skin);
+    try {
+      const res = await fetch("/api/me/skin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skin, type: "dice" })
+      });
+      if (res.ok) {
+        toast.success(`Color actualizado: ${skin.toUpperCase()}`);
+        updateSession();
+      } else {
+        toast.error("Error al guardar color");
       }
     } catch {
       toast.error("Error de red");
@@ -400,10 +428,17 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* Theme Toggle */}
+          {/* Theme Toggle (Roulette) */}
           {room.gameType === "ROULETTE" && (
             <button onClick={() => setThemeSelectorOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>
+            </button>
+          )}
+
+          {/* Theme Toggle (Dice) */}
+          {room.gameType === "DICE_DUEL" && (
+            <button onClick={() => setDiceSelectorOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 8h.01" /><path d="M12 12h.01" /><path d="M16 16h.01" /></svg>
             </button>
           )}
 
@@ -468,6 +503,13 @@ export default function RoomPage() {
         onSelect={handleThemeChange}
       />
 
+      <DiceSkinSelector
+        isOpen={diceSelectorOpen}
+        onClose={() => setDiceSelectorOpen(false)}
+        currentSkin={currentDiceSkin}
+        onSelect={handleDiceSkinChange}
+      />
+
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
@@ -482,6 +524,16 @@ export default function RoomPage() {
                 <div>
                   <span className="block font-bold text-white">Cambiar Apariencia</span>
                   <span className="text-xs opacity-60">Personaliza tu ruleta</span>
+                </div>
+              </button>
+            )}
+
+            {room.gameType === "DICE_DUEL" && (
+              <button onClick={() => { setMobileMenuOpen(false); setDiceSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-emerald-900/40 to-green-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-green-500 shadow-lg" />
+                <div>
+                  <span className="block font-bold text-white">Color de Dados</span>
+                  <span className="text-xs opacity-60">Personaliza tus dados</span>
                 </div>
               </button>
             )}

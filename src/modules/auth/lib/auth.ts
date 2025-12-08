@@ -74,6 +74,7 @@ export const authOptions: NextAuthOptions = {
           (token as any).username = freshUser.username;
           (token as any).rouletteSkins = (freshUser as any).rouletteSkins; // Assuming relation or JSON
           (token as any).selectedRouletteSkin = (freshUser as any).selectedRouletteSkin;
+          (token as any).selectedDiceColor = (freshUser as any).selectedDiceColor;
         }
         return token;
       }
@@ -88,6 +89,7 @@ export const authOptions: NextAuthOptions = {
         (token as any).username = (user as any).username;
         (token as any).rouletteSkins = (user as any).rouletteSkins;
         (token as any).selectedRouletteSkin = (user as any).selectedRouletteSkin;
+        (token as any).selectedDiceColor = (user as any).selectedDiceColor;
       }
       return token;
     },
@@ -100,10 +102,10 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).role = token.role;
         (session.user as any).avatarUrl = token.avatarUrl;
         (session.user as any).verificationStatus = (token as any).verificationStatus;
-        (session.user as any).verificationStatus = (token as any).verificationStatus;
         (session.user as any).username = (token as any).username;
         (session.user as any).rouletteSkins = (token as any).rouletteSkins;
         (session.user as any).selectedRouletteSkin = (token as any).selectedRouletteSkin;
+        (session.user as any).selectedDiceColor = (token as any).selectedDiceColor;
       }
       return session;
     },

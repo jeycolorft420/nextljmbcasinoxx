@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const Body = z.object({
     skin: z.string().min(1),
+    type: z.enum(["roulette", "dice"]).optional().default("roulette"),
 });
 
 export async function POST(req: Request) {
@@ -15,18 +16,19 @@ export async function POST(req: Request) {
         if (!email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
         const json = await req.json().catch(() => ({}));
-        const { skin } = Body.parse(json);
+        const { skin, type } = Body.parse(json);
 
-        // Verify ownership (optional but recommended)
-        // For now, we assume if they send a skin ID/name, they own it or it's a default one.
-        // In a stricter system, we'd check prisma.user.findUnique({ include: { rouletteSkins: true } })
+        // Update based on type
+        const data = type === "dice"
+            ? { selectedDiceColor: skin }
+            : { selectedRouletteSkin: skin };
 
         const updated = await prisma.user.update({
             where: { email },
-            data: { selectedRouletteSkin: skin },
+            data,
         });
 
-        return NextResponse.json({ ok: true, skin: updated.selectedRouletteSkin });
+        return NextResponse.json({ ok: true, skin, type });
     } catch (error) {
         console.error("Update skin error:", error);
         return NextResponse.json({ error: "Error al actualizar skin" }, { status: 500 });
