@@ -18,6 +18,7 @@ const createSchema = z.object({
   capacity: z.number().int().min(2).max(100).optional(),
   title: z.string().min(1).optional(),
   gameType: z.enum(GAME_TYPES).optional().default("ROULETTE"),
+  botWaitMs: z.number().int().min(0).optional().default(0), // 👈 Added
 });
 
 // GET /api/rooms?state=&gameType=&take=
@@ -81,8 +82,6 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json(data);
-
-    return NextResponse.json(data);
   } catch (e) {
     console.error("rooms GET error:", e);
     return NextResponse.json({ error: "No se pudieron listar salas" }, { status: 500 });
@@ -124,10 +123,7 @@ export async function POST(req: Request) {
         gameType: body.gameType,
         currentServerSeed: serverSeed,
         currentServerHash: serverHash,
-        gameType: body.gameType,
-        currentServerSeed: serverSeed,
-        currentServerHash: serverHash,
-        // autoLockAt is NULL by default effectively (waiting for first join)
+        botWaitMs: body.botWaitMs, // 👈 Added
       },
       include: { _count: { select: { entries: true } } },
     });
@@ -150,5 +146,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No se pudo crear la sala" }, { status: 500 });
   }
 }
-
-

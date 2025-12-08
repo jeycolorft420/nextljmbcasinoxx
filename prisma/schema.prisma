@@ -141,6 +141,9 @@ model Room {
   currentServerSeed String?  // Secreto (No enviar al front hasta terminar)
   currentServerHash String?  // Hash SHA256 (Público)
 
+  // 🤖 Natural Bot Logic
+  botWaitMs     Int      @default(0) // 0 = Instant fill at end. >0 = Progressive fill interval.
+
   deletedAt DateTime?
 
   entries     Entry[]

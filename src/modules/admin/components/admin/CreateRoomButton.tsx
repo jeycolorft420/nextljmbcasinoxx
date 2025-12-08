@@ -14,7 +14,11 @@ export default function CreateRoomButton({ price, type, label }: Props) {
     const createRoom = async () => {
         setLoading(true);
         try {
-            const payload: any = { priceCents: price, gameType: type };
+            // Ask for bot interval
+            const intervalStr = window.prompt("¿Intervalo de Bots en Segundos? (0 = Desactivado, 5 = 5 seg)", "3");
+            const botWaitMs = intervalStr ? parseInt(intervalStr) * 1000 : 0;
+
+            const payload: any = { priceCents: price, gameType: type, botWaitMs };
             if (type === "DICE_DUEL") payload.capacity = 2;
 
             const r = await fetch("/api/rooms", {

@@ -6,12 +6,16 @@ import { Prisma } from "@prisma/client";
 export async function maintenanceRoulette(room: any, freshRoom: any) {
     const roomId = room.id;
     // CRITICAL FIX: Only count players in the CURRENT ROUND.
-    // freshRoom.entries includes history, so freshRoom._count.entries gives total history (wrong).
     const currentEntries = freshRoom.entries.filter((e: any) => e.round === (freshRoom.currentRound ?? 1));
-    const playerCount = currentEntries.length;
+    const playersCount = currentEntries.length;
 
-    // SCENARIO 1: Insufficient players (0) - Reset Timer
-    if (playerCount === 0) {
+    // 0. CHECK MODE: Instant (Timer Expired) vs Progressive (Interval)
+    const isTimerExpired = freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt;
+    const botWaitMs = freshRoom.botWaitMs ?? 0;
+    const isProgressive = botWaitMs > 0 && !isTimerExpired;
+
+    // SCENARIO 1: Insufficient players (0) - Reset Timer (Only if expired)
+    if (playersCount === 0 && isTimerExpired) {
         await prisma.room.update({
             where: { id: roomId },
             data: { autoLockAt: null }
@@ -20,96 +24,167 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     }
 
     // 🔒 ATOMIC LOCK CLAIM (CAS)
-    // Only proceed if we can successfully set autoLockAt to NULL (meaning we consume the timer)
-    // This prevents multiple threads from running maintenance simultaneously.
-    // If autoLockAt is ALREADY null (because another thread took it), this update returns count: 0
+    // Only proceed if we can successfully set autoLockAt to NULL (for Instant) or if we are in Progressive mode (no lock needed yet?)
+    // Actually, for Progressive, we don't want to "consume" the timer. We just want to add a bot and exit.
+    // BUT we need concurrency safety.
 
-    // NOTE: We only try to claim if autoLockAt is NOT NULL.
-    // If it's already null, maintenance shouldn't be running anyway (checked in wrapper),
-    // but another thread might have just cleared it.
+    // PROGRESSIVE MODE LOGIC
+    if (isProgressive) {
+        // If room is full, we shouldn't be here (client/maintenance should have finished it? No, finish logic is below).
+        if (playersCount >= freshRoom.capacity) {
+            // Room is full but timer not expired. Trigger finish properly.
+            // Fallthrough to Finish logic?
+            // checking below...
+        } else {
+            // Check Last Entry Time
+            const lastEntry = currentEntries[currentEntries.length - 1];
+            const lastTime = lastEntry ? new Date(lastEntry.createdAt).getTime() : new Date(freshRoom.createdAt).getTime();
+            const now = Date.now();
+
+            if (now - lastTime < botWaitMs) {
+                // Not enough time passed
+                return freshRoom;
+            }
+
+            console.log(`[Roulette] Progressive Bot Injection for ${roomId} (Waited ${now - lastTime}ms > ${botWaitMs}ms)`);
+
+            // Fetch 1 VALID Bot that isn't already playing (optional check, but simplistic for now)
+            const bot = await prisma.user.findFirst({
+                where: { isBot: true },
+                // Random skip? or just grab one.
+                take: 1,
+                skip: Math.floor(Math.random() * 50) // Randomize selection slightly
+            });
+
+            if (!bot) return freshRoom;
+
+            // Find free position
+            const occupiedPositions = new Set(currentEntries.map((e: any) => e.position));
+            let availablePositions = Array.from({ length: freshRoom.capacity }, (_, i) => i + 1).filter(p => !occupiedPositions.has(p));
+            if (availablePositions.length === 0) return freshRoom; // Full
+
+            const pos = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+
+            // Insert Bot
+            await prisma.entry.create({
+                data: {
+                    roomId,
+                    userId: bot.id,
+                    position: pos,
+                    round: freshRoom.currentRound ?? 1
+                }
+            });
+
+            // Emit update
+            await emitRoomUpdate(roomId);
+
+            // Refetch to check if full now
+            // If full, we can let the NEXT maintenance tick handle the finish, or fallthrough?
+            // For simplicity, return now and let next tick (immediate or lazy) finish it.
+            // Or better: check if (playersCount + 1 === capacity) -> Finish immediately.
+            const newCount = playersCount + 1;
+            if (newCount < freshRoom.capacity) {
+                return freshRoom;
+            }
+
+            // If FULL, proceed to Finish Logic below...
+        }
+    }
+
+    // ... FINISH LOGIC (Instant or Full) ...
+
+    // If we are here, either:
+    // A) Timer Expired (Instant Fill needed)
+    // B) Room is Full (Progressive or Manual finished)
+
+    // If Progressive and NOT Full, we should have returned above.
+    // If Progressive and Full, we continue.
+
+    // 🔒 LOCK CLAIM for FINISH
+    // If timer expired, we consume autoLockAt.
+    // If full, autoLockAt might be in future. We still need to lock.
+
+    // We try to update to FINISHED state atomically?
+    // Let's stick to the existing "Claim Lock" pattern to be safe.
+    // If not expired but full, we can set autoLockAt = null as the claim?
+
     const claim = await prisma.room.updateMany({
         where: {
             id: roomId,
-            autoLockAt: { not: null }
+            // If expired, claim non-null autoLockAt.
+            // If full, claim regardless?
+            // To be safe/consistent: Claim if state is OPEN.
+            state: "OPEN",
+            // Only if we haven't already claimed it (concurrency)
+            // finishedAt: null
         },
-        data: { autoLockAt: null }
+        data: { state: "LOCKED" } // Temporary Lock state to prevent double-finish
     });
 
     if (claim.count === 0) {
-        // Lock already claimed by another thread OR timer was already null
-        console.log(`[Roulette] Maintenance skipped (Lock busy) for ${roomId}`);
+        // Already handling
         return freshRoom;
     }
 
+    // Double check state after lock? (Not needed if atomic update to LOCKED worked)
 
-    // SCENARIO 2: Fill with Bots and Finish
-    console.log(`[Roulette] Room ${roomId} lock claimed. Filling with bots.`);
-
-    // DEBUG: Check counts
-    console.log(`[Roulette] Current Round: ${freshRoom.currentRound ?? 1}, Total Entries Payload: ${freshRoom.entries.length}, Valid Entries: ${playerCount}`);
-
-    let botsNeeded = freshRoom.capacity - playerCount;
-    if (botsNeeded < 0) botsNeeded = 0; // Prevent negative take
-
-    // 🛡️ SECURITY: Fetch bots
-    const bots = await prisma.user.findMany({
-        where: { isBot: true },
-        take: botsNeeded,
-        orderBy: { createdAt: 'desc' }
+    // SCENARIO 2: Fill with Bots (If needed)
+    // Refetch strictly to be sure
+    const lockedRoom = await prisma.room.findUnique({
+        where: { id: roomId },
+        include: { entries: { where: { round: freshRoom.currentRound ?? 1 } } }
     });
 
-    // CRITICAL: If we don't have enough bots, we MUST revert the lock (restore timer)
-    // Otherwise the room stays stuck with autoLockAt = null and never finishes.
-    if (bots.length < botsNeeded) {
-        console.warn(`[Roulette] Not enough bots to fill room ${roomId}. Needed ${botsNeeded}, found ${bots.length}. Total Bots avail: ${await prisma.user.count({ where: { isBot: true } })}. Restoring timer.`);
+    // ... [Original Logic Resume] ...
+    const entries = lockedRoom?.entries || [];
+    let currentCount = entries.length;
+    let botsNeeded = freshRoom.capacity - currentCount;
+    if (botsNeeded < 0) botsNeeded = 0;
 
-        // 🔄 RESTORE TIMER used as Lock
-        await prisma.room.update({
-            where: { id: roomId },
-            data: { autoLockAt: new Date(Date.now() + 10000) } // Retry in 10s
+    console.log(`[Roulette] Finish sequence for ${roomId}. Bots needed: ${botsNeeded}`);
+
+    // If bots needed (Timer Expired case), fetch and fill
+    if (botsNeeded > 0) {
+        const bots = await prisma.user.findMany({
+            where: { isBot: true },
+            take: botsNeeded,
+            orderBy: { createdAt: 'desc' }
         });
-        return freshRoom;
-    }
 
-    // 2. Prepare Entries
-    const occupiedPositions = new Set(currentEntries.map((e: any) => e.position));
-    let availablePositions = Array.from({ length: freshRoom.capacity }, (_, i) => i + 1).filter(p => !occupiedPositions.has(p));
-
-    // Shuffle positions for realism
-    availablePositions.sort(() => Math.random() - 0.5);
-
-    const entriesToCreate: Prisma.EntryCreateManyInput[] = [];
-    bots.forEach((bot, idx) => {
-        if (idx < availablePositions.length) {
-            entriesToCreate.push({
-                roomId: roomId,
-                userId: bot.id,
-                position: availablePositions[idx],
-                round: freshRoom.currentRound ?? 1
-            });
+        if (bots.length < botsNeeded) {
+            console.warn(`[Roulette] Not enough bots. Restoring.`);
+            await prisma.room.update({ where: { id: roomId }, data: { state: "OPEN" } });
+            return freshRoom;
         }
-    });
 
-    // 3. Insert Bots
-    if (entriesToCreate.length > 0) {
-        await prisma.entry.createMany({ data: entriesToCreate });
+        // Fill logic (copy-paste adapted)
+        const occupied = new Set(entries.map((e: any) => e.position));
+        let available = Array.from({ length: freshRoom.capacity }, (_, i) => i + 1).filter(p => !occupied.has(p));
+        available.sort(() => Math.random() - 0.5);
+
+        const toCreate = bots.map((b, i) => ({
+            roomId, userId: b.id, position: available[i], round: freshRoom.currentRound ?? 1
+        }));
+
+        if (toCreate.length > 0) await prisma.entry.createMany({ data: toCreate });
     }
 
-    // 4. Refetch to get ALL entries (including new bots) for winner selection
+    // 4. Refetch FINAL for winner
     const finalRoom = await prisma.room.findUnique({
         where: { id: roomId },
         include: { entries: { where: { round: freshRoom.currentRound ?? 1 }, include: { user: true } } }
     });
 
-    if (!finalRoom || finalRoom.entries.length === 0) return freshRoom;
+    if (!finalRoom || finalRoom.entries.length === 0) {
+        // Should not happen, but revert if so
+        await prisma.room.update({ where: { id: roomId }, data: { state: "OPEN" } });
+        return freshRoom;
+    }
 
-    // 5. Select Winner
     const finalEntries = finalRoom.entries;
-    console.log(`[Roulette] Picking winner from ${finalEntries.length} entries.`);
     const winnerIndex = crypto.randomInt(0, finalEntries.length);
     const winner = finalEntries[winnerIndex];
-
-    const prize = finalRoom.priceCents * 10; // Fixed 10x payout (Standard Roulette 1/10)
+    const prize = finalRoom.priceCents * 10;
 
     // 6. Execute Payout & Finish
     const updatedRoom = await prisma.$transaction(async (tx) => {
@@ -121,20 +196,17 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
                 lockedAt: new Date(),
                 winningEntryId: winner.id,
                 prizeCents: prize,
-                preselectedPosition: null, // Clear override
+                preselectedPosition: null,
                 autoLockAt: null
             },
-            // FIX: Filter entries by ROUND so frontend receives correct list
             include: { entries: { where: { round: freshRoom.currentRound ?? 1 }, include: { user: true } } }
         });
 
-        // Payout to User Wallet
         await tx.user.update({
             where: { id: winner.userId },
             data: { balanceCents: { increment: prize } }
         });
 
-        // Log Transaction
         await tx.transaction.create({
             data: {
                 userId: winner.userId,
@@ -145,7 +217,6 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
             }
         });
 
-        // 📝 LOG GAME RESULT (HISTORY)
         await tx.gameResult.create({
             data: {
                 roomId: r.id,
@@ -159,7 +230,6 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
         return r;
     });
 
-    // 7. Emit Updates
     await emitRoomUpdate(updatedRoom.id);
     await emitRoomsIndex();
 

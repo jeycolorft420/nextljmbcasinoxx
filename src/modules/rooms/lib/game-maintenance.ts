@@ -34,7 +34,11 @@ export async function checkAndMaintenanceRoom(room: any) {
         return await maintenanceDiceDuel(room, freshRoom);
     } else if (freshRoom.gameType === "ROULETTE") {
         // Double check expiration on fresh object
-        if (freshRoom.state === "OPEN" && freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt) {
+        // OR if progressive bots are enabled (botWaitMs > 0)
+        const isTimerExpired = freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt;
+        const isProgressiveBotMode = (freshRoom.botWaitMs ?? 0) > 0;
+
+        if (freshRoom.state === "OPEN" && (isTimerExpired || isProgressiveBotMode)) {
             return await maintenanceRoulette(room, freshRoom);
         }
     }
