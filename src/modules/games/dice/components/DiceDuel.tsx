@@ -161,7 +161,7 @@ export default function DiceDuel({
     // Mobile: h-[100dvh] to fill screen, overflow-hidden.
     // Desktop: h-[700px] (fixed height to match history), justify-between, compact gaps.
     <div className="flex flex-col items-center w-full mx-auto 
-                    h-[100dvh] overflow-hidden justify-between
+                    h-full min-h-[500px] justify-between py-4
                     md:h-[700px] md:justify-between md:gap-2 md:max-w-lg md:py-4">
 
       {/* 1. Top Player (Opponent) */}

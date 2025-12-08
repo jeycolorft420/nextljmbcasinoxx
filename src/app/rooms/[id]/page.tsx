@@ -425,7 +425,7 @@ export default function RoomPage() {
         {/* Board Container - Centered */}
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
-            <div className="relative z-10 w-full max-w-md">
+            <div className="relative z-10 w-full max-w-md h-full">
               <DiceBoard room={room} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} />
             </div>
           ) : (
@@ -476,13 +476,15 @@ export default function RoomPage() {
             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
           </div>
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
-              <div>
-                <span className="block font-bold text-white">Cambiar Apariencia</span>
-                <span className="text-xs opacity-60">Personaliza tu ruleta</span>
-              </div>
-            </button>
+            {room.gameType === "ROULETTE" && (
+              <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
+                <div>
+                  <span className="block font-bold text-white">Cambiar Apariencia</span>
+                  <span className="text-xs opacity-60">Personaliza tu ruleta</span>
+                </div>
+              </button>
+            )}
 
             <div className="h-px bg-white/10 my-2" />
 
