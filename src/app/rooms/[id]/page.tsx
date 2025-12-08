@@ -473,6 +473,42 @@ export default function RoomPage() {
   const totalUnits = selectedPositions.length > 0 ? selectedPositions.length : qty;
   const totalUSD = ((room.priceCents * totalUnits) / 100).toFixed(2);
 
+  // --- Helper Component for Seats ---
+  const renderSeats = () => (
+    <div className="grid [grid-template-columns:repeat(auto-fit,minmax(70px,1fr))] gap-2">
+      {Array.from({ length: room.capacity }).map((_, i) => {
+        const pos = i + 1;
+        const entry = room.entries?.find((e) => e.position === pos);
+        const occupied = !!entry;
+        const isSelected = selectedPositions.includes(pos);
+        const isWinner = !!room.winningEntryId && entry?.id === room.winningEntryId;
+        const canToggle = room.state === "OPEN" && !occupied;
+
+        return (
+          <button
+            key={pos}
+            type="button"
+            onClick={() => canToggle && togglePosition(pos)}
+            className={`rounded-md border p-1.5 text-center text-[10px] transition relative overflow-hidden h-14 flex flex-col items-center justify-center
+                ${isWinner ? "border-green-500/80 bg-green-500/10"
+                : isSelected ? "border-blue-400 ring-1 ring-blue-400/40 bg-blue-500/10"
+                  : occupied ? "border-white/10 bg-white/5" : "border-white/5 opacity-60 hover:opacity-100"}
+                ${canToggle ? "hover:bg-white/10 cursor-pointer" : "cursor-default"}`}
+          >
+            <div className="font-bold opacity-50 mb-0.5">#{pos}</div>
+            {entry ? (
+              <div className="font-medium truncate leading-tight w-full">
+                {entry.user.name || entry.user.email.split("@")[0]}
+              </div>
+            ) : (
+              <div className="opacity-40 text-[9px]">{isSelected ? "Tuyo" : "Libre"}</div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <main className="fixed inset-0 z-[100] bg-background overflow-hidden flex flex-col justify-center sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
 
@@ -727,41 +763,10 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="grid [grid-template-columns:repeat(auto-fit,minmax(80px,1fr))] gap-2">
-              {Array.from({ length: room.capacity }).map((_, i) => {
-                const pos = i + 1;
-                const entry = room.entries?.find((e) => e.position === pos);
-                const occupied = !!entry;
-                const isSelected = selectedPositions.includes(pos);
-                const isWinner = !!room.winningEntryId && entry?.id === room.winningEntryId;
-                const canToggle = room.state === "OPEN" && !occupied;
 
-                return (
-                  <button
-                    key={pos}
-                    type="button"
-                    onClick={() => canToggle && togglePosition(pos)}
-                    className={`rounded-md border p-1.5 text-center text-[10px] transition relative overflow-hidden
-                        ${isWinner ? "border-green-500/80 bg-green-500/10"
-                        : isSelected ? "border-blue-400 ring-1 ring-blue-400/40 bg-blue-500/10"
-                          : occupied ? "border-white/10 bg-white/5" : "border-white/5 opacity-60 hover:opacity-100"}
-                        ${canToggle ? "hover:bg-white/10 cursor-pointer" : "cursor-default"}`}
-                  >
-                    <div className="font-bold opacity-50 mb-0.5">#{pos}</div>
-                    {entry ? (
-                      <div className="font-medium truncate leading-tight">
-                        {entry.user.name || entry.user.email.split("@")[0]}
-                      </div>
-                    ) : (
-                      <div className="opacity-40">{isSelected ? "Tuyo" : "Libre"}</div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
 
-            {/* CTA compra (solo cuando OPEN) */}
-            {/* CTA compra (solo cuando OPEN) */}
+            {renderSeats()}
+
             <BuySeatUI
               room={room}
               qty={qty}
@@ -791,6 +796,9 @@ export default function RoomPage() {
       </div>
 
       {/* Mobile Buy Popup (Only if OPEN & (Roulette OR (Dice & Not Participating))) */}
+      {/* UPDATE: For Dice, hidden if already participating. For Roulette, visible always if open/not full. */}
+      {/* Logic: Show if OPEN AND Not Full AND (Roulette OR (Dice & Not Participating)) */}
+
       <div className="lg:hidden">
         {room.state === "OPEN" &&
           (Math.max(0, room.capacity - (room.entries?.length ?? 0)) > 0) &&
@@ -799,15 +807,22 @@ export default function RoomPage() {
               {/* POPUP */}
               {showMobileBuy && (
                 <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
-                  <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-bold text-lg text-white">Unirse a la Sala</h3>
+                  <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative max-h-[85vh] overflow-y-auto">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg text-white">
+                        {room.gameType === "DICE_DUEL" ? "Unirse al Duelo" : "Selecciona tu Puesto"}
+                      </h3>
                       <button
                         onClick={() => setShowMobileBuy(false)}
                         className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                       </button>
+                    </div>
+
+                    {/* SEATS IN POPUP */}
+                    <div className="mb-4">
+                      {renderSeats()}
                     </div>
 
                     <BuySeatUI
@@ -828,7 +843,7 @@ export default function RoomPage() {
               {!showMobileBuy && (
                 <button
                   onClick={() => setShowMobileBuy(true)}
-                  className="fixed bottom-20 right-4 z-[190] h-12 w-12 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95"
+                  className="fixed bottom-20 right-4 z-[190] h-14 w-14 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95 border-2 border-white/20"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
                 </button>
@@ -854,3 +869,4 @@ export default function RoomPage() {
     </main>
   );
 }
+
