@@ -648,8 +648,17 @@ export default function RoomPage() {
             <h2 className="text-xl font-bold">Historial</h2>
             <button onClick={() => setHistoryOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
+          <div className="flex-1 overflow-y-auto space-y-4">
+            {room.gameType === "DICE_DUEL" && (
+              <div className="mb-4">
+                <h3 className="text-xs font-bold uppercase opacity-50 mb-2">Tiradas</h3>
+                <DiceHistory room={room} swapVisuals={room?.entries?.find(e => e.position === 1)?.user.email === email} className="bg-white/5" />
+              </div>
+            )}
+            <div>
+              <h3 className="text-xs font-bold uppercase opacity-50 mb-2">Ganadores Recientes</h3>
+              <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
+            </div>
           </div>
         </div>
       )}
@@ -763,7 +772,15 @@ export default function RoomPage() {
             {renderSeats()}
             <div className="mt-4"><BuySeatUI room={room} qty={qty} setQty={setQty} selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions} joining={joining} onJoin={join} /></div>
           </div>
-          <div className="mt-4"><RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} /></div>
+          <div className="mt-4 space-y-4">
+            {room.gameType === "DICE_DUEL" && (
+              <div className="card bg-[#050505] border border-white/10 p-4">
+                <div className="mb-2 text-xs font-bold uppercase opacity-50">Historial de Tiradas</div>
+                <DiceHistory room={room} swapVisuals={room?.entries?.find(e => e.position === 1)?.user.email === email} maxHeight={300} />
+              </div>
+            )}
+            <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
+          </div>
         </div>
       </div>
 

@@ -482,10 +482,6 @@ export default function DiceBoard({
         )}
       </div>
 
-      {/* Historial de Rondas (Visible para todos) */}
-      <div className="w-full flex justify-center mt-6 z-10 relative">
-        <DiceHistory room={room} swapVisuals={amTop} className="backdrop-blur-md shadow-xl" />
-      </div>
     </div>
   );
 }
