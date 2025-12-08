@@ -11,8 +11,19 @@ type Props = {
     onSelect: (skin: string) => void;
 };
 
-// Colors matching API + UI
+// Colors matching API (english keys)
 const DICE_COLORS = ["white", "red", "blue", "green", "purple", "yellow", "pink", "dark"];
+
+const TRANSLATIONS: Record<string, string> = {
+    "white": "BLANCO",
+    "red": "ROJO",
+    "blue": "AZUL",
+    "green": "VERDE",
+    "purple": "MORADO",
+    "yellow": "AMARILLO",
+    "pink": "ROSADO",
+    "dark": "NEGRO",
+};
 
 const COLOR_MAP: Record<string, string> = {
     "white": "bg-gray-200 border-gray-400",
@@ -27,7 +38,7 @@ const COLOR_MAP: Record<string, string> = {
 
 const PRICES: Record<string, number> = {
     "white": 0,
-    "dark": 100, // Assuming base
+    "dark": 100,
     "red": 100,
     "blue": 100,
     "green": 100,
@@ -39,6 +50,7 @@ const PRICES: Record<string, number> = {
 export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSkins, balanceCents, onSelect }: Props) {
     const router = useRouter();
     const [buying, setBuying] = useState<string | null>(null);
+    const [confirming, setConfirming] = useState<string | null>(null);
 
     if (!isOpen) return null;
 
@@ -53,10 +65,9 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
             });
             const data = await res.json();
             if (res.ok) {
-                toast.success(`¡Comprado! ${color.toUpperCase()}`);
-                // Refresh page to update session/balance (or let RoomPage handle it if we trigger re-fetch)
-                // For now, simple router refresh
-                onSelect(color); // Select immediately (optimistic logic in parent handles updating session too)
+                toast.success(`¡Comprado! ${TRANSLATIONS[color]}`);
+                // Optimistic select
+                onSelect(color);
                 onClose();
             } else {
                 toast.error(data.error || "No se pudo comprar");
@@ -83,13 +94,14 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
                 <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto p-1">
                     {DICE_COLORS.map((color) => {
                         const isSelected = (currentSkin || "white") === color;
-                        const isOwned = ownedSkins.includes(color) || color === "white"; // Always own white
+                        const isOwned = ownedSkins.includes(color) || color === "white";
                         const price = PRICES[color] ?? 100;
                         const canAfford = balanceCents >= price;
                         const isBuying = buying === color;
+                        const isConfirming = confirming === color;
 
                         return (
-                            <div key={color} className="flex flex-col gap-1">
+                            <div key={color} className="flex flex-col gap-1 relative">
                                 <button
                                     disabled
                                     className={`
@@ -101,9 +113,8 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
                                 >
                                     <div className={`w-10 h-10 rounded-lg shadow-lg ${COLOR_MAP[color]}`}></div>
                                     <span className={`text-xs font-bold uppercase ${isSelected ? "text-primary" : "text-gray-400"}`}>
-                                        {color}
+                                        {TRANSLATIONS[color]}
                                     </span>
-                                    {/* Lock icon if not owned */}
                                     {!isOwned && (
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -111,15 +122,18 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
                                     )}
                                 </button>
 
-                                {isOwned ? (
+                                {isConfirming ? (
+                                    <div className="absolute inset-0 bg-gray-900/95 rounded-xl z-10 flex flex-col items-center justify-center gap-2 p-2 border border-primary/50 animate-in fade-in zoom-in-95 duration-200">
+                                        <span className="text-[10px] text-white font-bold text-center leading-tight">¿Usar {TRANSLATIONS[color]}?</span>
+                                        <div className="flex gap-1 w-full">
+                                            <button onClick={() => { onSelect(color); onClose(); }} className="flex-1 bg-primary hover:bg-primary/90 text-black text-[10px] font-bold py-1 rounded">SI</button>
+                                            <button onClick={() => setConfirming(null)} className="flex-1 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold py-1 rounded">NO</button>
+                                        </div>
+                                    </div>
+                                ) : isOwned ? (
                                     <button
                                         disabled={isSelected}
-                                        onClick={() => {
-                                            if (confirm(`¿Quieres usar los dados color ${color.toUpperCase()}?`)) {
-                                                onSelect(color);
-                                                onClose();
-                                            }
-                                        }}
+                                        onClick={() => setConfirming(color)}
                                         className={`
                                             text-[10px] font-bold py-1 px-2 rounded-lg border w-full transition-colors
                                             ${isSelected

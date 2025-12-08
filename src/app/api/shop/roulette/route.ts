@@ -8,15 +8,18 @@ import prisma from "@/modules/ui/lib/prisma";
 export const dynamic = "force-dynamic";
 
 // Datos de Skins (Hardcoded por ahora)
+// Datos de Skins (Hardcoded por ahora)
 const SKINS: Record<string, { price: number; name: string }> = {
     "default": { price: 0, name: "Default" },
     "classic": { price: 500, name: "Classic Red/Black" },
     "vip": { price: 1000, name: "VIP Gold" },
     "cyberpunk": { price: 800, name: "Cyberpunk" },
     "matrix": { price: 800, name: "Matrix" },
+    "dark": { price: 500, name: "Dark Mode" },
+    "white": { price: 500, name: "White Mode" },
 };
 
-const SkinIdSchema = z.enum(["default", "classic", "vip", "cyberpunk", "matrix"]);
+const SkinIdSchema = z.enum(["default", "classic", "vip", "cyberpunk", "matrix", "dark", "white"]);
 
 export async function GET() {
     try {

@@ -536,6 +536,7 @@ export default function RoomPage() {
         onClose={() => setThemeSelectorOpen(false)}
         currentTheme={currentTheme}
         ownedSkins={ownedSkins}
+        balanceCents={userBalanceCents}
         onSelect={handleThemeChange}
       />
 
