@@ -33,30 +33,19 @@ export async function checkAndMaintenanceRoom(room: any) {
 
     const playerCount = freshRoom._count.entries;
 
-    // SCENARIO A: Insufficient players (<= 1)
-    // Action: Extend timer UNLESS it's a DICE DUEL (1v1) where 1 player is waiting for opponent
-    const isDiceDuel = freshRoom.gameType === "DICE_DUEL";
-    const isWaitingForOpponent = isDiceDuel && playerCount === 1;
-
-    if (playerCount <= 1 && !isWaitingForOpponent) {
-        console.log(`[Maintenance] Room ${roomId} has ${playerCount} players. Extending timer.`);
-        const newLockTime = new Date(now.getTime() + 5 * 60 * 1000); // +5 minutes
-
-        const updated = await prisma.room.update({
+    // SCENARIO A: Insufficient players (0)
+    if (playerCount === 0) {
+        // No one here. Just clear timer to stop polling loop or reset.
+        await prisma.room.update({
             where: { id: roomId },
-            data: { autoLockAt: newLockTime }
+            data: { autoLockAt: null }
         });
-
-        // We don't necessarily need to emit socket update for a timer extension if we don't want to spam,
-        // but it helps frontend sync.
-        // await emitRoomUpdate(updated.id); 
-
-        return { ...freshRoom, autoLockAt: newLockTime };
+        return { ...freshRoom, autoLockAt: null };
     }
 
-    // SCENARIO B: Enough players (> 1)
-    // Action: Fill with bots and finish
-    console.log(`[Maintenance] Room ${roomId} has ${playerCount} players. Filling with bots and finishing.`);
+    // SCENARIO B: Play (1 or more players).
+    // If timer expired, we fill with bots and finish.
+    console.log(`[Maintenance] Room ${roomId} has ${playerCount} players. Timer expired. Filling with bots.`);
 
     const botsNeeded = freshRoom.capacity - playerCount;
 

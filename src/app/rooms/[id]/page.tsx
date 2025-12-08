@@ -676,12 +676,11 @@ export default function RoomPage() {
         {/* Right Actions */}
         <div className="flex items-center gap-4">
           {/* Balance */}
-          {walletBalance !== null && (
-            <div className="bg-black/40 border border-white/5 px-4 py-2 rounded-xl flex flex-col items-end min-w-[120px]">
-              <span className="text-[10px] opacity-50 uppercase font-bold tracking-wider">Tu Saldo</span>
-              <span className="text-lg font-bold text-emerald-400 font-mono">${(walletBalance / 100).toFixed(2)}</span>
-            </div>
-          )}
+          {/* Balance */}
+          <div className="bg-black/40 border border-white/5 px-4 py-2 rounded-xl flex flex-col items-end min-w-[120px]">
+            <span className="text-[10px] opacity-50 uppercase font-bold tracking-wider">Tu Saldo</span>
+            <span className="text-lg font-bold text-emerald-400 font-mono">${(userBalanceCents / 100).toFixed(2)}</span>
+          </div>
 
           {/* Theme/Skin Toggles */}
           {room.gameType === "ROULETTE" && (

@@ -106,7 +106,7 @@ const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 // map a DiceSkin
 function toSkin(s?: string | null): DiceSkin {
-  const allowed: DiceSkin[] = ["white", "green", "blue", "yellow", "red", "purple", "pink"];
+  const allowed: DiceSkin[] = ["white", "green", "blue", "yellow", "red", "purple"];
   return (s && (allowed as readonly string[]).includes(s)) ? (s as DiceSkin) : "white";
 }
 
@@ -144,6 +144,17 @@ export default function DiceBoard({
 
   // Winner Display State (3s)
   const [winnerDisplay, setWinnerDisplay] = useState<{ name: string; amount: string } | null>(null);
+  const [showOverlay, setShowOverlay] = useState(false);
+
+  useEffect(() => {
+    if (room.state === "FINISHED") {
+      const t = setTimeout(() => setShowOverlay(true), 3000);
+      return () => clearTimeout(t);
+    } else {
+      setShowOverlay(false);
+    }
+  }, [room.state]);
+
   const lastHistoryLen = useRef(room.gameMeta?.history?.length || 0);
 
   useEffect(() => {
@@ -446,7 +457,7 @@ export default function DiceBoard({
         />
 
         {/* POST-GAME OVERLAY */}
-        {room.state === "FINISHED" && meEntry && (
+        {room.state === "FINISHED" && meEntry && showOverlay && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm rounded-xl p-6 animate-in fade-in duration-500">
             <h2 className="text-2xl font-bold text-white mb-2">Juego Terminado</h2>
             <p className="text-white/70 mb-6 text-center text-sm">
