@@ -49,54 +49,47 @@ export async function PUT(req: Request) {
 
     try {
         const body = await req.json();
-        const { siteName, logoUrl, faviconUrl, diceCoverUrl, rouletteCoverUrl, primaryColor, secondaryColor, accentColor, backgroundColor, textColor, fontFamily, diceTimerSeconds } = body;
+        const {
+            siteName, logoUrl, faviconUrl, diceCoverUrl, rouletteCoverUrl,
+            primaryColor, secondaryColor, accentColor, backgroundColor, textColor,
+            fontFamily, diceTimerSeconds
+        } = body;
 
-        // Update the first record (singleton pattern)
-        // We use updateMany to avoid needing the ID, or findFirst then update
+        // Prepare data object
+        const dataToUpdate: any = {
+            siteName, logoUrl, faviconUrl, diceCoverUrl, rouletteCoverUrl,
+            primaryColor, secondaryColor, accentColor, backgroundColor, textColor,
+            fontFamily
+        };
+
+        if (typeof diceTimerSeconds === 'number') {
+            dataToUpdate.diceTimerSeconds = diceTimerSeconds;
+        }
+
         const first = await prisma.systemSettings.findFirst();
 
         let settings;
         if (first) {
             settings = await prisma.systemSettings.update({
                 where: { id: first.id },
-                data: {
-                    siteName,
-                    logoUrl,
-                    faviconUrl,
-                    diceCoverUrl,
-                    rouletteCoverUrl,
-                    primaryColor,
-                    secondaryColor,
-                    accentColor,
-                    backgroundColor,
-                    textColor,
-                    fontFamily,
-                    diceTimerSeconds: typeof diceTimerSeconds === 'number' ? diceTimerSeconds : undefined,
-                },
+                data: dataToUpdate,
             });
         } else {
             settings = await prisma.systemSettings.create({
                 data: {
-                    siteName,
-                    logoUrl,
-                    faviconUrl,
-                    diceCoverUrl,
-                    rouletteCoverUrl,
-                    primaryColor,
-                    secondaryColor,
-                    accentColor,
-                    backgroundColor,
-                    textColor,
-                    fontFamily,
+                    ...dataToUpdate,
                     diceTimerSeconds: typeof diceTimerSeconds === 'number' ? diceTimerSeconds : 600,
                 },
             });
         }
 
         return NextResponse.json(settings);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating settings:", error);
-        return NextResponse.json({ error: "Failed to update settings", details: String(error) }, { status: 500 });
+        return NextResponse.json({
+            error: "Failed to update settings",
+            details: error?.message || String(error)
+        }, { status: 500 });
     }
 }
 
