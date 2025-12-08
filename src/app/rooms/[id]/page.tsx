@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import RouletteBoard from "@/modules/rooms/components/RouletteBoard";
-import DiceBoard, { DiceHistory } from "@/modules/rooms/components/dice/DiceBoard";
+import RouletteBoard from "@/modules/games/roulette/components/RouletteBoard";
+import DiceBoard, { DiceHistory } from "@/modules/games/dice/components/dice/DiceBoard";
 import RoomHistoryList from "@/modules/rooms/components/RoomHistoryList"; // 👈 Nuevo componente
 import { pusherClient } from "@/modules/ui/lib/pusher-client";
 import ChatBubble from "@/modules/rooms/components/chat/ChatBubble";
@@ -869,5 +869,6 @@ export default function RoomPage() {
     </main>
   );
 }
+
 
 

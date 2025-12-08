@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import DiceDuel from "@/modules/rooms/components/DiceDuel";
+import DiceDuel from "@/modules/games/dice/components/DiceDuel";
 import { type DiceSkin } from "./ThreeDDice";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
@@ -478,4 +478,5 @@ export default function DiceBoard({
     </div>
   );
 }
+
 

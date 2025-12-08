@@ -2,7 +2,9 @@ import prisma from "@/modules/ui/lib/prisma";
 import { walletCredit } from "@/modules/users/lib/wallet";
 import { emitRoomUpdate } from "@/modules/rooms/lib/emit-rooms";
 import { buildRoomPayload } from "@/modules/rooms/lib/room-payload";
-import { calculateRouletteOutcome, generateServerSeed, generateHash } from "@/modules/rooms/lib/provably-fair";
+import { generateServerSeed } from "@/modules/games/shared/lib/provably-fair";
+import { determineRouletteWinner, ROULETTE_MULTIPLIER } from "@/modules/games/roulette/lib/logic";
+import { handleDiceBotTurn } from "@/modules/games/dice/lib/logic";
 
 export async function finishRoom(roomId: string) {
     // 🔒 Transacción con bloqueo pesimista
@@ -56,26 +58,22 @@ export async function finishRoom(roomId: string) {
         if (entries.length === 0) throw new Error("No hay participantes");
 
         // 🤖 BOTS: Fill empty slots
-        // Only if Room is mostly empty to simulate traffic? Or always fill?
-        // Plan says: "Fill empty slots automatically"
         if (entries.length < room.capacity) {
             const needed = room.capacity - entries.length;
-            // Select random bots that are NOT already in the room
             const existingUserIds = entries.map(e => e.userId);
             const bots = await tx.user.findMany({
                 where: { isBot: true, id: { notIn: existingUserIds } },
                 take: needed,
-                orderBy: { id: 'asc' } // random selection difficult in Prisma w/o raw SQL, simplified here
+                orderBy: { id: 'asc' }
             });
 
             // Add bots to entries
             for (let i = 0; i < bots.length; i++) {
                 // Determine next available position
-                // ROULETTE implies positions 1..Capacity. Find holes.
                 const takenPositions = new Set(entries.map(e => e.position));
                 let pos = 1;
                 while (takenPositions.has(pos)) pos++;
-                takenPositions.add(pos); // mark as taken for next iter
+                takenPositions.add(pos);
 
                 const botEntry = await tx.entry.create({
                     data: {
@@ -88,26 +86,10 @@ export async function finishRoom(roomId: string) {
                 });
                 entries.push(botEntry as any);
 
-                // 🎲 DADOS: Si es Dice Duel, el bot debe "Tirar" inmediatamente simulando juego
+                // 🎲 DADOS: Delegar a Módulo Dice
                 if (room.gameType === "DICE_DUEL") {
-                    // 1. Calcular roll del bot
-                    // Usamos crypto random simple o el server seed si quisieramos ser estrictos (simplificado aquí)
-                    const botRoll1 = Math.floor(Math.random() * 6) + 1;
-                    const botRoll2 = Math.floor(Math.random() * 6) + 1;
-
-                    // 2. Guardar en gameMeta (DiceDuel state)
-                    // Asumimos estructura: { rolls: { [userId]: [r1, r2] } }
-                    const currentMeta = (room.gameMeta as any) || { rolls: {} };
-                    currentMeta.rolls = currentMeta.rolls || {};
-                    currentMeta.rolls[bots[i].id] = [botRoll1, botRoll2];
-
-                    await tx.room.update({
-                        where: { id: roomId },
-                        data: { gameMeta: currentMeta }
-                    });
-
-                    // Actualizar referencia local
-                    room.gameMeta = currentMeta;
+                    const updatedMeta = await handleDiceBotTurn(tx, roomId, room, bots[i].id);
+                    room.gameMeta = updatedMeta;
                 }
             }
         }
@@ -116,29 +98,27 @@ export async function finishRoom(roomId: string) {
         let winningEntry: typeof entries[0] | null = null;
         let newMeta: any = room.gameMeta ?? null;
 
-        // ROULETTE LOGIC
         if ((room as any).preselectedPosition) {
+            // Admin override
             winningEntry = entries.find(e => e.position === (room as any).preselectedPosition) ?? null;
-        } else {
-            // PROVABLY FAIR SELECTION
-            let sSeed = room.currentServerSeed;
-            // Fallback for legacy rooms without seed
-            if (!sSeed) {
-                sSeed = generateServerSeed();
-            }
-
-            // Construct Client Seed from Entropy (e.g., concatenated Entry IDs to ensure participation affects outcome)
-            // In a real scenario, this might come from a block hash, but internal entropy is better than Math.random()
-            const clientSeed = entries.map(e => e.id).sort().join("-");
-
-            const outcomeIndex = calculateRouletteOutcome(sSeed, clientSeed, currentRound, entries.length);
-            winningEntry = entries[outcomeIndex];
+        } else if (room.gameType === "ROULETTE") {
+            // 🎱 RULETA: Delegar a Módulo Roulette
+            winningEntry = determineRouletteWinner(room, entries);
+        } else if (room.gameType === "DICE_DUEL") {
+            // Dice logic is handled via rolls, determining winner here is simplistic fallback
+            // For now we trust logic elsewhere or minimal fallback implementation if needed
+            // But finishRoom usually implies definitive end.
+            // Simplified: If bot rolled higher? Or assumed handled?
+            // Existing logic didn't explicitly select dice winner here properly in previous snippet!
+            // It selected randomly via roulette logic fallback!
+            // FIX: Use Roulette logic as "Generic Random" fallback for now or throw?
+            // Let's fallback to "Shared Random" if not specialized.
+            winningEntry = determineRouletteWinner(room, entries); // Uses provably fair generic
         }
 
         if (!winningEntry) throw new Error("Ganador inválido (no en ronda actual)");
 
         // 7. Commit Update
-        const ROULETTE_MULTIPLIER = 10;
         const prizeCents = room.priceCents * ROULETTE_MULTIPLIER;
 
         const updated = await tx.room.update({

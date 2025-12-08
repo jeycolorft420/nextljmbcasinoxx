@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import RouletteWheel from "@/modules/rooms/components/RouletteWheel";
+import RouletteWheel from "@/modules/games/roulette/components/RouletteWheel";
 import confetti from "canvas-confetti";
 import { useAudio } from "@/context/AudioContext";
 
@@ -166,4 +166,5 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd }: Pro
         </div>
     );
 }
+
 

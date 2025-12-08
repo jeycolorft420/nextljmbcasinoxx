@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/modules/auth/lib/auth";
 import { emitRoomsIndex } from "@/modules/rooms/lib/emit-rooms";
 import prisma from "@/modules/ui/lib/prisma";
-import { generateServerSeed, generateHash } from "@/modules/rooms/lib/provably-fair";
+import { generateServerSeed, generateHash } from "@/modules/games/shared/lib/provably-fair";
 import { checkAndMaintenanceRoom } from "@/modules/rooms/lib/game-maintenance";
 
 const ROOM_STATES = ["OPEN", "LOCKED", "FINISHED"] as const;
@@ -149,4 +149,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No se pudo crear la sala" }, { status: 500 });
   }
 }
+
 
