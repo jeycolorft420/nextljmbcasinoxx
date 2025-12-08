@@ -130,9 +130,14 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ ok: true });
     }
 
+
     // === Ruleta u otros juegos ===
     await prisma.$transaction(async (tx) => {
       await tx.entry.delete({ where: { id: me.id } });
+
+      // Check remaining players
+      const remaining = await tx.entry.count({ where: { roomId: room.id, round: room.currentRound } });
+
       await tx.room.update({
         where: { id: room.id },
         data: {
@@ -143,6 +148,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
           prizeCents: null,
           rolledAt: null,
           preselectedPosition: null,
+          // If no one is left, stop the timer.
+          ...(remaining === 0 ? { autoLockAt: null } : {}),
           gameMeta: { ...((room.gameMeta as object) ?? {}), ready: {}, dice: undefined } as any,
         },
       });
