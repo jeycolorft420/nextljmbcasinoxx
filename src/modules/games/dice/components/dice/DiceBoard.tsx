@@ -165,8 +165,8 @@ export default function DiceBoard({
       const winnerName =
         room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador";
 
-      // Calculate amount won (fixed damage)
-      const damage = Math.max(1, Math.floor(room.priceCents / 5));
+      // Calculate amount won (from history)
+      const damage = lastRound.damage ?? 0;
 
       setWinnerDisplay({
         name: winnerName,

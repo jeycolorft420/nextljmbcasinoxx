@@ -77,144 +77,188 @@ export async function checkAndMaintenanceRoom(room: any) {
         }
     });
 
-    // 3. SPECIAL LOGIC PER GAME TYPE
+    // 3. SPECIAL LOGIC PER GAME TYPE (Dice Duel Battle System)
     if (freshRoom.gameType === "DICE_DUEL") {
         const meta = (freshRoom.gameMeta as any) || {};
         const rolls = meta.rolls || {};
+        let balances = meta.balances || {};
+        const autoPlay = meta.autoPlay || false;
 
         const p1 = freshRoom.entries.find((e: any) => e.position === 1);
         const p2 = freshRoom.entries.find((e: any) => e.position === 2);
 
+        // Init balances if missing (Health = Price)
+        if (p1 && !balances[p1.userId]) balances[p1.userId] = freshRoom.priceCents;
+
         // A) ADD BOT IF NEEDED (Timer Expired & 1 Player)
-        // Only if we haven't already filled the room (p2 missing)
         if (!p2 && freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt) {
-            console.log(`[Maintenance] Dice Duel Timeout. Adding Bot.`);
-            // 1. Get Bot
-            // Re-use the "bots" array fetched earlier or fetch one specific
+            console.log(`[Maintenance] Dice Duel Timeout. Adding Bot & Starting Auto-Sim.`);
             let botUser = bots[0];
-            if (!botUser) {
-                // Try to fetch one if local array empty
-                botUser = await prisma.user.findFirst({ where: { isBot: true } });
+            if (!botUser) botUser = await prisma.user.findFirst({ where: { isBot: true } });
+
+            if (botUser) {
+                await prisma.entry.create({
+                    data: {
+                        roomId,
+                        userId: botUser.id,
+                        position: 2,
+                        round: freshRoom.currentRound ?? 1
+                    }
+                });
+
+                // Init bot balance
+                balances[botUser.id] = freshRoom.priceCents;
+
+                const updated = await prisma.room.update({
+                    where: { id: roomId },
+                    data: {
+                        autoLockAt: null,
+                        gameMeta: {
+                            ...meta,
+                            balances,
+                            autoPlay: true // Enable Full Simulation
+                        } as any
+                    }
+                });
+                await emitRoomUpdate(roomId);
+                return updated;
             }
-            if (!botUser) return freshRoom;
-
-            await prisma.entry.create({
-                data: {
-                    roomId,
-                    userId: botUser.id,
-                    position: 2, // Duel is 1v1, if p2 missing it's pos 2
-                    round: freshRoom.currentRound ?? 1
-                }
-            });
-
-            const updated = await prisma.room.update({
-                where: { id: roomId },
-                data: { autoLockAt: null }
-            });
-
-            await emitRoomUpdate(roomId);
-            return updated;
         }
 
-        // B) GAME LOOP (If 2 players)
+        // B) GAME LOOP
         if (p1 && p2) {
-            const p1Rolled = !!rolls[p1.userId];
-            const p2Rolled = !!rolls[p2.userId];
+            // Ensure P2 balance exists if just joined
+            if (!balances[p2.userId]) balances[p2.userId] = freshRoom.priceCents;
 
-            // 1. CHECK FINISH (Both rolled)
+            let p1Rolled = !!rolls[p1.userId];
+            let p2Rolled = !!rolls[p2.userId];
+            let changesMade = false;
+
+            // 1. AUTO ROLLS
+            if (!p1Rolled && autoPlay) {
+                rolls[p1.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
+                p1Rolled = true;
+                changesMade = true;
+            }
+
+            const p2IsBot = (await prisma.user.findUnique({ where: { id: p2.userId }, select: { isBot: true } }))?.isBot;
+            if (!p2Rolled && (p2IsBot || autoPlay)) {
+                rolls[p2.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
+                p2Rolled = true;
+                changesMade = true;
+            }
+
+            // 2. RESOLVE ROUND (If both rolled)
             if (p1Rolled && p2Rolled) {
-                // Calculate Winner
                 const r1 = rolls[p1.userId];
                 const r2 = rolls[p2.userId];
                 const sum1 = r1[0] + r1[1];
                 const sum2 = r2[0] + r2[1];
 
-                let winnerId = null;
-                if (sum1 > sum2) winnerId = p1.id;
-                else if (sum2 > sum1) winnerId = p2.id;
-                else {
-                    // Tie - For MVP we can just Tie Breaker or Give it to P1 or Refund.
-                    // Let's give to P1 to ensure finish (or random).
-                    winnerId = p1.id;
+                // Damage: Scale based (Price/40) + Diff (Min 1 cent damage)
+                const scale = Math.max(1, Math.floor(freshRoom.priceCents / 40));
+                let damage = 0;
+                let roundWinner = null;
+
+                if (sum1 > sum2) {
+                    damage = (sum1 - sum2) * scale;
+                    balances[p2.userId] -= damage;
+                    roundWinner = p1.userId;
+                } else if (sum2 > sum1) {
+                    damage = (sum2 - sum1) * scale;
+                    balances[p1.userId] -= damage;
+                    roundWinner = p2.userId;
                 }
 
-                // Finish Room
-                const prizeCents = freshRoom.priceCents * 2;
+                // Push History
+                const historyEntry = {
+                    rolls: { [p1.userId]: r1, [p2.userId]: r2 },
+                    winnerUserId: roundWinner,
+                    damage,
+                    timestamp: Date.now(),
+                    round: (meta.history?.length || 0) + 1,
+                    balancesAfter: { ...balances }
+                };
+                const newHistory = [...(meta.history || []), historyEntry];
 
-                await prisma.$transaction(async (tx) => {
-                    const winnerEntry = freshRoom.entries.find((e: any) => e.id === winnerId);
-                    const winnerUserId = winnerEntry?.userId;
+                const lastDice = {
+                    top: r1, // NOTE: DiceBoard usually maps these by ID, safe to store raw
+                    bottom: r2,
+                    [p1.userId]: r1,
+                    [p2.userId]: r2
+                };
 
-                    await tx.room.update({
-                        where: { id: roomId },
-                        data: {
-                            state: "FINISHED",
-                            finishedAt: new Date(),
-                            winningEntryId: winnerId,
-                            prizeCents,
-                            // autoLockAt: null // already null
-                            gameMeta: { ...meta, ended: true } as any
-                        }
-                    });
+                // Check Death
+                const p1Dead = balances[p1.userId] <= 0;
+                const p2Dead = balances[p2.userId] <= 0;
 
-                    if (winnerUserId) {
+                if (p1Dead || p2Dead) {
+                    const winnerId = p1Dead ? p2.id : p1.id;
+                    const winnerUserId = p1Dead ? p2.userId : p1.userId;
+                    const prizeCents = freshRoom.priceCents * 2;
+
+                    await prisma.$transaction(async (tx) => {
+                        await tx.room.update({
+                            where: { id: roomId },
+                            data: {
+                                state: "FINISHED",
+                                finishedAt: new Date(),
+                                winningEntryId: winnerId,
+                                prizeCents,
+                                gameMeta: {
+                                    ...meta,
+                                    balances,
+                                    history: newHistory,
+                                    rolls,
+                                    ended: true
+                                } as any
+                            }
+                        });
+
                         await tx.user.update({
                             where: { id: winnerUserId },
                             data: { balanceCents: { increment: prizeCents } }
                         });
+
                         await tx.transaction.create({
                             data: {
                                 userId: winnerUserId,
                                 amountCents: prizeCents,
                                 kind: "WIN_CREDIT",
-                                reason: "Victoria Dados",
+                                reason: "Victoria Dados (Combate)",
                                 meta: { roomId }
                             }
                         });
-                    }
-                });
-
-                await emitRoomUpdate(roomId);
-                await emitRoomsIndex();
-                return { ...freshRoom, state: "FINISHED" };
-            }
-
-            // 2. CHECK BOT TURN
-            // Logic: P1 goes first.
-            let activeEntry = null;
-            if (!p1Rolled) activeEntry = p1;
-            else if (!p2Rolled) activeEntry = p2;
-
-            if (activeEntry) {
-                // Is this entry a bot?
-                // We need to know if user is bot. The entry.user usually has minimal fields.
-                // We did "include: { entries: { include: { user: true } } }" in previous calls?
-                // Step 19: "entries: { where: { ... } }" - Default include might not have isBot.
-                // Let's assume we need to fetch user or trust `isBot` if available.
-                // Or check "bots" list.
-
-                // Efficient check: fetch user isBot status
-                const u = await prisma.user.findUnique({ where: { id: activeEntry.userId }, select: { isBot: true } });
-
-                if (u?.isBot) {
-                    console.log(`[Maintenance] Bot Move for ${activeEntry.userId}`);
-                    // Execute Roll
-                    const r = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
-
-                    const newMeta = {
-                        ...meta,
-                        rolls: { ...rolls, [activeEntry.userId]: r },
-                        lastDice: { ...meta.lastDice, [activeEntry.position === 1 ? 'top' : 'bottom']: r }
-                    };
-
-                    await prisma.room.update({
-                        where: { id: roomId },
-                        data: { gameMeta: newMeta as any }
                     });
 
                     await emitRoomUpdate(roomId);
-                    return { ...freshRoom, gameMeta: newMeta };
+                    await emitRoomsIndex();
+                    return { ...freshRoom, state: "FINISHED" };
+
+                } else {
+                    // CONTINUE
+                    await prisma.room.update({
+                        where: { id: roomId },
+                        data: {
+                            gameMeta: {
+                                ...meta,
+                                balances,
+                                history: newHistory,
+                                rolls: {}, // CLEAR
+                                lastDice
+                            } as any
+                        }
+                    });
+                    await emitRoomUpdate(roomId);
+                    return freshRoom;
                 }
+            } else if (changesMade) {
+                await prisma.room.update({
+                    where: { id: roomId },
+                    data: { gameMeta: { ...meta, rolls } as any }
+                });
+                await emitRoomUpdate(roomId);
+                return freshRoom;
             }
         }
 
@@ -238,9 +282,12 @@ export async function checkAndMaintenanceRoom(room: any) {
     const finalEntries = finalRoom.entries;
     if (finalEntries.length === 0) return finalRoom;
 
+    let winner = finalEntries[0];
+    // Roulette: Winner is random (or preselected)
     const winnerIndex = crypto.randomInt(0, finalEntries.length);
-    const winner = finalEntries[winnerIndex];
-    const prize = finalRoom.priceCents * (finalEntries.length); // Bank is sum of entries
+    winner = finalEntries[winnerIndex];
+
+    const prize = finalRoom.priceCents * (finalEntries.length);
 
     const updatedRoom = await prisma.$transaction(async (tx) => {
         const r = await tx.room.update({
@@ -251,7 +298,7 @@ export async function checkAndMaintenanceRoom(room: any) {
                 lockedAt: new Date(),
                 winningEntryId: winner.id,
                 prizeCents: prize,
-                preselectedPosition: null, // Clear roulette preselect
+                preselectedPosition: null,
                 autoLockAt: null
             },
             include: { entries: { include: { user: true } } }
@@ -267,7 +314,7 @@ export async function checkAndMaintenanceRoom(room: any) {
             data: {
                 userId: winner.userId,
                 amountCents: prize,
-                kind: "WIN_CREDIT", // TxKind.WIN_CREDIT
+                kind: "WIN_CREDIT",
                 reason: `Victoria en Sala ${r.title}`,
                 meta: { roomId: r.id }
             }
