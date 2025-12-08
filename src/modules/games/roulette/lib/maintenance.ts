@@ -5,7 +5,10 @@ import { Prisma } from "@prisma/client";
 
 export async function maintenanceRoulette(room: any, freshRoom: any) {
     const roomId = room.id;
-    const playerCount = freshRoom._count.entries;
+    // CRITICAL FIX: Only count players in the CURRENT ROUND.
+    // freshRoom.entries includes history, so freshRoom._count.entries gives total history (wrong).
+    const currentEntries = freshRoom.entries.filter((e: any) => e.round === (freshRoom.currentRound ?? 1));
+    const playerCount = currentEntries.length;
 
     // SCENARIO 1: Insufficient players (0) - Reset Timer
     if (playerCount === 0) {
@@ -38,10 +41,15 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
         return freshRoom;
     }
 
+
     // SCENARIO 2: Fill with Bots and Finish
     console.log(`[Roulette] Room ${roomId} lock claimed. Filling with bots.`);
 
-    const botsNeeded = freshRoom.capacity - playerCount;
+    // DEBUG: Check counts
+    console.log(`[Roulette] Current Round: ${freshRoom.currentRound ?? 1}, Total Entries Payload: ${freshRoom.entries.length}, Valid Entries: ${playerCount}`);
+
+    let botsNeeded = freshRoom.capacity - playerCount;
+    if (botsNeeded < 0) botsNeeded = 0; // Prevent negative take
 
     // 🛡️ SECURITY: Fetch bots
     const bots = await prisma.user.findMany({
@@ -53,7 +61,7 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     // CRITICAL: If we don't have enough bots, we MUST revert the lock (restore timer)
     // Otherwise the room stays stuck with autoLockAt = null and never finishes.
     if (bots.length < botsNeeded) {
-        console.warn(`[Roulette] Not enough bots to fill room ${roomId}. Needed ${botsNeeded}, found ${bots.length}. Restoring timer.`);
+        console.warn(`[Roulette] Not enough bots to fill room ${roomId}. Needed ${botsNeeded}, found ${bots.length}. Total Bots avail: ${await prisma.user.count({ where: { isBot: true } })}. Restoring timer.`);
 
         // 🔄 RESTORE TIMER used as Lock
         await prisma.room.update({
@@ -64,7 +72,7 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     }
 
     // 2. Prepare Entries
-    const occupiedPositions = new Set((freshRoom.entries || []).map((e: any) => e.position));
+    const occupiedPositions = new Set(currentEntries.map((e: any) => e.position));
     let availablePositions = Array.from({ length: freshRoom.capacity }, (_, i) => i + 1).filter(p => !occupiedPositions.has(p));
 
     // Shuffle positions for realism
@@ -97,6 +105,7 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
 
     // 5. Select Winner
     const finalEntries = finalRoom.entries;
+    console.log(`[Roulette] Picking winner from ${finalEntries.length} entries.`);
     const winnerIndex = crypto.randomInt(0, finalEntries.length);
     const winner = finalEntries[winnerIndex];
 
@@ -115,7 +124,8 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
                 preselectedPosition: null, // Clear override
                 autoLockAt: null
             },
-            include: { entries: { include: { user: true } } }
+            // FIX: Filter entries by ROUND so frontend receives correct list
+            include: { entries: { where: { round: freshRoom.currentRound ?? 1 }, include: { user: true } } }
         });
 
         // Payout to User Wallet

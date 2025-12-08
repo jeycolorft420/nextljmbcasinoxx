@@ -54,11 +54,18 @@ export async function emitRoomsIndex() {
  * Esto evita payload > 10KB en salas grandes y asegura estado consistente.
  */
 export async function emitRoomUpdate(roomId: string, _payload?: any) {
-  // Fetch full room data to emit
+  // 1. Fetch Round first to filter
+  const meta = await prisma.room.findUnique({ where: { id: roomId }, select: { currentRound: true } });
+  if (!meta) return;
+
+  const currentRound = meta.currentRound ?? 1;
+
+  // 2. Fetch full room data with filtered entries
   const room = await prisma.room.findUnique({
     where: { id: roomId },
     include: {
       entries: {
+        where: { round: currentRound },
         include: { user: { select: { id: true, name: true, email: true } } }
       }
     }

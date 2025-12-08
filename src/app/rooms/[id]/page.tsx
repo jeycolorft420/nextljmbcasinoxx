@@ -183,7 +183,12 @@ export default function RoomPage() {
   }, []);
 
   // métricas de ocupación
-  const taken = room?.entries?.length ?? 0;
+  // FIX: Filter entries client-side as a safety net against history entries in payload
+  const currentEntries = useMemo(() => {
+    return room?.entries?.filter((e: any) => (e.round ?? 1) === (room.currentRound ?? 1)) ?? [];
+  }, [room?.entries, room?.currentRound]);
+
+  const taken = currentEntries.length;
   const free = room ? Math.max(0, room.capacity - taken) : 0;
   const pct = room ? Math.max(0, Math.min(100, (taken / room.capacity) * 100)) : 0;
 
@@ -438,7 +443,7 @@ export default function RoomPage() {
     <div className="grid grid-cols-4 gap-2">
       {Array.from({ length: room.capacity }).map((_, i) => {
         const pos = i + 1;
-        const entry = room.entries?.find((e) => e.position === pos);
+        const entry = currentEntries.find((e: any) => e.position === pos);
         const occupied = !!entry;
         const isMine = entry?.user.email === email;
         const isSelected = selectedPositions.includes(pos);
