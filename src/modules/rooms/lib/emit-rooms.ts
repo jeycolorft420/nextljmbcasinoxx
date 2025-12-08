@@ -54,10 +54,22 @@ export async function emitRoomsIndex() {
  * Esto evita payload > 10KB en salas grandes y asegura estado consistente.
  */
 export async function emitRoomUpdate(roomId: string, _payload?: any) {
+  // Fetch full room data to emit
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    include: {
+      entries: {
+        include: { user: { select: { id: true, name: true, email: true } } }
+      }
+    }
+  });
+
+  if (!room) return;
+
   await pusherServer.trigger(
     `private-room-${roomId}`,
     "room:update",
-    { id: roomId, refresh: true }
+    room
   );
 }
 
