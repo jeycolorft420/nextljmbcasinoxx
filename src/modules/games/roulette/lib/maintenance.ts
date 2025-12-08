@@ -41,12 +41,18 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
             const lastTime = lastEntry ? new Date(lastEntry.createdAt).getTime() : new Date(freshRoom.createdAt).getTime();
             const now = Date.now();
 
-            if (now - lastTime < botWaitMs) {
+            // HUMANIZER: Add randomness/jitter to the interval (±30%)
+            // This prevents robotic timing (exact 3.00s intervals).
+            // Example: 5s interval becomes random between 3.5s and 6.5s
+            const jitter = 0.7 + (Math.random() * 0.6);
+            const customizedWait = botWaitMs * jitter;
+
+            if (now - lastTime < customizedWait) {
                 // Not enough time passed
                 return freshRoom;
             }
 
-            console.log(`[Roulette] Progressive Bot Injection for ${roomId} (Waited ${now - lastTime}ms > ${botWaitMs}ms)`);
+            console.log(`[Roulette] Progressive Bot Injection for ${roomId}. Waited ${now - lastTime}ms (Target ~${customizedWait.toFixed(0)}ms)`);
 
             // Fetch 1 VALID Bot that isn't already playing (optional check, but simplistic for now)
             const bot = await prisma.user.findFirst({
