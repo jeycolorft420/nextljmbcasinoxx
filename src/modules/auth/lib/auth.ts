@@ -34,7 +34,10 @@ export const authOptions: NextAuthOptions = {
         const { email, password } = parsed.data;
 
         // Buscar usuario en DB
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findUnique({
+          where: { email },
+          include: { rouletteSkins: true }
+        });
         if (!user) return null;
 
         // Comparar contraseñas
@@ -60,7 +63,10 @@ export const authOptions: NextAuthOptions = {
       if (trigger === "update" && token.email) {
         // Fetch fresh data from DB
         console.log("JWT Update Triggered for:", token.email);
-        const freshUser = await prisma.user.findUnique({ where: { email: token.email } });
+        const freshUser = await prisma.user.findUnique({
+          where: { email: token.email },
+          include: { rouletteSkins: true }
+        });
         if (freshUser) {
           token.role = freshUser.role;
           token.verificationStatus = freshUser.verificationStatus;

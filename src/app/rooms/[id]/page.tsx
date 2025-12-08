@@ -94,9 +94,9 @@ export default function RoomPage() {
   // Extract skins
   const ownedSkins: string[] = useMemo(() => {
     const u = session?.user as any;
+    // Handle both direct relation or simple cache
     const skins = u?.rouletteSkins || [];
-    // Handle if skins are objects or strings
-    const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.skinId || s.name || s.id);
+    const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.skinId || s.name || s.id || s.definitionId);
     return Array.from(new Set(["default", ...cleanNames]));
   }, [session]);
 
@@ -107,9 +107,7 @@ export default function RoomPage() {
   }, [session]);
 
   const handleThemeChange = async (skin: string) => {
-    // Optimistic
     setCurrentTheme(skin);
-
     try {
       const res = await fetch("/api/me/skin", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -117,12 +115,13 @@ export default function RoomPage() {
       });
       if (res.ok) {
         toast.success(`Tema actualizado: ${skin.toUpperCase()}`);
-        updateSession(); // Try to background update session
+        // Background update session to reflect persistence if needed for other components
+        updateSession();
       } else {
         toast.error("Error al guardar skin");
       }
     } catch {
-      toast.error("Error de red al guardar skin");
+      toast.error("Error de red");
     }
   };
 
@@ -130,7 +129,6 @@ export default function RoomPage() {
   const [wheelSize, setWheelSize] = useState(320);
   useEffect(() => {
     const compute = () => {
-      // More aggressive resize for mobile centered view
       const w = Math.min(360, Math.max(260, Math.floor(window.innerWidth * 0.85)));
       setWheelSize(w);
     };
@@ -148,13 +146,6 @@ export default function RoomPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showMobileBuy, setShowMobileBuy] = useState(true);
-
-  // Calculate amTop for History Orientation
-  const amTop = useMemo(() => {
-    if (!room || !email) return false;
-    const p1 = room.entries?.find(e => e.position === 1);
-    return p1?.user.email === email;
-  }, [room, email]);
 
   // Carga inicial/fallback
   const load = async (): Promise<Room | null> => {
@@ -181,10 +172,9 @@ export default function RoomPage() {
     }
   };
 
-  // 🛡️ Logic centralizada de actualización
+  // 🛡️ Logic centralizada
   const handleRoomUpdate = (payload: Room) => {
     setRoom((prev) => {
-      // Check for round change or finished state to reload history
       if (prev && (prev.currentRound !== payload.currentRound || (prev.state !== "FINISHED" && payload.state === "FINISHED"))) {
         setReloadHistoryKey(n => n + 1);
       }
@@ -198,7 +188,7 @@ export default function RoomPage() {
     setSelectedPositions((prev) => prev.filter((p) => !occupied.has(p)));
   };
 
-  // Carga inicial + Polling de seguridad (5s)
+  // Polling
   useEffect(() => {
     load().then(d => { if (d) handleRoomUpdate(d); });
     const interval = setInterval(() => {
@@ -211,7 +201,7 @@ export default function RoomPage() {
     return () => clearInterval(interval);
   }, [id]);
 
-  // Watchdog reset
+  // Watchdog reset time
   useEffect(() => {
     if (!room || room.state !== "FINISHED" || !room.finishedAt || room.gameType !== "ROULETTE") {
       setCountdownSeconds(null);
@@ -223,7 +213,6 @@ export default function RoomPage() {
       const RESET_DELAY_MS = 20000;
       const textRemaining = Math.max(0, Math.ceil((RESET_DELAY_MS - diff) / 1000));
       setCountdownSeconds(textRemaining);
-
       if (diff >= RESET_DELAY_MS) {
         fetch(`/api/rooms/${id}/reset`, { method: "POST" }).catch(e => console.error("Reset failed", e));
       }
@@ -248,10 +237,7 @@ export default function RoomPage() {
       }
     };
     channel.bind("room:update", onUpdate);
-    return () => {
-      channel.unbind("room:update", onUpdate);
-      pusherClient.unsubscribe(channelName);
-    };
+    return () => { channel.unbind("room:update", onUpdate); pusherClient.unsubscribe(channelName); };
   }, [id]);
 
   const togglePosition = (pos: number) => {
@@ -278,10 +264,7 @@ export default function RoomPage() {
     const currentBalance = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
 
     if (currentBalance < costCents) {
-      toast.error("Saldo insuficiente", {
-        description: `Requerido: $${(costCents / 100).toFixed(2)} | Tienes: $${(currentBalance / 100).toFixed(2)}`,
-        action: { label: "Recargar", onClick: () => window.location.href = "/wallet/deposit" },
-      });
+      toast.error("Saldo insuficiente", { description: "Recarga tu wallet para jugar." });
       return;
     }
 
@@ -294,7 +277,6 @@ export default function RoomPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       const data = await res.json();
-
       if (!res.ok) {
         rollbackUpdate(costCents);
         toast.error(data.error || "No se pudo unir");
@@ -303,12 +285,9 @@ export default function RoomPage() {
         if (takenList.length) toast.success(`Puestos: [${takenList.join(", ")}]`);
         else toast.success("¡Unido!");
         setSelectedPositions([]);
-
         if (room && session?.user && takenList.length > 0) {
-          // Optimistic Entry Add
           const newEntries = takenList.map((pos: number) => ({
-            id: `temp-${pos}-${Date.now()}`,
-            position: pos,
+            id: `temp-${pos}-${Date.now()}`, position: pos,
             user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
           }));
           setRoom((prev) => {
@@ -327,49 +306,40 @@ export default function RoomPage() {
     }
   };
 
-  const handleReroll = async () => {
-    if (!id || room?.gameMeta?.ended) return;
-    await fetch(`/api/rooms/${id}/reroll`, { method: "POST" });
-  };
-
+  const handleReroll = async () => { if (id && !room?.gameMeta?.ended) await fetch(`/api/rooms/${id}/reroll`, { method: "POST" }); };
   const handleForfeit = async (skipConfirm = false) => {
     if (!id || room?.gameMeta?.ended) return;
     const fn = async () => { await fetch(`/api/rooms/${id}/forfeit`, { method: "POST", headers: { "Content-Type": "application/json" } }); };
     if (skipConfirm) fn();
-    else setConfirmModal({ isOpen: true, title: "Rendirse", message: "¿Rendirse y perder apuesta?", onConfirm: () => { fn(); closeConfirm(); }, variant: "danger" });
+    else setConfirmModal({ isOpen: true, title: "Rendirse", message: "¿Rendirse?", onConfirm: () => { fn(); closeConfirm(); }, variant: "danger" });
   };
-
   const handleLeave = async () => {
     if (!id) return;
     const isParticipant = room?.entries?.some(e => e.user.email === email);
     if (!isParticipant) { window.location.href = "/rooms"; return; }
     setConfirmModal({
-      isOpen: true, title: "Abandonar Sala", message: "¿Abandonar la sala? Perderás tu apuesta.",
+      isOpen: true, title: "Abandonar", message: "¿Seguro?",
       onConfirm: async () => {
         const r = await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
         if (r.ok) window.location.href = "/rooms";
-        else toast.error("No se pudo abandonar");
+        else toast.error("Error al salir");
         closeConfirm();
       }, variant: "danger"
     });
   };
-
   const handleBackToLobby = () => {
     const isParticipant = room?.entries?.some(e => e.user.email === email);
     if (isParticipant) handleLeave();
     else window.location.href = "/rooms";
   };
-
   const handleRejoin = async () => {
     if (!id) return;
     await fetch(`/api/rooms/${id}/leave`, { method: "POST" }).catch(() => { });
-    await fetch(`/api/rooms/${id}/join`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: 1 }),
-    }).catch(() => { });
+    await fetch(`/api/rooms/${id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: 1 }), }).catch(() => { });
   };
 
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
-  if (!room) return <div className="text-center mt-10">Sala no encontrada <br /><Link href="/rooms" className="underline">Volver</Link></div>;
+  if (!room) return <div className="text-center mt-10">Sala no encontrada</div>;
 
   const renderSeats = () => (
     <div className="grid grid-cols-4 gap-2">
@@ -408,21 +378,37 @@ export default function RoomPage() {
   );
 
   return (
-    <main className="fixed inset-0 z-[100] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-[#050505] to-black text-white overflow-hidden flex flex-col sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
+    <main className="fixed inset-0 z-[200] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-[#050505] to-black text-white overflow-hidden flex flex-col sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
 
       {/* MOBILE TOP BAR */}
-      <div className="sm:hidden h-16 px-4 flex items-center justify-between z-[110] bg-gradient-to-b from-black/80 to-transparent shrink-0">
-        <button onClick={handleBackToLobby} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-        </button>
+      <div className="sm:hidden h-16 px-4 flex items-center justify-between z-[210] bg-gradient-to-b from-black/90 to-transparent shrink-0">
+        <div className="flex items-center gap-2">
+          <button onClick={handleBackToLobby} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/90">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          {countdownSeconds !== null && (
+            <div className="px-3 py-1 bg-amber-500/20 text-amber-500 border border-amber-500/30 rounded-full text-xs font-mono font-bold animate-pulse">
+              {countdownSeconds}s
+            </div>
+          )}
+        </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          {/* Balance Pill */}
+          {walletBalance !== null && (
+            <div className="flex flex-col items-end leading-none">
+              <span className="text-[10px] opacity-50 uppercase font-bold tracking-wider">Saldo</span>
+              <span className="text-sm font-bold text-emerald-400">${(walletBalance / 100).toFixed(2)}</span>
+            </div>
+          )}
+
           {/* Theme Toggle */}
           {room.gameType === "ROULETTE" && (
             <button onClick={() => setThemeSelectorOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>
             </button>
           )}
+
           {/* Menu */}
           <button onClick={() => setMobileMenuOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
@@ -434,7 +420,7 @@ export default function RoomPage() {
       <div className="flex-1 flex flex-col sm:hidden relative overflow-hidden">
         {/* Info Bar */}
         <div className="flex justify-between px-6 py-2 text-xs font-mono opacity-60">
-          <span>ROUND #{room.currentRound ?? 1}</span>
+          <span>R#{room.currentRound ?? 1}</span>
           <span className={stateBadgeClass(room.state)}>{room.state}</span>
         </div>
 
@@ -451,7 +437,7 @@ export default function RoomPage() {
           {/* Floating History Trigger */}
           <button
             onClick={() => setHistoryOpen(true)}
-            className="absolute left-6 bottom-4 p-3 z-20 bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded-full backdrop-blur-md shadow-lg active:scale-95"
+            className="absolute left-6 bottom-4 p-3 z-20 bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded-full backdrop-blur-md shadow-lg active:scale-95 flex items-center justify-center"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
           </button>
@@ -464,7 +450,7 @@ export default function RoomPage() {
             <p className="text-white text-lg font-bold mt-1">
               🏆 {room.entries?.find(e => e.id === room.winningEntryId)?.user.name || "Ganador"}
             </p>
-            <p className="text-xs opacity-50 font-mono mt-2">{countdownSeconds ? `Reiniciando en ${countdownSeconds}s` : "Reiniciando..."}</p>
+            <p className="text-xs opacity-50 font-mono mt-2">{countdownSeconds ? `Reiniciando… ${countdownSeconds}s` : "Reiniciando..."}</p>
           </div>
         )}
 
@@ -484,28 +470,56 @@ export default function RoomPage() {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
+        <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold">Menú</h2>
             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
           </div>
-          <div className="space-y-4">
-            <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-white/5 rounded-xl border border-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500" />
-              <span className="font-bold">Cambiar Apariencia</span>
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
+              <div>
+                <span className="block font-bold text-white">Cambiar Apariencia</span>
+                <span className="text-xs opacity-60">Personaliza tu ruleta</span>
+              </div>
             </button>
-            <button onClick={handleBackToLobby} className="w-full text-left p-4 bg-white/5 rounded-xl border border-white/5">Volver al Lobby</button>
-            <Link href="/profile" className="block w-full text-left p-4 bg-white/5 rounded-xl border border-white/5">Mi Perfil</Link>
+
+            <div className="h-px bg-white/10 my-2" />
+
+            <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider">Navegación</h3>
+            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+              <span>Salas de Juego</span>
+            </Link>
+            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+              <span>Dashboard</span>
+            </Link>
+            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
+              <span>Tienda</span>
+            </Link>
+            <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+              <span>Verificación</span>
+            </Link>
+            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+              <span>Mi Perfil</span>
+            </Link>
           </div>
-          <div className="mt-auto">
-            {session?.user && <button onClick={() => signOut()} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl">Cerrar Sesión</button>}
+          <div className="mt-auto pt-4 border-t border-white/10">
+            {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+              Cerrar Sesión
+            </button>}
           </div>
         </div>
       )}
 
       {/* Mobile History */}
       {historyOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-md animate-in slide-in-from-bottom duration-300 p-6 flex flex-col sm:hidden">
+        <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in slide-in-from-bottom duration-300 p-6 flex flex-col sm:hidden">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold">Historial</h2>
             <button onClick={() => setHistoryOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
