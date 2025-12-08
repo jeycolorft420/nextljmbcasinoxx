@@ -292,7 +292,7 @@ export async function checkAndMaintenanceRoom(room: any) {
     const winnerIndex = crypto.randomInt(0, finalEntries.length);
     winner = finalEntries[winnerIndex];
 
-    const prize = finalRoom.priceCents * (finalEntries.length);
+    const prize = finalRoom.priceCents * 10; // Fixed 10x payout (2 slots for house)
 
     const updatedRoom = await prisma.$transaction(async (tx) => {
         const r = await tx.room.update({

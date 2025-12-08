@@ -41,8 +41,10 @@ export default function NavBar() {
 
   const showMainNav = status === "authenticated";
 
-  // Hide NavBar on mobile ONLY inside specific room pages (game view)
-  const isGameRoom = pathname?.startsWith("/rooms/") && pathname !== "/rooms";
+  // Hide NavBar on mobile ONLY inside specific ROOM pages (game view, e.g. /rooms/123)
+  // Exclude /rooms (lobby), /rooms/roulette (category), /rooms/dice (category)
+  const isGameRoom = pathname?.startsWith("/rooms/") &&
+    !["/rooms", "/rooms/roulette", "/rooms/dice"].includes(pathname);
 
   return (
     <header className={`sticky top-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur ${isGameRoom ? "hidden sm:block" : ""}`}>
