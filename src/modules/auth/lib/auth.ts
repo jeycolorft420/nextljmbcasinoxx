@@ -44,14 +44,18 @@ export const authOptions: NextAuthOptions = {
         const ok = await bcrypt.compare(password, user.password);
         if (!ok) return null;
 
-        // Retornar datos mínimos para sesión
+        // Retornar datos mínimos para sesión, incluyendo skins
         return {
           id: user.id,
           email: user.email,
           name: user.name ?? null,
           role: user.role,
           avatarUrl: user.avatarUrl,
-          username: user.username
+          username: user.username,
+          rouletteSkins: user.rouletteSkins,
+          diceSkins: user.diceSkins,
+          selectedRouletteSkin: user.selectedRouletteSkin,
+          selectedDiceColor: user.selectedDiceColor,
         };
       },
     }),

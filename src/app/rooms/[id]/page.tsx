@@ -96,9 +96,14 @@ export default function RoomPage() {
   const [currentDiceSkin, setCurrentDiceSkin] = useState("white");
   const [diceSelectorOpen, setDiceSelectorOpen] = useState(false);
 
+  // --- JOIN ---
+  const { optimisticUpdate, rollbackUpdate, balanceCents: walletBalance } = useWallet();
+  const userBalanceCents = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
+
   // Extract skins
   const ownedSkins: string[] = useMemo(() => {
     const u = session?.user as any;
+    console.log("🎨 SKINS DEBUG (Session):", u);
     const skins = u?.rouletteSkins || [];
     const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.skinId || s.name || s.id || s.definitionId);
     return Array.from(new Set(["default", ...cleanNames]));
@@ -111,8 +116,6 @@ export default function RoomPage() {
     const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.color);
     return Array.from(new Set(["white", ...cleanNames]));
   }, [session]);
-
-  const userBalanceCents = (session?.user as any)?.balanceCents ?? 0;
 
   useEffect(() => {
     if (session?.user) {
@@ -315,7 +318,7 @@ export default function RoomPage() {
   }, [selectedPositions.length, qty]);
 
   // --- JOIN ---
-  const { optimisticUpdate, rollbackUpdate, balanceCents: walletBalance } = useWallet();
+
 
   const join = async () => {
     if (!id) return;
