@@ -105,7 +105,7 @@ export default function RoomPage() {
     const u = session?.user as any;
     console.log("🎨 SKINS DEBUG (Session):", u);
     const skins = u?.rouletteSkins || [];
-    const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.skinId || s.name || s.id || s.definitionId);
+    const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.definitionId || s.skinId || s.name || s.id);
     return Array.from(new Set(["default", ...cleanNames]));
   }, [session]);
 

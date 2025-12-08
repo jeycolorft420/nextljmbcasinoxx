@@ -91,20 +91,11 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
                         return (
                             <div key={color} className="flex flex-col gap-1">
                                 <button
-                                    onClick={() => {
-                                        if (isOwned) {
-                                            onSelect(color);
-                                            onClose();
-                                        } else {
-                                            // Optional: click to buy directly or just highlight?
-                                            // Better separate button for clarity
-                                        }
-                                    }}
-                                    disabled={!isOwned}
+                                    disabled
                                     className={`
-                                        relative group rounded-xl p-4 border-2 transition-all flex flex-col items-center gap-2 w-full
+                                        relative group rounded-xl p-4 border-2 transition-all flex flex-col items-center gap-2 w-full cursor-default
                                         ${isSelected ? "border-primary bg-primary/10" :
-                                            isOwned ? "border-white/5 bg-white/5 hover:border-white/20" :
+                                            isOwned ? "border-white/5 bg-white/5" :
                                                 "border-white/5 bg-black/40 opacity-70 grayscale"}
                                     `}
                                 >
@@ -120,7 +111,25 @@ export default function DiceSkinSelector({ isOpen, onClose, currentSkin, ownedSk
                                     )}
                                 </button>
 
-                                {!isOwned && (
+                                {isOwned ? (
+                                    <button
+                                        disabled={isSelected}
+                                        onClick={() => {
+                                            if (confirm(`¿Quieres usar los dados color ${color.toUpperCase()}?`)) {
+                                                onSelect(color);
+                                                onClose();
+                                            }
+                                        }}
+                                        className={`
+                                            text-[10px] font-bold py-1 px-2 rounded-lg border w-full transition-colors
+                                            ${isSelected
+                                                ? "bg-primary/20 border-primary text-primary cursor-default"
+                                                : "bg-gray-800 border-gray-600 text-white hover:bg-gray-700 hover:border-gray-500"}
+                                        `}
+                                    >
+                                        {isSelected ? "EN USO" : "USAR"}
+                                    </button>
+                                ) : (
                                     <button
                                         onClick={() => handleBuy(color)}
                                         disabled={!canAfford || isBuying}
