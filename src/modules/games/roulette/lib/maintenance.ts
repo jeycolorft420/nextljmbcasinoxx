@@ -145,6 +145,17 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
             }
         });
 
+        // 📝 LOG GAME RESULT (HISTORY)
+        await tx.gameResult.create({
+            data: {
+                roomId: r.id,
+                winnerUserId: winner.userId,
+                winnerName: winner.user.name ?? "Jugador",
+                prizeCents: prize,
+                roundNumber: freshRoom.currentRound ?? 1
+            }
+        });
+
         return r;
     });
 

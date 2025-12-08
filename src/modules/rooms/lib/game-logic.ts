@@ -62,6 +62,17 @@ export async function finishRoom(roomId: string) {
             }
         });
 
+        // 📝 LOG GAME RESULT (HISTORY) - MANUAL
+        await tx.gameResult.create({
+            data: {
+                roomId: r.id,
+                winnerUserId: winner.userId,
+                winnerName: winner.user.name ?? "Jugador",
+                prizeCents: prize,
+                roundNumber: r.currentRound ?? 1
+            }
+        });
+
         return r;
     });
 
