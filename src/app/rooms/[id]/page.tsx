@@ -104,6 +104,16 @@ export default function RoomPage() {
     return Array.from(new Set(["default", ...cleanNames]));
   }, [session]);
 
+  const ownedDiceSkins: string[] = useMemo(() => {
+    const u = session?.user as any;
+    const skins = u?.diceSkins || [];
+    // Ensure "white" (default) is always "owned" if logic requires, but usually default is owned
+    const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.color);
+    return Array.from(new Set(["white", ...cleanNames]));
+  }, [session]);
+
+  const userBalanceCents = (session?.user as any)?.balanceCents ?? 0;
+
   useEffect(() => {
     if (session?.user) {
       if ((session.user as any).selectedRouletteSkin) {
@@ -134,17 +144,23 @@ export default function RoomPage() {
   };
 
   const handleDiceSkinChange = async (skin: string) => {
+    // Optimistic update
     setCurrentDiceSkin(skin);
+
+    // Check ownership locally just in case, but selector should handle it
+    // API call
     try {
-      const res = await fetch("/api/me/skin", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skin, type: "dice" })
+      // Use shop PUT for selection as it verifies ownership strictly
+      const res = await fetch("/api/shop/buy-skin", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color: skin })
       });
       if (res.ok) {
-        toast.success(`Color actualizado: ${skin.toUpperCase()}`);
+        toast.success(`Dados: ${skin.toUpperCase()}`);
         updateSession();
       } else {
-        toast.error("Error al guardar color");
+        const d = await res.json();
+        toast.error(d.error || "No se pudo cambiar");
       }
     } catch {
       toast.error("Error de red");
@@ -524,6 +540,8 @@ export default function RoomPage() {
         isOpen={diceSelectorOpen}
         onClose={() => setDiceSelectorOpen(false)}
         currentSkin={currentDiceSkin}
+        ownedSkins={ownedDiceSkins}
+        balanceCents={userBalanceCents}
         onSelect={handleDiceSkinChange}
       />
 

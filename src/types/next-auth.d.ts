@@ -10,6 +10,8 @@ declare module "next-auth" {
         verificationStatus?: string
         rouletteSkins?: any[]
         selectedRouletteSkin?: string | null
+        selectedRouletteSkin?: string | null
+        diceSkins?: any[]
         selectedDiceColor?: string | null
     }
 
@@ -22,6 +24,8 @@ declare module "next-auth" {
             verificationStatus?: string
             rouletteSkins?: any[]
             selectedRouletteSkin?: string | null
+            selectedRouletteSkin?: string | null
+            diceSkins?: any[]
             selectedDiceColor?: string | null
         } & DefaultSession["user"]
     }
@@ -35,6 +39,8 @@ declare module "next-auth/jwt" {
         verificationStatus?: string
         rouletteSkins?: any[]
         selectedRouletteSkin?: string | null
+        selectedRouletteSkin?: string | null
+        diceSkins?: any[]
         selectedDiceColor?: string | null
     }
 }

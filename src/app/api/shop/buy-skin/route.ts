@@ -14,13 +14,15 @@ const BASE_PRICE_CENTS = 100; // $1 por defecto
 const SPECIAL_PRICES: Record<string, number> = {
   yellow: 200, // $2
   pink: 200,   // $2
+  white: 0,    // Gratis
+  dark: 100,
 };
 function getSkinPrice(color: string) {
   return SPECIAL_PRICES[color] ?? BASE_PRICE_CENTS;
 }
 
 // Colores permitidos
-const ALLOWED = ["green", "blue", "yellow", "red", "purple", "pink"] as const;
+const ALLOWED = ["green", "blue", "yellow", "red", "purple", "pink", "dark", "white"] as const;
 const ColorSchema = z.enum(ALLOWED);
 
 export async function GET() {
