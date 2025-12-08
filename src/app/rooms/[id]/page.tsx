@@ -790,49 +790,51 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* Mobile Buy Popup (Only if not participating & OPEN) */}
+      {/* Mobile Buy Popup (Only if OPEN & (Roulette OR (Dice & Not Participating))) */}
       <div className="lg:hidden">
-        {!room.entries?.find(e => e.user.email === email) && room.state === "OPEN" && (
-          <>
-            {/* POPUP */}
-            {showMobileBuy && (
-              <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
-                <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-lg text-white">Unirse a la Sala</h3>
-                    <button
-                      onClick={() => setShowMobileBuy(false)}
-                      className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                    </button>
+        {room.state === "OPEN" &&
+          (Math.max(0, room.capacity - (room.entries?.length ?? 0)) > 0) &&
+          (room.gameType !== "DICE_DUEL" || !room.entries?.find(e => e.user.email === email)) && (
+            <>
+              {/* POPUP */}
+              {showMobileBuy && (
+                <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
+                  <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-bold text-lg text-white">Unirse a la Sala</h3>
+                      <button
+                        onClick={() => setShowMobileBuy(false)}
+                        className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                      </button>
+                    </div>
+
+                    <BuySeatUI
+                      room={room}
+                      qty={qty}
+                      setQty={setQty}
+                      selectedPositions={selectedPositions}
+                      setSelectedPositions={setSelectedPositions}
+                      joining={joining}
+                      onJoin={join}
+                      className="mt-0 pt-0 border-0"
+                    />
                   </div>
-
-                  <BuySeatUI
-                    room={room}
-                    qty={qty}
-                    setQty={setQty}
-                    selectedPositions={selectedPositions}
-                    setSelectedPositions={setSelectedPositions}
-                    joining={joining}
-                    onJoin={join}
-                    className="mt-0 pt-0 border-0"
-                  />
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* FLOATING TRIGGER (When closed) */}
-            {!showMobileBuy && (
-              <button
-                onClick={() => setShowMobileBuy(true)}
-                className="fixed bottom-20 right-4 z-[190] h-12 w-12 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
-              </button>
-            )}
-          </>
-        )}
+              {/* FLOATING TRIGGER (When closed) */}
+              {!showMobileBuy && (
+                <button
+                  onClick={() => setShowMobileBuy(true)}
+                  className="fixed bottom-20 right-4 z-[190] h-12 w-12 bg-primary text-primary-content rounded-full shadow-lg shadow-primary/30 flex items-center justify-center animate-in zoom-in duration-300 active:scale-95"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
+                </button>
+              )}
+            </>
+          )}
       </div>
 
       {/* Boton Chat Flotante (Mobile Only) */}
