@@ -94,7 +94,6 @@ export default function RoomPage() {
   // Extract skins
   const ownedSkins: string[] = useMemo(() => {
     const u = session?.user as any;
-    // Handle both direct relation or simple cache
     const skins = u?.rouletteSkins || [];
     const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.skinId || s.name || s.id || s.definitionId);
     return Array.from(new Set(["default", ...cleanNames]));
@@ -115,7 +114,6 @@ export default function RoomPage() {
       });
       if (res.ok) {
         toast.success(`Tema actualizado: ${skin.toUpperCase()}`);
-        // Background update session to reflect persistence if needed for other components
         updateSession();
       } else {
         toast.error("Error al guardar skin");
@@ -425,14 +423,16 @@ export default function RoomPage() {
         </div>
 
         {/* Board Container - Centered */}
-        <div className="flex-1 flex items-center justify-center relative">
-          <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
-            {room.gameType === "DICE_DUEL" ? (
+        <div className="flex-1 flex items-center justify-center relative w-full px-4">
+          {room.gameType === "DICE_DUEL" ? (
+            <div className="relative z-10 w-full max-w-md">
               <DiceBoard room={room} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} />
-            ) : (
+            </div>
+          ) : (
+            <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
               <RouletteBoard room={room} email={email} wheelSize={wheelSize} theme={currentTheme} />
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Floating History Trigger */}
           <button
