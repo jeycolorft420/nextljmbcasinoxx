@@ -97,7 +97,7 @@ export async function checkAndMaintenanceRoom(room: any) {
 
         // A) ADD BOT IF NEEDED (Timer Expired & 1 Player)
         if (!p2 && freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt) {
-            console.log(`[Maintenance] Dice Duel Timeout. Adding Bot & Starting Auto-Sim.`);
+            console.log(`[Maintenance] Dice Duel Timeout. Adding Bot.`);
             let botUser = bots[0];
             if (!botUser) botUser = await prisma.user.findFirst({ where: { isBot: true } });
 
@@ -121,7 +121,8 @@ export async function checkAndMaintenanceRoom(room: any) {
                         gameMeta: {
                             ...meta,
                             balances,
-                            autoPlay: true // Enable Full Simulation
+                            roundStartedAt: Date.now(), // Start timer for delay
+                            autoPlay: false // Disable global autoPlay, rely on isBot check
                         } as any
                     }
                 });
@@ -139,15 +140,24 @@ export async function checkAndMaintenanceRoom(room: any) {
             let p2Rolled = !!rolls[p2.userId];
             let changesMade = false;
 
-            // 1. AUTO ROLLS
-            if (!p1Rolled && autoPlay) {
+            // Fetch Bot Status
+            const p1Data = await prisma.user.findUnique({ where: { id: p1.userId }, select: { isBot: true } });
+            const p2Data = await prisma.user.findUnique({ where: { id: p2.userId }, select: { isBot: true } });
+            const p1IsBot = p1Data?.isBot ?? false;
+            const p2IsBot = p2Data?.isBot ?? false;
+
+            // Check Delay (Use roundStartedAt or default to now if missing)
+            const roundStartedAt = (meta.roundStartedAt as number) || 0;
+            const canBotAct = Date.now() >= roundStartedAt + 2000; // 2 seconds delay
+
+            // 1. AUTO ROLLS (Bots Only)
+            if (!p1Rolled && p1IsBot && canBotAct) {
                 rolls[p1.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
                 p1Rolled = true;
                 changesMade = true;
             }
 
-            const p2IsBot = (await prisma.user.findUnique({ where: { id: p2.userId }, select: { isBot: true } }))?.isBot;
-            if (!p2Rolled && (p2IsBot || autoPlay)) {
+            if (!p2Rolled && p2IsBot && canBotAct) {
                 rolls[p2.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
                 p2Rolled = true;
                 changesMade = true;
@@ -245,7 +255,7 @@ export async function checkAndMaintenanceRoom(room: any) {
                     return { ...freshRoom, state: "FINISHED" };
 
                 } else {
-                    // CONTINUE
+                    // CONTINUE - Set new Round Start Time
                     await prisma.room.update({
                         where: { id: roomId },
                         data: {
@@ -255,7 +265,8 @@ export async function checkAndMaintenanceRoom(room: any) {
                                 balances,
                                 history: newHistory,
                                 rolls: {}, // CLEAR
-                                lastDice
+                                lastDice,
+                                roundStartedAt: Date.now() // RESET CLOCK FOR NEXT ROUND
                             } as any
                         }
                     });
