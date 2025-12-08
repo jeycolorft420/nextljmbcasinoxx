@@ -180,8 +180,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // If timer is not set and we have players, set it.
       if (!newAutoLockAt && after.length > 0) {
         if (room.gameType === "DICE_DUEL") {
-          // 10 minutes for Dice Duel to find opponent
-          newAutoLockAt = new Date(Date.now() + 10 * 60 * 1000);
+          // Use System Setting or Default 10 min
+          const settings = await tx.systemSettings.findFirst();
+          const seconds = settings?.diceTimerSeconds ?? 600;
+          newAutoLockAt = new Date(Date.now() + seconds * 1000);
           shouldUpdateRoom = true;
         } else if (room.gameType === "ROULETTE") {
           // 40 seconds for Roulette since first player joins

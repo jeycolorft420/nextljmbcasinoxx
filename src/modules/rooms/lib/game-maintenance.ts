@@ -21,8 +21,8 @@ export async function checkAndMaintenanceRoom(room: any) {
     const freshRoom = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-            entries: { where: { round: room.currentRound ?? 1 } },
-            _count: { select: { entries: { where: { round: room.currentRound ?? 1 } } } }
+            entries: true,
+            _count: { select: { entries: true } }
         }
     });
 

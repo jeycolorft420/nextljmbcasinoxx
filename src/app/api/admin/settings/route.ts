@@ -49,7 +49,7 @@ export async function PUT(req: Request) {
 
     try {
         const body = await req.json();
-        const { siteName, logoUrl, faviconUrl, diceCoverUrl, rouletteCoverUrl, primaryColor, secondaryColor, accentColor, backgroundColor, textColor, fontFamily } = body;
+        const { siteName, logoUrl, faviconUrl, diceCoverUrl, rouletteCoverUrl, primaryColor, secondaryColor, accentColor, backgroundColor, textColor, fontFamily, diceTimerSeconds } = body;
 
         // Update the first record (singleton pattern)
         // We use updateMany to avoid needing the ID, or findFirst then update
@@ -71,6 +71,7 @@ export async function PUT(req: Request) {
                     backgroundColor,
                     textColor,
                     fontFamily,
+                    diceTimerSeconds: typeof diceTimerSeconds === 'number' ? diceTimerSeconds : undefined,
                 },
             });
         } else {
@@ -87,6 +88,7 @@ export async function PUT(req: Request) {
                     backgroundColor,
                     textColor,
                     fontFamily,
+                    diceTimerSeconds: typeof diceTimerSeconds === 'number' ? diceTimerSeconds : 600,
                 },
             });
         }
