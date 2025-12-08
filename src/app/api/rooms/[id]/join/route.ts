@@ -51,6 +51,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         gameType: true,
         gameMeta: true,
         currentRound: true,
+        autoLockAt: true, // 👈 Needed for timer logic
         entries: {
           select: { position: true, id: true, userId: true, round: true },
         },
@@ -172,9 +173,26 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       });
 
       let newState: RoomState = room.state;
+      let shouldUpdateRoom = false;
+      let newAutoLockAt = room.autoLockAt;
+
+      // 🕒 TIMER START LOGIC
+      // If timer is not set and we have players, set it.
+      if (!newAutoLockAt && after.length > 0) {
+        if (room.gameType === "DICE_DUEL") {
+          // 10 minutes for Dice Duel to find opponent
+          newAutoLockAt = new Date(Date.now() + 10 * 60 * 1000);
+          shouldUpdateRoom = true;
+        } else if (room.gameType === "ROULETTE") {
+          // 40 seconds for Roulette since first player joins
+          newAutoLockAt = new Date(Date.now() + 40 * 1000);
+          shouldUpdateRoom = true;
+        }
+      }
 
       if (after.length >= room.capacity || (room.gameType === "DICE_DUEL" && after.length === 2)) {
         newState = RoomState.LOCKED;
+        shouldUpdateRoom = true;
 
         if (room.gameType === "DICE_DUEL" && after.length === 2) {
           const p1 = after[0].userId;
@@ -197,14 +215,26 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             where: { id: room.id },
             data: { state: newState, lockedAt: new Date(), gameMeta: newMeta },
           });
+          // already updated
+          shouldUpdateRoom = false;
         } else {
           // ROULETTE or others
           await tx.room.update({
             where: { id: room.id },
             data: { state: newState, lockedAt: new Date() },
           });
+          shouldUpdateRoom = false;
         }
       }
+
+      // If we need to update meta/timer but didn't lock yet
+      if (shouldUpdateRoom) {
+        await tx.room.update({
+          where: { id: room.id },
+          data: { autoLockAt: newAutoLockAt }
+        });
+      }
+
       return { positions: positionsToAssign, newState };
     });
 
