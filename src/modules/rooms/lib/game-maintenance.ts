@@ -6,8 +6,10 @@ import { Prisma } from "@prisma/client";
 
 // Helper to determine if a room needs maintenance
 export async function checkAndMaintenanceRoom(room: any) {
-    // If not OPEN or no autoLockAt or time hasn't passed, do nothing
-    if (room.state !== "OPEN" || !room.autoLockAt || new Date() < room.autoLockAt) {
+    const isDiceDuel = room.gameType === "DICE_DUEL" && ["OPEN", "LOCKED"].includes(room.state);
+
+    // If not OPEN or no autoLockAt or time hasn't passed, do nothing (Unless it's an active Dice Duel)
+    if (!isDiceDuel && (room.state !== "OPEN" || !room.autoLockAt || new Date() < room.autoLockAt)) {
         return room;
     }
 
@@ -24,12 +26,15 @@ export async function checkAndMaintenanceRoom(room: any) {
         }
     });
 
-    if (!freshRoom || freshRoom.state !== "OPEN") return room;
+    if (!freshRoom) return room;
+
+    const isFreshDiceDuel = freshRoom.gameType === "DICE_DUEL" && ["OPEN", "LOCKED"].includes(freshRoom.state);
+    if (!isFreshDiceDuel && freshRoom.state !== "OPEN") return room;
 
     const now = new Date();
 
-    // Double check time expiry on fresh object
-    if (!freshRoom.autoLockAt || now < freshRoom.autoLockAt) return freshRoom;
+    // Double check time expiry on fresh object (Skip for active duel)
+    if (!isFreshDiceDuel && (!freshRoom.autoLockAt || now < freshRoom.autoLockAt)) return freshRoom;
 
     const playerCount = freshRoom._count.entries;
 
