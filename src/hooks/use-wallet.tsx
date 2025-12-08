@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import { pusherClient } from "@/modules/ui/lib/pusher-client";
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 
 type WalletContextType = {
@@ -38,14 +39,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
     }, [status]);
 
-    // Polling logic
+    // Polling & Realtime
     useEffect(() => {
         fetchBalance();
+
+        // Backup polling (slower)
         const t = setInterval(() => {
             if (document.visibilityState === "visible") fetchBalance();
-        }, 10000);
-        return () => clearInterval(t);
-    }, [fetchBalance]);
+        }, 20000);
+
+        // Pusher Subscription
+        let channelName: string | null = null;
+        if (status === "authenticated" && (session?.user as any)?.id) {
+            const userId = (session.user as any).id;
+            channelName = `private-user-${userId}`;
+            const channel = pusherClient.subscribe(channelName);
+            channel.bind("wallet:update", (data: { balanceCents: number }) => {
+                setBalanceCents(data.balanceCents);
+            });
+        }
+
+        return () => {
+            clearInterval(t);
+            if (channelName) {
+                pusherClient.unsubscribe(channelName);
+            }
+        };
+    }, [fetchBalance, status, session]);
 
     // Optimistic helpers
     const optimisticUpdate = (deltaCents: number) => {

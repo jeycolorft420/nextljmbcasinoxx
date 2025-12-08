@@ -333,21 +333,46 @@ export default function RoomPage() {
     setJoining(true);
     optimisticUpdate(-costCents);
 
+    // ⚡ OPTIMISTIC UPDATE
+    const oldSelection = [...selectedPositions];
+    let revertRoom: Room | null = null;
+
+    // Only optimistic placement for manual selection
+    if (room && session?.user && selectedPositions.length > 0) {
+      revertRoom = { ...room };
+      const newEntries = selectedPositions.map((pos) => ({
+        id: `temp-${pos}-${Date.now()}`,
+        position: pos,
+        user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
+      }));
+      setRoom((prev) => {
+        if (!prev) return prev;
+        // Filter duplicates just in case
+        const others = (prev.entries || []).filter(e => !selectedPositions.includes(e.position));
+        return { ...prev, entries: [...others, ...newEntries] };
+      });
+      setSelectedPositions([]);
+    }
+
     try {
       const payload = selectedPositions.length > 0 ? { positions: selectedPositions } : { quantity: qty };
       const res = await fetch(`/api/rooms/${id}/join`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       const data = await res.json();
+
       if (!res.ok) {
+        // FAIL - Revert
         rollbackUpdate(costCents);
+        if (revertRoom) setRoom(revertRoom);
+        if (oldSelection.length > 0) setSelectedPositions(oldSelection);
         toast.error(data.error || "No se pudo unir");
       } else {
+        // SUCCESS
         const takenList = Array.isArray(data.positions) ? data.positions : [];
-        if (takenList.length) toast.success(`Puestos: [${takenList.join(", ")}]`);
-        else toast.success("¡Unido!");
-        setSelectedPositions([]);
-        if (room && session?.user && takenList.length > 0) {
+
+        // If random purchase, adds seats now
+        if (oldSelection.length === 0 && takenList.length > 0 && room && session?.user) {
           const newEntries = takenList.map((pos: number) => ({
             id: `temp-${pos}-${Date.now()}`, position: pos,
             user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
@@ -357,11 +382,17 @@ export default function RoomPage() {
             const others = (prev.entries || []).filter(e => !takenList.includes(e.position));
             return { ...prev, entries: [...others, ...newEntries] };
           });
-          setTimeout(() => { load().then(d => { if (d) handleRoomUpdate(d); }); }, 500);
         }
+
+        toast.success("¡Unido!");
+
+        // Safety reload
+        setTimeout(() => { load().then(d => { if (d) handleRoomUpdate(d); }); }, 500);
       }
     } catch {
       rollbackUpdate(costCents);
+      if (revertRoom) setRoom(revertRoom);
+      if (oldSelection.length > 0) setSelectedPositions(oldSelection);
       toast.error("Error de red");
     } finally {
       setJoining(false);

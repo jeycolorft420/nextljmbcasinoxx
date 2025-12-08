@@ -173,10 +173,12 @@ export default function NavBar() {
           )}
 
           {/* Hamburger (mobile) */}
-          <button aria-label="Abrir menú" onClick={() => setOpen((o) => !o)} className="md:hidden relative h-9 w-9 rounded-md border border-white/15 bg-white/10 hover:bg-white/20 transition">
-            <span className={`absolute left-1/2 top-1/2 h-0.5 w-5 -translate-x-1/2 -translate-y-2 bg-white transition ${open ? "rotate-45 translate-y-0" : ""}`} />
-            <span className={`absolute left-1/2 top-1/2 h-0.5 w-5 -translate-x-1/2 bg-white transition ${open ? "opacity-0" : ""}`} />
-            <span className={`absolute left-1/2 top-1/2 h-0.5 w-5 -translate-x-1/2 translate-y-2 bg-white transition ${open ? "-rotate-45 translate-y-0" : ""}`} />
+          <button aria-label="Abrir menú" onClick={() => setOpen((o) => !o)} className="md:hidden relative h-9 w-9 flex items-center justify-center rounded-md border border-white/15 bg-white/10 hover:bg-white/20 transition">
+            {open ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
+            )}
           </button>
         </div>
       </div>

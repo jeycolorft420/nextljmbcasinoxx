@@ -1,6 +1,7 @@
 // src/lib/wallet.ts
 import { TxKind } from "@prisma/client";
 import prisma from "@/modules/ui/lib/prisma";
+import { pusherServer } from "@/modules/ui/lib/pusher-server";
 
 /** Debita saldo (error si no alcanza) y registra la transacción. */
 export async function walletDebit(opts: {
@@ -38,6 +39,7 @@ export async function walletDebit(opts: {
       },
     });
 
+    await pusherServer.trigger(`private-user-${userId}`, "wallet:update", { balanceCents: updated.balanceCents });
     return updated;
   });
 }
@@ -77,6 +79,7 @@ export async function walletCredit(opts: {
       },
     });
 
+    await pusherServer.trigger(`private-user-${userId}`, "wallet:update", { balanceCents: updated.balanceCents });
     return updated;
   });
 }
