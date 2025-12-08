@@ -26,9 +26,11 @@ type Props = {
     email: string | null;
     wheelSize: number;
     onSpinEnd?: () => void;
+    theme?: string;
 };
 
-export default function RouletteBoard({ room, email, wheelSize, onSpinEnd }: Props) {
+export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme }: Props) {
+
     const { play } = useAudio();
     // ruleta state
     const [spinKey, setSpinKey] = useState(0);
@@ -145,6 +147,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd }: Pro
                 targetIndex={targetIndex}
                 spinKey={spinKey}
                 onSpinEnd={handleSpinEnd}
+                theme={theme}
             />
 
             {/* Winner Overlay */}

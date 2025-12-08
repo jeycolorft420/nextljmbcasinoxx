@@ -66,6 +66,8 @@ export const authOptions: NextAuthOptions = {
           token.verificationStatus = freshUser.verificationStatus;
           token.avatarUrl = freshUser.avatarUrl;
           (token as any).username = freshUser.username;
+          (token as any).rouletteSkins = (freshUser as any).rouletteSkins; // Assuming relation or JSON
+          (token as any).selectedRouletteSkin = (freshUser as any).selectedRouletteSkin;
         }
         return token;
       }
@@ -78,6 +80,8 @@ export const authOptions: NextAuthOptions = {
         token.avatarUrl = (user as any).avatarUrl;
         token.verificationStatus = (user as any).verificationStatus;
         (token as any).username = (user as any).username;
+        (token as any).rouletteSkins = (user as any).rouletteSkins;
+        (token as any).selectedRouletteSkin = (user as any).selectedRouletteSkin;
       }
       return token;
     },
@@ -90,7 +94,10 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).role = token.role;
         (session.user as any).avatarUrl = token.avatarUrl;
         (session.user as any).verificationStatus = (token as any).verificationStatus;
+        (session.user as any).verificationStatus = (token as any).verificationStatus;
         (session.user as any).username = (token as any).username;
+        (session.user as any).rouletteSkins = (token as any).rouletteSkins;
+        (session.user as any).selectedRouletteSkin = (token as any).selectedRouletteSkin;
       }
       return session;
     },
