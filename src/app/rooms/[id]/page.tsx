@@ -227,26 +227,43 @@ export default function RoomPage() {
     return () => clearInterval(interval);
   }, [id]);
 
-  // Watchdog reset time
+  // Watchdog reset time & Start Timer
   useEffect(() => {
-    if (!room || room.state !== "FINISHED" || !room.finishedAt || room.gameType !== "ROULETTE") {
+    if (!room) {
       setCountdownSeconds(null);
       return;
     }
+
     const updateCountdown = () => {
-      const finishTime = new Date(room.finishedAt!).getTime();
-      const diff = Date.now() - finishTime;
-      const RESET_DELAY_MS = 20000;
-      const textRemaining = Math.max(0, Math.ceil((RESET_DELAY_MS - diff) / 1000));
-      setCountdownSeconds(textRemaining);
-      if (diff >= RESET_DELAY_MS) {
-        fetch(`/api/rooms/${id}/reset`, { method: "POST" }).catch(e => console.error("Reset failed", e));
+      // 1. Reset Countdown (FINISHED state)
+      if (room.state === "FINISHED" && room.finishedAt && room.gameType === "ROULETTE") {
+        const finishTime = new Date(room.finishedAt).getTime();
+        const diff = Date.now() - finishTime;
+        const RESET_DELAY_MS = 20000;
+        const remaining = Math.max(0, Math.ceil((RESET_DELAY_MS - diff) / 1000));
+        setCountdownSeconds(remaining);
+        if (diff >= RESET_DELAY_MS) {
+          fetch(`/api/rooms/${id}/reset`, { method: "POST" }).catch(e => console.error("Reset failed", e));
+        }
+        return;
       }
+
+      // 2. Start Countdown (OPEN state with lockedAt)
+      if (room.state === "OPEN" && room.lockedAt) {
+        const lockTime = new Date(room.lockedAt).getTime();
+        const diff = lockTime - Date.now();
+        const remaining = Math.max(0, Math.ceil(diff / 1000));
+        setCountdownSeconds(remaining);
+        return;
+      }
+
+      setCountdownSeconds(null);
     };
+
     updateCountdown();
     const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
-  }, [room?.state, room?.finishedAt, room?.gameType, id]);
+  }, [room?.state, room?.finishedAt, room?.lockedAt, room?.gameType, id]);
 
   // Pusher
   useEffect(() => {
