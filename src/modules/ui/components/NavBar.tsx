@@ -41,8 +41,8 @@ export default function NavBar() {
 
   const showMainNav = status === "authenticated";
 
-  // Hide Navbar on room pages (they have their own tailored UI)
-  if (pathname?.startsWith("/rooms/")) return null;
+  // Navbar visible everywhere
+  // if (pathname?.startsWith("/rooms/")) return null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur">
