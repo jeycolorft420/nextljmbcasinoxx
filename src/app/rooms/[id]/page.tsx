@@ -480,6 +480,7 @@ export default function RoomPage() {
         const pos = i + 1;
         const entry = room.entries?.find((e) => e.position === pos);
         const occupied = !!entry;
+        const isMine = entry?.user.email === email; // 👈 Detect own seats
         const isSelected = selectedPositions.includes(pos);
         const isWinner = !!room.winningEntryId && entry?.id === room.winningEntryId;
         const canToggle = room.state === "OPEN" && !occupied;
@@ -490,18 +491,28 @@ export default function RoomPage() {
             type="button"
             onClick={() => canToggle && togglePosition(pos)}
             className={`rounded-md border p-1.5 text-center text-[10px] transition relative overflow-hidden h-14 flex flex-col items-center justify-center
-                ${isWinner ? "border-green-500/80 bg-green-500/10"
-                : isSelected ? "border-blue-400 ring-1 ring-blue-400/40 bg-blue-500/10"
-                  : occupied ? "border-white/10 bg-white/5" : "border-white/5 opacity-60 hover:opacity-100"}
-                ${canToggle ? "hover:bg-white/10 cursor-pointer" : "cursor-default"}`}
+                ${isWinner ? "border-green-500/80 bg-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+                : isSelected ? "border-blue-400 ring-2 ring-blue-500/50 bg-blue-600/30 text-white shadow-lg shadow-blue-500/20"
+                  : isMine ? "border-purple-500/50 bg-purple-500/20 ring-1 ring-purple-500/30" // 👈 Distinct style for mine
+                    : occupied ? "border-white/5 bg-white/5 opacity-50 grayscale" // 👈 Dimmed for others
+                      : "border-white/5 opacity-60 hover:opacity-100 hover:bg-white/5"}
+                ${canToggle ? "cursor-pointer active:scale-95" : "cursor-default"}`}
           >
             <div className="font-bold opacity-50 mb-0.5">#{pos}</div>
             {entry ? (
-              <div className="font-medium truncate leading-tight w-full">
+              <div className={`font-medium truncate leading-tight w-full ${isMine ? "text-purple-200" : ""}`}>
                 {entry.user.name || entry.user.email.split("@")[0]}
               </div>
             ) : (
-              <div className="opacity-40 text-[9px]">{isSelected ? "Tuyo" : "Libre"}</div>
+              <div className={`opacity-40 text-[9px] ${isSelected ? "text-blue-200 font-bold" : ""}`}>
+                {isSelected ? "Tuyo" : "Libre"}
+              </div>
+            )}
+            {/* Winner Badge */}
+            {isWinner && (
+              <div className="absolute top-0 right-0 p-0.5 bg-green-500 rounded-bl text-[8px] text-black font-bold">
+                WIN
+              </div>
             )}
           </button>
         );
@@ -749,8 +760,8 @@ export default function RoomPage() {
           {/* CTA Mobile se queda aqui o se duplica? Mejor en Col Derecha para desktop */}
         </div >
 
-        {/* COL DERECHA: Puestos + Historial */}
-        <div className="col-span-1 lg:col-span-4 space-y-4">
+        {/* COL DERECHA: Puestos + Historial (DESKTOP ONLY) */}
+        <div className="hidden lg:block lg:col-span-4 space-y-4">
           {/* Puestos */}
           < div className="card" >
             <div className="flex items-end justify-between gap-2 mb-2">
@@ -809,9 +820,20 @@ export default function RoomPage() {
                 <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
                   <div className="bg-card border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 relative max-h-[85vh] overflow-y-auto">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-lg text-white">
-                        {room.gameType === "DICE_DUEL" ? "Unirse al Duelo" : "Selecciona tu Puesto"}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-lg text-white">
+                          {room.gameType === "DICE_DUEL" ? "Unirse al Duelo" : "Selecciona tu Puesto"}
+                        </h3>
+                        {/* HISTORY ICON BUTTON */}
+                        <button
+                          onClick={() => setHistoryOpen(true)}
+                          className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-full hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                          title="Ver Historial"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
+                        </button>
+                      </div>
+
                       <button
                         onClick={() => setShowMobileBuy(false)}
                         className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
