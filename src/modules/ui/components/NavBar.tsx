@@ -41,11 +41,11 @@ export default function NavBar() {
 
   const showMainNav = status === "authenticated";
 
-  // Navbar visible everywhere
-  // if (pathname?.startsWith("/rooms/")) return null;
+  // Hide NavBar on mobile ONLY inside specific room pages (game view)
+  const isGameRoom = pathname?.startsWith("/rooms/") && pathname !== "/rooms";
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur">
+    <header className={`sticky top-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur ${isGameRoom ? "hidden sm:block" : ""}`}>
       <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-between">
         {/* Brand */}
         <div className="flex items-center gap-2">
