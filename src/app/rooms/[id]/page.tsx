@@ -232,10 +232,26 @@ export default function RoomPage() {
       return payload;
     });
 
-    const libres = Math.max(0, payload.capacity - (payload.entries?.length ?? 0));
-    setQty((q) => Math.min(Math.max(1, q), Math.max(1, libres)));
     const occupied = new Set((payload.entries ?? []).map((e) => e.position));
     setSelectedPositions((prev) => prev.filter((p) => !occupied.has(p)));
+  };
+
+  // --- WINNER REVEAL CONTROL (FIX: SPOILER) ---
+  const [showResults, setShowResults] = useState(false);
+
+  // Reset showResults when round changes or room opens. 
+  // If we load a finished room, it will stay false until animation ends (handled by RouletteBoard)
+  // OR if RouletteBoard decides not to animate (old winner), it should fire onSpinEnd immediately?
+  // Let's ensure it resets correctly.
+  useEffect(() => {
+    if (room?.state !== "FINISHED") {
+      setShowResults(false);
+    }
+  }, [room?.currentRound, room?.state]);
+
+  const handleSpinEnd = () => {
+    setShowResults(true);
+    setReloadHistoryKey(n => n + 1); // Refresh history now that visual is done
   };
 
   // Polling
@@ -448,7 +464,8 @@ export default function RoomPage() {
         const occupied = !!entry;
         const isMine = entry?.user.email === email;
         const isSelected = selectedPositions.includes(pos);
-        const isWinner = !!room.winningEntryId && entry?.id === room.winningEntryId;
+        // GATE WINNER VISUALS
+        const isWinner = showResults && !!room.winningEntryId && entry?.id === room.winningEntryId;
         const canToggle = room.state === "OPEN" && !occupied;
 
         return (
@@ -538,7 +555,7 @@ export default function RoomPage() {
             </div>
           ) : (
             <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
-              <RouletteBoard room={room} email={email} wheelSize={wheelSize} theme={currentTheme} />
+              <RouletteBoard room={room} email={email} wheelSize={wheelSize} theme={currentTheme} onSpinEnd={handleSpinEnd} />
             </div>
           )}
 
@@ -551,8 +568,8 @@ export default function RoomPage() {
           </button>
         </div>
 
-        {/* Winner Toast (if finished) */}
-        {room.state === "FINISHED" && room.gameType === "ROULETTE" && (
+        {/* Winner Toast (if finished) GATED */}
+        {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
           <div className="absolute bottom-24 left-4 right-4 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-4 text-center animate-in slide-in-from-bottom duration-300 z-30">
             <h3 className="text-primary font-bold">¡Ronda Finalizada!</h3>
             <p className="text-white text-lg font-bold mt-1">
@@ -756,11 +773,11 @@ export default function RoomPage() {
                 // Reduced size for Desktop
                 <DiceBoard room={room} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={300} />
               ) : (
-                <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} />
+                <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
               )}
             </div>
-            {/* Desktop Winner Toast */}
-            {room.state === "FINISHED" && room.gameType === "ROULETTE" && (
+            {/* Desktop Winner Toast (GATED) */}
+            {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
               <div className="mt-8 p-4 bg-black/40 rounded-xl text-center">
                 <h2 className="text-xl font-bold text-emerald-400">¡GANADOR!</h2>
                 <div className="text-2xl font-bold my-2">{room.entries?.find(e => e.id === room.winningEntryId)?.user.name}</div>
