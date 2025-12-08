@@ -44,15 +44,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             const rolls = meta.rolls || {}; // { [userId]: [1, 5] }
 
             // Whose turn?
-            // If P1 hasn't rolled, it's P1 turn.
-            // If P1 rolled, P2 hasn't, it's P2 turn.
+            // Determine Starter (P1 by default, or dynamic)
+            const starterId = meta.nextStarterUserId || p1.userId;
+            const secondId = starterId === p1.userId ? p2.userId : p1.userId;
+
             let turnUserId = null;
-            if (!rolls[p1.userId]) turnUserId = p1.userId;
-            else if (!rolls[p2.userId]) turnUserId = p2.userId;
+            if (!rolls[starterId]) turnUserId = starterId;
+            else if (!rolls[secondId]) turnUserId = secondId;
             else throw new Error("All rolled"); // Should be finished
 
+            // Validation
             if (userId !== turnUserId) {
-                return { error: "Not your turn", status: 403 };
+                // Determine name of who we are waiting for
+                const waitingFor = room.entries.find(e => e.userId === turnUserId)?.user.name || "Opponent";
+                return { error: `Wait for ${waitingFor}`, status: 403 };
             }
 
             // Roll!
@@ -123,103 +128,106 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
                         roundDice
                     });
 
-                    history.push({
-                        round: (room.currentRound || 0) + 1,
-                        winnerEntryId: roundWinnerId === p1.userId ? p1.id : p2.id,
-                        dice: roundDice,
-                        balancesAfter: { ...balances }
+                    balancesAfter: { ...balances }
                     });
-                    finalMeta.history = history;
-                    finalMeta.lastDice = roundDice;
+finalMeta.history = history;
+finalMeta.lastDice = roundDice;
 
-                    // Check Bankruptcy
-                    if (balances[loserId] <= 0) {
-                        // Game Over
-                        // CLAMP BALANCES for clean display
-                        balances[loserId] = 0;
-                        balances[roundWinnerId] = room.priceCents * 2;
-                        finalMeta.balances = balances; // Update meta with clamped values
+// Winner starts next round
+finalMeta.nextStarterUserId = roundWinnerId;
 
-                        finalWinnerEntryId = roundWinnerId === p1.userId ? p1.id : p2.id;
-                        finalPrize = room.priceCents * 2;
-                        finalState = "FINISHED";
-                        finalMeta.message = `¡Juego Terminado! ${roundWinnerId === p1.userId ? "P1" : "P2"} gana todo.`;
-                    } else {
-                        // Continue - Reset rolls for next round
-                        finalMeta.rolls = {}; // EXPLICITLY CLEAR ROLLS
-                        finalMeta.message = `Ronda: ${s1} vs ${s2}. Ganador toma $${damage / 100} (20%).`;
-                        finalState = "LOCKED";
-                    }
+// Check Bankruptcy
+if (balances[loserId] <= 0) {
+    // Game Over
+    // CLAMP BALANCES for clean display
+    balances[loserId] = 0;
+    balances[roundWinnerId] = room.priceCents * 2;
+    finalMeta.balances = balances; // Update meta with clamped values
+
+    finalWinnerEntryId = roundWinnerId === p1.userId ? p1.id : p2.id;
+    finalPrize = room.priceCents * 2;
+    finalState = "FINISHED";
+    finalMeta.message = `¡Juego Terminado! ${roundWinnerId === p1.userId ? "P1" : "P2"} gana todo.`;
+} else {
+    // Continue - Reset rolls for next round
+    finalMeta.rolls = {}; // EXPLICITLY CLEAR ROLLS
+    finalMeta.message = `Ronda: ${s1} vs ${s2}. Ganador toma $${damage / 100} (20%).`;
+    finalState = "LOCKED";
+}
                 } else {
-                    // Tie - Reset rolls
-                    // NEW: Add Tie to History
-                    const history = finalMeta.history || [];
-                    const roundDice = { top: currentRolls[p1.userId], bottom: currentRolls[p2.userId] };
+    // Tie - Reset rolls
+    // NEW: Add Tie to History
+    const history = finalMeta.history || [];
+    const roundDice = { top: currentRolls[p1.userId], bottom: currentRolls[p2.userId] };
 
-                    history.push({
-                        round: (room.currentRound || 0) + 1,
-                        winnerEntryId: null, // No winner
-                        dice: roundDice,
-                        balancesAfter: { ...finalMeta.balances } // Balances unchanged
-                    });
-                    finalMeta.history = history;
+    history.push({
+        round: (room.currentRound || 0) + 1,
+        winnerEntryId: null, // No winner
+        dice: roundDice,
+        balancesAfter: { ...finalMeta.balances } // Balances unchanged
+    });
+    finalMeta.history = history;
 
-                    finalMeta.rolls = {}; // EXPLICITLY CLEAR ROLLS
-                    finalMeta.lastDice = roundDice;
-                    finalMeta.message = "Empate. Nadie pierde dinero.";
-                    finalState = "LOCKED";
-                }
+    finalMeta.rolls = {}; // EXPLICITLY CLEAR ROLLS
+    finalMeta.lastDice = roundDice;
+    // Tie: Previous starter stays? Or P1?
+    // Let's keep previous starter (meta.nextStarterUserId is already set or undefined (P1))
+    // So we don't change nextStarterUserId.
+
+    finalMeta.message = "Empate. Nadie pierde dinero.";
+    finalState = "LOCKED";
+}
             } else {
-                finalState = "LOCKED"; // Waiting for other player
-            }
+    finalState = "LOCKED"; // Waiting for other player
+}
 
-            // Update DB
-            const updated = await tx.room.update({
-                where: { id },
-                data: {
-                    state: finalState,
-                    gameMeta: finalMeta,
-                    winningEntryId: finalWinnerEntryId,
-                    prizeCents: finalPrize,
-                    finishedAt: finalState === "FINISHED" ? new Date() : null,
-                    currentRound: { increment: (finalState === "LOCKED" && currentRolls[p1.userId] && currentRolls[p2.userId]) ? 1 : 0 }
-                }
-            });
+// Update DB
+const updated = await tx.room.update({
+    where: { id },
+    data: {
+        state: finalState,
+        gameMeta: finalMeta,
+        winningEntryId: finalWinnerEntryId,
+        prizeCents: finalPrize,
+        finishedAt: finalState === "FINISHED" ? new Date() : null,
+        currentRound: { increment: (finalState === "LOCKED" && currentRolls[p1.userId] && currentRolls[p2.userId]) ? 1 : 0 }
+    }
+});
 
-            // If finished, create GameResult?
-            if (finalState === "FINISHED" && finalWinnerEntryId) {
-                const wEntry = room.entries.find(e => e.id === finalWinnerEntryId)!;
-                await tx.gameResult.create({
-                    data: {
-                        roomId: id,
-                        winnerUserId: wEntry.userId,
-                        winnerName: wEntry.user.name,
-                        prizeCents: finalPrize!,
-                        roundNumber: room.currentRound ?? 1,
-                    }
-                });
-                return { success: true, updated, winnerUserId: wEntry.userId, prize: finalPrize };
-            }
+// If finished, create GameResult?
+if (finalState === "FINISHED" && finalWinnerEntryId) {
+    const wEntry = room.entries.find(e => e.id === finalWinnerEntryId)!;
+    await tx.gameResult.create({
+        data: {
+            roomId: id,
+            winnerUserId: wEntry.userId,
+            winnerName: wEntry.user.name,
+            prizeCents: finalPrize!,
+            roundNumber: room.currentRound ?? 1,
+        }
+    });
+    return { success: true, updated, winnerUserId: wEntry.userId, prize: finalPrize };
+}
 
-            return { success: true, updated };
+return { success: true, updated };
         });
 
-        // ... Handle result (Credit wallet, Emit) ...
-        if ((result as any).error) return NextResponse.json({ error: (result as any).error }, { status: (result as any).status });
+// ... Handle result (Credit wallet, Emit) ...
+if ((result as any).error) return NextResponse.json({ error: (result as any).error }, { status: (result as any).status });
 
-        // Credit if winner
-        if ((result as any).winnerUserId) {
-            // ... credit ...
-        }
+// Credit if winner
+if ((result as any).winnerUserId) {
+    // ... credit ...
+}
 
-        // Emit
-        const payload = await buildRoomPayload(prisma, id);
-        if (payload) await emitRoomUpdate(id, payload);
+// Emit
+const payload = await buildRoomPayload(prisma, id);
+if (payload) await emitRoomUpdate(id, payload);
 
-        return NextResponse.json({ ok: true, roll: (result as any).updated.gameMeta });
+return NextResponse.json({ ok: true, roll: (result as any).updated.gameMeta });
 
     } catch (e: any) {
-        return NextResponse.json({ error: e.message || "Unknown error" }, { status: 400 });
-    }
+    return NextResponse.json({ error: e.message || "Unknown error" }, { status: 400 });
+}
 }
 

@@ -81,20 +81,26 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
         const now = Date.now();
         const canBotAct = now >= roundStartedAt + 2000; // 2 seconds
 
-        // 1. EXECUTE BOT ROLLS
-        // Force roll if it's bot's turn and time has passed.
-        if (!p1Rolled && p1IsBot && canBotAct) {
-            rolls[p1.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
-            p1Rolled = true;
-            changesMade = true;
-            console.log(`[DiceDuel] 🎲 Bot P1 Force Roll: ${rolls[p1.userId]}`);
-        }
+        // 1. EXECUTE BOT ROLLS (Dynamic Turn Order)
+        const starterId = meta.nextStarterUserId || p1.userId;
+        const secondId = starterId === p1.userId ? p2.userId : p1.userId;
 
-        if (!p2Rolled && p2IsBot && canBotAct) {
-            rolls[p2.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
-            p2Rolled = true;
-            changesMade = true;
-            console.log(`[DiceDuel] 🎲 Bot P2 Force Roll: ${rolls[p2.userId]}`);
+        // Determine who needs to roll next
+        let nextToRollId = null;
+        if (!rolls[starterId]) nextToRollId = starterId;
+        else if (!rolls[secondId]) nextToRollId = secondId;
+
+        // Force roll if it's bot's turn
+        if (nextToRollId && canBotAct) {
+            const isBotTurn = (nextToRollId === p1.userId && p1IsBot) || (nextToRollId === p2.userId && p2IsBot);
+
+            if (isBotTurn) {
+                rolls[nextToRollId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
+                if (nextToRollId === p1.userId) p1Rolled = true;
+                if (nextToRollId === p2.userId) p2Rolled = true;
+                changesMade = true;
+                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Forced Roll (Dynamic Order)`);
+            }
         }
 
         // 2. RESOLVE ROUND (If both rolled)
@@ -203,6 +209,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             history: newHistory,
                             rolls: {}, // Reset rolls
                             lastDice,
+                            nextStarterUserId: roundWinner || meta.nextStarterUserId, // Winner starts, or keep previous if tie
                             roundStartedAt: Date.now() // Reset Delay Timer
                         } as any
                     }

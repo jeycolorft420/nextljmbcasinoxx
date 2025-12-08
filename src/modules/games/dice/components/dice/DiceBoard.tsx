@@ -221,11 +221,26 @@ export default function DiceBoard({
   const hasRolledTop = topEntry && !!rolls[topEntry.user.id];
   const hasRolledBottom = bottomEntry && !!rolls[bottomEntry.user.id];
 
+  // Dynamic Starter Logic
+  const starterId = room.gameMeta?.nextStarterUserId || topEntry?.user.id;
+  const isTopStarter = topEntry?.user.id === starterId;
+
+  // Who is current? 
+  // If starter hasn't rolled -> Starter
+  // If starter rolled -> Second player
+  let currentTurnUserId = null;
+  if (isTopStarter) {
+    if (!hasRolledTop) currentTurnUserId = topEntry?.user.id;
+    else if (!hasRolledBottom) currentTurnUserId = bottomEntry?.user.id;
+  } else {
+    if (!hasRolledBottom) currentTurnUserId = bottomEntry?.user.id;
+    else if (!hasRolledTop) currentTurnUserId = topEntry?.user.id;
+  }
+
   // Ghost State (Visual is showing something, but Logic says no roll)
   const isGhostTop = !hasRolledTop && !!lastDice.top;
   const isGhostBottom = !hasRolledBottom && !!lastDice.bottom;
 
-  // P1 goes first.
   let myTurn = false;
   let statusText = "";
 
@@ -233,25 +248,19 @@ export default function DiceBoard({
     statusText = "Juego Terminado";
   } else if (!topEntry || !bottomEntry) {
     statusText = "Esperando jugadores...";
+  } else if (!currentTurnUserId) {
+    statusText = "Calculando ganador...";
   } else {
-    if (!hasRolledTop) {
-      // Waiting for Top
-      if (amTop) {
-        myTurn = true;
-        statusText = "Tu turno (Jugador 1)";
-      } else {
-        statusText = `Esperando a ${topEntry.user.name || "Jugador 1"}...`;
-      }
-    } else if (!hasRolledBottom) {
-      // Waiting for Bottom
-      if (amBottom) {
-        myTurn = true;
-        statusText = "Tu turno (Jugador 2)";
-      } else {
-        statusText = `Esperando a ${bottomEntry.user.name || "Jugador 2"}...`;
-      }
+    // We have a defined turn
+    const isMyTurn = meEntry?.user.id === currentTurnUserId;
+    myTurn = isMyTurn;
+
+    const turnName = room.entries?.find(e => e.user.id === currentTurnUserId)?.user.name || "Oponente";
+
+    if (isMyTurn) {
+      statusText = "Tu turno";
     } else {
-      statusText = "Calculando ganador...";
+      statusText = `Esperando a ${turnName}...`;
     }
   }
 
