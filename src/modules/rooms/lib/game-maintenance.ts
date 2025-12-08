@@ -244,6 +244,7 @@ export async function checkAndMaintenanceRoom(room: any) {
                     await prisma.room.update({
                         where: { id: roomId },
                         data: {
+                            currentRound: { increment: 1 },
                             gameMeta: {
                                 ...meta,
                                 balances,
