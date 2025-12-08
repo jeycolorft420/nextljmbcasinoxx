@@ -16,8 +16,30 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
         return { ...freshRoom, autoLockAt: null };
     }
 
+    // 🔒 ATOMIC LOCK CLAIM (CAS)
+    // Only proceed if we can successfully set autoLockAt to NULL (meaning we consume the timer)
+    // This prevents multiple threads from running maintenance simultaneously.
+    // If autoLockAt is ALREADY null (because another thread took it), this update returns count: 0
+
+    // NOTE: We only try to claim if autoLockAt is NOT NULL.
+    // If it's already null, maintenance shouldn't be running anyway (checked in wrapper),
+    // but another thread might have just cleared it.
+    const claim = await prisma.room.updateMany({
+        where: {
+            id: roomId,
+            autoLockAt: { not: null }
+        },
+        data: { autoLockAt: null }
+    });
+
+    if (claim.count === 0) {
+        // Lock already claimed by another thread OR timer was already null
+        console.log(`[Roulette] Maintenance skipped (Lock busy) for ${roomId}`);
+        return freshRoom;
+    }
+
     // SCENARIO 2: Fill with Bots and Finish
-    console.log(`[Roulette] Room ${roomId} has ${playerCount} players. Timer expired. Attempting to fill.`);
+    console.log(`[Roulette] Room ${roomId} lock claimed. Filling with bots.`);
 
     const botsNeeded = freshRoom.capacity - playerCount;
 
@@ -25,13 +47,19 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     const bots = await prisma.user.findMany({
         where: { isBot: true },
         take: botsNeeded,
-        orderBy: { createdAt: 'desc' } // Grab newest or random? Desc is fine.
+        orderBy: { createdAt: 'desc' }
     });
 
+    // CRITICAL: If we don't have enough bots, we MUST revert the lock (restore timer)
+    // Otherwise the room stays stuck with autoLockAt = null and never finishes.
     if (bots.length < botsNeeded) {
-        console.warn(`[Roulette] Not enough bots to fill room ${roomId}. Needed ${botsNeeded}, found ${bots.length}. Aborting maintenance.`);
-        // CRITICAL FIX: Do NOT finish the room if we can't fill it.
-        // Otherwise a single player wins 100% of the time against nobody.
+        console.warn(`[Roulette] Not enough bots to fill room ${roomId}. Needed ${botsNeeded}, found ${bots.length}. Restoring timer.`);
+
+        // 🔄 RESTORE TIMER used as Lock
+        await prisma.room.update({
+            where: { id: roomId },
+            data: { autoLockAt: new Date(Date.now() + 10000) } // Retry in 10s
+        });
         return freshRoom;
     }
 
