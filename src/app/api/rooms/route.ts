@@ -141,8 +141,12 @@ export async function POST(req: Request) {
       gameType: room.gameType,
       slots: { taken: room._count.entries, free: room.capacity - room._count.entries },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("rooms POST error:", e);
-    return NextResponse.json({ error: "No se pudo crear la sala" }, { status: 500 });
+    // Return detailed error for debugging
+    const msg = e instanceof z.ZodError
+      ? JSON.stringify(e.issues)
+      : (e.message || "No se pudo crear la sala");
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
