@@ -348,6 +348,7 @@ export default function RoomPage() {
       const newEntries = selectedPositions.map((pos) => ({
         id: `temp-${pos}-${Date.now()}`,
         position: pos,
+        round: room.currentRound ?? 1, // 👈 Added round
         user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
       }));
       setRoom((prev) => {
@@ -379,7 +380,7 @@ export default function RoomPage() {
         // If random purchase, adds seats now
         if (oldSelection.length === 0 && takenList.length > 0 && room && session?.user) {
           const newEntries = takenList.map((pos: number) => ({
-            id: `temp-${pos}-${Date.now()}`, position: pos,
+            id: `temp-${pos}-${Date.now()}`, position: pos, round: room.currentRound ?? 1, // 👈 Added round
             user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
           }));
           setRoom((prev) => {

@@ -66,6 +66,7 @@ export async function buildRoomPayload(prisma: PrismaClient, roomId: string) {
     entries: room.entries.map((e) => ({
       id: e.id,
       position: e.position,
+      round: e.round, // 👈 Added round
       user: {
         id: e.user.id,
         name: e.user.name,
