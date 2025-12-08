@@ -16,7 +16,7 @@ type WalletContextType = {
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-    const { status } = useSession();
+    const { data: session, status } = useSession();
     const [balanceCents, setBalanceCents] = useState<number | null>(null);
     const [selectedRouletteSkin, setSelectedRouletteSkin] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
