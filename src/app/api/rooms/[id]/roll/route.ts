@@ -28,7 +28,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             if (!room) throw new Error("Room not found");
             if (room.gameType !== "DICE_DUEL") throw new Error("Not a dice room");
             // We use LOCKED for "In Progress"
-            if (room.state !== "LOCKED") throw new Error("Not ready to roll");
+            if (room.state !== "LOCKED" && room.state !== "OPEN") throw new Error("Not ready to roll");
 
             // Ensure 2 players
             if (room.entries.length < 2) throw new Error("Waiting for players");
