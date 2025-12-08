@@ -9,12 +9,21 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     const currentEntries = freshRoom.entries.filter((e: any) => e.round === (freshRoom.currentRound ?? 1));
     const playersCount = currentEntries.length;
 
-    // 0. CHECK MODE: Instant (Timer Expired) vs Progressive (Interval)
+    // 0. CHECK MODE: Extension Phase (Progressive Fill AFTER Timer) vs Instant
     const isTimerExpired = freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt;
-    const botWaitMs = freshRoom.botWaitMs ?? 0;
-    const isProgressive = botWaitMs > 0 && !isTimerExpired;
+    const botFillDurationMs = freshRoom.botWaitMs ?? 0;
+
+    // Legacy support: if botWaitMs is 0, we fill instantly when timer expires.
+    const isLegacyInstantFill = isTimerExpired && botFillDurationMs === 0;
+
+    // New Logic: If timer expired AND botWaitMs > 0, we enter "Extension Phase"
+    const isExtensionPhase = isTimerExpired && botFillDurationMs > 0;
 
     // SCENARIO 1: Insufficient players (0) - Reset Timer (Only if expired)
+    // If 0 players, we probably shouldn't start filling bots? Or yes?
+    // User requirement: "Wait... then bots enter". So yes, even if 0 players.
+    // BUT, if 0 players, maybe we just reset without bots to save resources? 
+    // Let's stick to current behavior: If 0 REAL players, reset timer to avoid empty rooms spinning.
     if (playersCount === 0 && isTimerExpired) {
         await prisma.room.update({
             where: { id: roomId },
@@ -24,42 +33,46 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
     }
 
     // 🔒 ATOMIC LOCK CLAIM (CAS)
-    // Only proceed if we can successfully set autoLockAt to NULL (for Instant) or if we are in Progressive mode (no lock needed yet?)
-    // Actually, for Progressive, we don't want to "consume" the timer. We just want to add a bot and exit.
-    // BUT we need concurrency safety.
+    // Only claim lock if we are finishing/filling instantly.
+    // If in extension phase, we don't lock yet, we just add bots one by one.
 
-    // PROGRESSIVE MODE LOGIC
-    if (isProgressive) {
-        // If room is full, we shouldn't be here (client/maintenance should have finished it? No, finish logic is below).
-        if (playersCount >= freshRoom.capacity) {
-            // Room is full but timer not expired. Trigger finish properly.
-            // Fallthrough to Finish logic?
-            // checking below...
+    // EXTENSION PHASE LOGIC (Progressive Fill)
+    if (isExtensionPhase) {
+        const botsNeeded = freshRoom.capacity - playersCount;
+
+        if (botsNeeded <= 0) {
+            // Room is full! Now we can proceed to FINISH it safely.
+            // Fallthrough to Finish Logic below.
         } else {
+            // We need to add bots. Calculate dynamic interval.
+            // Interval = TotalDuration / RemainingBots
+            // e.g. 60s / 10 bots = 6s per bot.
+            const baseInterval = botFillDurationMs / botsNeeded;
+
+            // HUMANIZER: Add jitter (±30%)
+            const jitter = 0.7 + (Math.random() * 0.6);
+            const targetInterval = baseInterval * jitter;
+
             // Check Last Entry Time
+            // If we just entered extension phase, lastEntry might be old. 
+            // We should use `Math.max(lastEntryTime, autoLockAt)`? 
+            // Actually, comparing to lastEntry.createdAt is fine. If it was long ago, it will trigger immediately (good).
             const lastEntry = currentEntries[currentEntries.length - 1];
             const lastTime = lastEntry ? new Date(lastEntry.createdAt).getTime() : new Date(freshRoom.createdAt).getTime();
             const now = Date.now();
 
-            // HUMANIZER: Add randomness/jitter to the interval (±30%)
-            // This prevents robotic timing (exact 3.00s intervals).
-            // Example: 5s interval becomes random between 3.5s and 6.5s
-            const jitter = 0.7 + (Math.random() * 0.6);
-            const customizedWait = botWaitMs * jitter;
-
-            if (now - lastTime < customizedWait) {
-                // Not enough time passed
+            if (now - lastTime < targetInterval) {
+                // Wait more
                 return freshRoom;
             }
 
-            console.log(`[Roulette] Progressive Bot Injection for ${roomId}. Waited ${now - lastTime}ms (Target ~${customizedWait.toFixed(0)}ms)`);
+            console.log(`[Roulette] Extension Bot Injection for ${roomId}. Needed: ${botsNeeded}. Interval: ~${(targetInterval / 1000).toFixed(1)}s`);
 
-            // Fetch 1 VALID Bot that isn't already playing (optional check, but simplistic for now)
+            // Inject ONE Bot
             const bot = await prisma.user.findFirst({
                 where: { isBot: true },
-                // Random skip? or just grab one.
                 take: 1,
-                skip: Math.floor(Math.random() * 50) // Randomize selection slightly
+                skip: Math.floor(Math.random() * 50)
             });
 
             if (!bot) return freshRoom;
@@ -67,11 +80,10 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
             // Find free position
             const occupiedPositions = new Set(currentEntries.map((e: any) => e.position));
             let availablePositions = Array.from({ length: freshRoom.capacity }, (_, i) => i + 1).filter(p => !occupiedPositions.has(p));
-            if (availablePositions.length === 0) return freshRoom; // Full
+            if (availablePositions.length === 0) return freshRoom; // Should be covered by botsNeeded check, but safety.
 
             const pos = availablePositions[Math.floor(Math.random() * availablePositions.length)];
 
-            // Insert Bot
             await prisma.entry.create({
                 data: {
                     roomId,
@@ -81,56 +93,35 @@ export async function maintenanceRoulette(room: any, freshRoom: any) {
                 }
             });
 
-            // Emit update
             await emitRoomUpdate(roomId);
 
-            // Refetch to check if full now
-            // If full, we can let the NEXT maintenance tick handle the finish, or fallthrough?
-            // For simplicity, return now and let next tick (immediate or lazy) finish it.
-            // Or better: check if (playersCount + 1 === capacity) -> Finish immediately.
-            const newCount = playersCount + 1;
-            if (newCount < freshRoom.capacity) {
-                return freshRoom;
-            }
-
-            // If FULL, proceed to Finish Logic below...
+            // Return here. We wait for next tick to either add more or finish.
+            return freshRoom;
         }
+    } else if (!isTimerExpired) {
+        // Timer NOT expired. Normal state. Do nothing.
+        return freshRoom;
     }
 
-    // ... FINISH LOGIC (Instant or Full) ...
+    // ... FINISH LOGIC (Instant Legacy OR Extension Complete) ...
+    // relationships:
+    // If Legacy Instant: isTimerExpired && bots needed -> Fill all.
+    // If Extension: we only fallthrough here if botsNeeded <= 0 (Full).
 
-    // If we are here, either:
-    // A) Timer Expired (Instant Fill needed)
-    // B) Room is Full (Progressive or Manual finished)
-
-    // If Progressive and NOT Full, we should have returned above.
-    // If Progressive and Full, we continue.
-
-    // 🔒 LOCK CLAIM for FINISH
-    // If timer expired, we consume autoLockAt.
-    // If full, autoLockAt might be in future. We still need to lock.
-
-    // We try to update to FINISHED state atomically?
-    // Let's stick to the existing "Claim Lock" pattern to be safe.
-    // If not expired but full, we can set autoLockAt = null as the claim?
+    // We need to be careful not to trigger Legacy Fill if we are in Extension Mode but not full yet (handled by return above).
 
     const claim = await prisma.room.updateMany({
         where: {
             id: roomId,
-            // If expired, claim non-null autoLockAt.
-            // If full, claim regardless?
-            // To be safe/consistent: Claim if state is OPEN.
             state: "OPEN",
-            // Only if we haven't already claimed it (concurrency)
-            // finishedAt: null
         },
-        data: { state: "LOCKED" } // Temporary Lock state to prevent double-finish
+        data: { state: "LOCKED" }
     });
 
-    if (claim.count === 0) {
-        // Already handling
-        return freshRoom;
-    }
+    if (claim.count === 0) return freshRoom;
+
+    // ... continue to existing finish logic ...
+
 
     // Double check state after lock? (Not needed if atomic update to LOCKED worked)
 
