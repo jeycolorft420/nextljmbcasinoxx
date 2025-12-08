@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
 
 export const dynamic = 'force-dynamic';
 
@@ -97,3 +97,4 @@ export async function PUT(req: Request) {
         return NextResponse.json({ error: "Failed to update settings", details: String(error) }, { status: 500 });
     }
 }
+

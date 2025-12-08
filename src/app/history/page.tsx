@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/utils"; // Assuming this exists, otherwise I'll mock it
+import { formatCurrency } from "@/modules/ui/lib/utils"; // Assuming this exists, otherwise I'll mock it
 
 type HistoryItem = {
     id: string;
@@ -147,3 +147,4 @@ export default function HistoryPage() {
         </main>
     );
 }
+

@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import GameSelector from "@/components/rooms/GameSelector";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { prisma } from "@/modules/ui/lib/prisma";
+import GameSelector from "@/modules/rooms/components/rooms/GameSelector";
 
 export const dynamic = "force-dynamic";
 
@@ -25,3 +25,4 @@ export default async function RoomsPage() {
     </main>
   );
 }
+

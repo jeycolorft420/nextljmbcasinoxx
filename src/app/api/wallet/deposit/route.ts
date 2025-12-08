@@ -2,9 +2,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { walletCredit } from "@/lib/wallet";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { walletCredit } from "@/modules/users/lib/wallet";
+import prisma from "@/modules/ui/lib/prisma";
 
 const schema = z.object({
   userId: z.string().min(1),
@@ -44,3 +44,4 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
+

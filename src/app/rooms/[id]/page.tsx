@@ -4,17 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import RouletteBoard from "@/components/RouletteBoard";
-import DiceBoard, { DiceHistory } from "@/components/dice/DiceBoard";
-import RoomHistoryList from "@/components/RoomHistoryList"; // 👈 Nuevo componente
-import { pusherClient } from "@/lib/pusher-client";
-import ChatBubble from "@/components/chat/ChatBubble";
-import ChatWindow from "@/components/chat/ChatWindow";
+import RouletteBoard from "@/modules/rooms/components/RouletteBoard";
+import DiceBoard, { DiceHistory } from "@/modules/rooms/components/dice/DiceBoard";
+import RoomHistoryList from "@/modules/rooms/components/RoomHistoryList"; // 👈 Nuevo componente
+import { pusherClient } from "@/modules/ui/lib/pusher-client";
+import ChatBubble from "@/modules/rooms/components/chat/ChatBubble";
+import ChatWindow from "@/modules/rooms/components/chat/ChatWindow";
 import { useWallet } from "@/hooks/use-wallet";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
-import BuySeatUI from "@/components/BuySeatUI";
-import ConfirmationModal from "@/components/ConfirmationModal";
+import BuySeatUI from "@/modules/rooms/components/BuySeatUI";
+import ConfirmationModal from "@/modules/ui/components/ConfirmationModal";
 import { useLicense } from "@/context/LicenseContext";
 
 type Entry = {
@@ -869,4 +869,5 @@ export default function RoomPage() {
     </main>
   );
 }
+
 

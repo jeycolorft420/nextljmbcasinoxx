@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { pusherClient } from "@/lib/pusher-client";
+import { pusherClient } from "@/modules/ui/lib/pusher-client";
 
 type Withdrawal = {
   id: string;
@@ -276,3 +276,4 @@ export default function AdminWithdrawalsPage() {
     </main>
   );
 }
+

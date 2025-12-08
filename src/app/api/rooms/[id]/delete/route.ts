@@ -2,9 +2,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { emitRoomsIndex } from "@/lib/emit-rooms";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { emitRoomsIndex } from "@/modules/rooms/lib/emit-rooms";
+import prisma from "@/modules/ui/lib/prisma";
 
 export const dynamic = "force-dynamic";
 const Params = z.object({ id: z.string().min(1) });
@@ -47,3 +47,4 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
 }
+

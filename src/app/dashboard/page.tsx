@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { pusherClient } from "@/lib/pusher-client";
+import { pusherClient } from "@/modules/ui/lib/pusher-client";
 import Image from "next/image";
 
 type RefSummary = {
@@ -634,3 +634,4 @@ function DashboardAuthed({
     </main>
   );
 }
+

@@ -1,10 +1,10 @@
 // src/app/api/rooms/[id]/invite/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { z } from "zod";
-import { makeInvitePayload, signInvite } from "@/lib/invite";
-import prisma from "@/lib/prisma";
+import { makeInvitePayload, signInvite } from "@/modules/auth/lib/invite";
+import prisma from "@/modules/ui/lib/prisma";
 const Param = z.object({ id: z.string().min(1) });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -73,3 +73,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "No se pudo generar la invitación" }, { status: 500 });
   }
 }
+

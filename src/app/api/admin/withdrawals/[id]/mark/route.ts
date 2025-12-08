@@ -1,10 +1,10 @@
 // src/app/api/admin/withdrawals/[id]/mark/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { z } from "zod";
-import { emitAdminWithdrawalChanged, emitUserWithdrawalUpdated } from "@/lib/realtime-withdrawals";
-import prisma from "@/lib/prisma";
+import { emitAdminWithdrawalChanged, emitUserWithdrawalUpdated } from "@/modules/users/lib/realtime-withdrawals";
+import prisma from "@/modules/ui/lib/prisma";
 
 export async function POST(
   req: Request,
@@ -44,3 +44,5 @@ export async function POST(
     return NextResponse.json({ error: "Error al actualizar retiro" }, { status: 500 });
   }
 }
+
+

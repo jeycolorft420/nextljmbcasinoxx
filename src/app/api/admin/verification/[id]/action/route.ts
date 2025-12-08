@@ -1,8 +1,8 @@
 
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 export async function POST(
@@ -49,3 +49,4 @@ export async function POST(
         return NextResponse.json({ error: "Internal Error" }, { status: 500 });
     }
 }
+

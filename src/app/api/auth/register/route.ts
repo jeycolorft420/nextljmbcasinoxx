@@ -1,7 +1,7 @@
 // src/app/api/auth/register/route.ts
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 
 export async function POST(request: Request) {
     try {
@@ -26,3 +26,4 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Error al registrar" }, { status: 500 });
     }
 }
+

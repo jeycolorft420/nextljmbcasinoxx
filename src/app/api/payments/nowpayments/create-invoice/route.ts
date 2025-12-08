@@ -2,8 +2,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
 
 const Body = z
   .object({
@@ -110,3 +110,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Error creando invoice" }, { status: 500 });
   }
 }
+

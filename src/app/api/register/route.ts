@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -97,3 +97,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
 }
+

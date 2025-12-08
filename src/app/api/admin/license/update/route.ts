@@ -1,9 +1,9 @@
 
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { verifyLicense } from "@/lib/license-check";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
+import { verifyLicense } from "@/modules/admin/lib/license-check";
 
 export async function POST(req: Request) {
     try {
@@ -42,3 +42,4 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Failed to update license" }, { status: 500 });
     }
 }
+

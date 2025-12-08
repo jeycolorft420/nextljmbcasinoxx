@@ -2,8 +2,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { finishRoom, processWinnerPayout } from "@/lib/game-logic";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { finishRoom, processWinnerPayout } from "@/modules/rooms/lib/game-logic";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,3 +60,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: msg }, { status });
   }
 }
+

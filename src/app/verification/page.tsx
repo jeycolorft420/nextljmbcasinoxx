@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import CameraCapture from "@/components/verification/CameraCapture";
+import CameraCapture from "@/modules/auth/components/verification/CameraCapture";
 import { toast } from "sonner";
 
 export default function VerificationPage() {
@@ -243,3 +243,4 @@ export default function VerificationPage() {
         </div>
     );
 }
+

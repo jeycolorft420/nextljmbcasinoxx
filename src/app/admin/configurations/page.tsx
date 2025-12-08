@@ -1,7 +1,7 @@
 
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 
@@ -128,3 +128,4 @@ export default async function ValidationsPage() {
         </main>
     );
 }
+

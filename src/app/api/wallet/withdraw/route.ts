@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { walletDebit } from "@/lib/wallet";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { walletDebit } from "@/modules/users/lib/wallet";
 
 const schema = z.object({
   userId: z.string().min(1),
@@ -24,3 +24,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message || "No se pudo debitar" }, { status: 400 });
   }
 }
+

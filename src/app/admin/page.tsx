@@ -1,7 +1,7 @@
 // src/app/admin/page.tsx
 import Link from "next/link";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { redirect } from "next/navigation";
 
 export default async function AdminHomePage() {
@@ -85,3 +85,4 @@ export default async function AdminHomePage() {
     </main>
   );
 }
+

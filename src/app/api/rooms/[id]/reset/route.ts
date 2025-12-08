@@ -2,10 +2,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { walletCredit } from "@/lib/wallet";
-import { emitRoomsIndex, emitRoomUpdate } from "@/lib/emit-rooms";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { walletCredit } from "@/modules/users/lib/wallet";
+import { emitRoomsIndex, emitRoomUpdate } from "@/modules/rooms/lib/emit-rooms";
+import prisma from "@/modules/ui/lib/prisma";
 const paramSchema = z.object({ id: z.string().min(1) });
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -116,3 +116,4 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "No se pudo resetear" }, { status: 500 });
   }
 }
+

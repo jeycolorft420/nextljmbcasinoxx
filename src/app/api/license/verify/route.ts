@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/modules/ui/lib/prisma";
 
 export async function POST(req: Request) {
     try {
@@ -65,3 +65,4 @@ export async function POST(req: Request) {
         return NextResponse.json({ valid: false, message: "Server error" }, { status: 500 });
     }
 }
+

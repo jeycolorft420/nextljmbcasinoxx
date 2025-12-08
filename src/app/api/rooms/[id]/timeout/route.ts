@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { emitRoomUpdate } from "@/lib/emit-rooms";
-import { buildRoomPayload } from "@/lib/room-payload";
-import { walletCredit } from "@/lib/wallet";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
+import { emitRoomUpdate } from "@/modules/rooms/lib/emit-rooms";
+import { buildRoomPayload } from "@/modules/rooms/lib/room-payload";
+import { walletCredit } from "@/modules/users/lib/wallet";
 
 const paramSchema = z.object({ id: z.string().min(1) });
 
@@ -143,3 +143,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         return NextResponse.json({ error: e.message || "Unknown error" }, { status: 400 });
     }
 }
+

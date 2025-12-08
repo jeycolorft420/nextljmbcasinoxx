@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 
 const paramSchema = z.object({ id: z.string().min(1) });
 const bodySchema = z.object({
@@ -41,3 +41,4 @@ export async function POST(
     return NextResponse.json({ error: "Error al preseleccionar ganador" }, { status: 500 });
   }
 }
+

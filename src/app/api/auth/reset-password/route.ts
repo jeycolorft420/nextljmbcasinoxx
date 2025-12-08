@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";                // <-- AQUI
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 const Body = z.object({ token: z.string().min(1), newPassword: z.string().min(6) });
 
 export async function POST(req: Request) {
@@ -24,3 +24,4 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
+

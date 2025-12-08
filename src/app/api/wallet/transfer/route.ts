@@ -2,13 +2,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { walletTransferByEmail } from "@/lib/wallet";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { walletTransferByEmail } from "@/modules/users/lib/wallet";
 import {
   emitTransferEvent,
   emitWalletBalance,
-} from "@/lib/realtime";
-import prisma from "@/lib/prisma";
+} from "@/modules/ui/lib/realtime";
+import prisma from "@/modules/ui/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -77,3 +77,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e?.message || "No se pudo transferir" }, { status: 400 });
   }
 }
+

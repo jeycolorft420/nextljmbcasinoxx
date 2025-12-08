@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; // Adjust path if needed
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth"; // Adjust path if needed
+import prisma from "@/modules/ui/lib/prisma";
 import { authenticator } from "otplib";
 import qrcode from "qrcode";
 
@@ -66,3 +66,4 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
 }
+

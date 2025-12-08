@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 import { RoomState } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import bcrypt from "bcryptjs";
-import { REAL_NAMES } from "@/lib/names";
-import { emitRoomsIndex, emitRoomUpdate } from "@/lib/emit-rooms";
-import { walletCredit } from "@/lib/wallet"; // 👈 para acreditar premio al ganador
-import prisma from "@/lib/prisma";
+import { REAL_NAMES } from "@/modules/users/lib/names";
+import { emitRoomsIndex, emitRoomUpdate } from "@/modules/rooms/lib/emit-rooms";
+import { walletCredit } from "@/modules/users/lib/wallet"; // 👈 para acreditar premio al ganador
+import prisma from "@/modules/ui/lib/prisma";
 
 const paramSchema = z.object({ id: z.string().min(1) });
 const bodySchema = z.object({
@@ -217,3 +217,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Error al llenar la sala" }, { status: 500 });
   }
 }
+
+

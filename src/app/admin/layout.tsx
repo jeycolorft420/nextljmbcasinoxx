@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
-import AdminLockScreen from "@/components/AdminLockScreen";
-import SecretLicenseManager from "@/components/SecretLicenseManager";
+import AdminLockScreen from "@/modules/admin/components/AdminLockScreen";
+import SecretLicenseManager from "@/modules/admin/components/SecretLicenseManager";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
 
 export default async function AdminLayout({
     children,
@@ -34,3 +34,4 @@ export default async function AdminLayout({
         </>
     );
 }
+

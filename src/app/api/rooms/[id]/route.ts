@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import prisma from "@/lib/prisma";
-import { buildRoomPayload } from "@/lib/room-payload";
-import { checkAndMaintenanceRoom } from "@/lib/game-maintenance";
+import prisma from "@/modules/ui/lib/prisma";
+import { buildRoomPayload } from "@/modules/rooms/lib/room-payload";
+import { checkAndMaintenanceRoom } from "@/modules/rooms/lib/game-maintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -35,3 +35,4 @@ export async function GET(
     return NextResponse.json({ error: "Error al obtener la sala" }, { status: 500 });
   }
 }
+

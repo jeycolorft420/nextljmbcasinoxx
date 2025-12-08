@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
@@ -16,3 +16,4 @@ export async function GET() {
 
   return NextResponse.json(user);
 }
+

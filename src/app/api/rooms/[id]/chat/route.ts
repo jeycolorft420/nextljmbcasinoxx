@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { pusherServer } from "@/lib/pusher-server";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
+import { pusherServer } from "@/modules/ui/lib/pusher-server";
 
 // Schema validación
 const Body = z.object({
@@ -97,3 +97,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         return NextResponse.json({ error: e?.message || "Error al enviar mensaje" }, { status: 500 });
     }
 }
+

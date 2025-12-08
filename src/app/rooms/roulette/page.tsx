@@ -1,7 +1,8 @@
 "use client";
 
-import RoomList from "@/components/rooms/RoomList";
+import RoomList from "@/modules/rooms/components/rooms/RoomList";
 
 export default function RouletteRoomsPage() {
     return <RoomList gameType="ROULETTE" />;
 }
+

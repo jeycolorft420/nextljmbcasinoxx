@@ -1,7 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
@@ -55,3 +55,4 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
 }
+

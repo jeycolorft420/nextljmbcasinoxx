@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import pusherClient from "@/lib/pusher-client";
+import pusherClient from "@/modules/ui/lib/pusher-client";
 
 // ---- Tipos ----
 type Thread = {
@@ -443,3 +443,4 @@ export default function SupportPage() {
     </main>
   );
 }
+

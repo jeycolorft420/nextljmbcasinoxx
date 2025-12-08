@@ -1,10 +1,10 @@
 // src/app/api/rooms/[id]/finish/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import crypto from "crypto";
-import { emitRoomUpdate, emitRoomsIndex } from "@/lib/emit-rooms";
+import { emitRoomUpdate, emitRoomsIndex } from "@/modules/rooms/lib/emit-rooms";
 
 export async function POST(
   _req: Request,
@@ -71,3 +71,4 @@ export async function POST(
     return NextResponse.json({ error: "Error al realizar el sorteo" }, { status: 500 });
   }
 }
+

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -75,3 +75,4 @@ export async function POST(
 export async function GET() {
   return NextResponse.json({ ok: true, hint: "POST { position: number }" });
 }
+

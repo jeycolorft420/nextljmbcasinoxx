@@ -1,7 +1,7 @@
 // src/app/page.tsx
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 
 // Server Component: redirige según sesión
 export default async function Home() {
@@ -13,3 +13,4 @@ export default async function Home() {
   }
   return null;
 }
+

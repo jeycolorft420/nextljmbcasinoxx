@@ -50,3 +50,4 @@ export function LicenseProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useLicense = () => useContext(LicenseContext);
+

@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import TwoFactorSetup from "@/components/TwoFactorSetup";
-import VerificationUpload from "@/components/VerificationUpload";
-import { AVATARS } from "@/lib/avatars";
+import TwoFactorSetup from "@/modules/auth/components/TwoFactorSetup";
+import VerificationUpload from "@/modules/auth/components/VerificationUpload";
+import { AVATARS } from "@/modules/users/lib/avatars";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -242,3 +242,4 @@ export default function ProfilePage() {
     </main>
   );
 }
+

@@ -1,6 +1,6 @@
 // src/app/api/support/guest/[id]/messages/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -31,3 +31,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   return NextResponse.json(messages);
 }
+

@@ -1,9 +1,9 @@
 // src/app/api/payments/nowpayments/ipn/route.ts
 import { NextResponse } from "next/server";
 import { TxKind } from "@prisma/client";
-import { verifyIpnSignature } from "@/lib/nowpayments";
-import { emitPaymentFinished, emitWalletBalance } from "@/lib/realtime";
-import prisma from "@/lib/prisma";
+import { verifyIpnSignature } from "@/modules/users/lib/nowpayments";
+import { emitPaymentFinished, emitWalletBalance } from "@/modules/ui/lib/realtime";
+import prisma from "@/modules/ui/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -74,3 +74,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ipn error" }, { status: 500 });
   }
 }
+
+

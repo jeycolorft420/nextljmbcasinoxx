@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import "./src/lib/env"; // 👈 Validate env vars on import
+import "./src/modules/ui/lib/env"; // 👈 Validate env vars on import
 
 const nextConfig: NextConfig = {
   /* config options here */

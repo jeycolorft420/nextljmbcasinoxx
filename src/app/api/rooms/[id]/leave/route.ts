@@ -2,12 +2,12 @@
 import { NextResponse } from "next/server";
 import { RoomState, TxKind } from "@prisma/client";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { z } from "zod";
 
-import { emitRoomUpdate } from "@/lib/emit-rooms";
-import { buildRoomPayload } from "@/lib/room-payload";
-import prisma from "@/lib/prisma";
+import { emitRoomUpdate } from "@/modules/rooms/lib/emit-rooms";
+import { buildRoomPayload } from "@/modules/rooms/lib/room-payload";
+import prisma from "@/modules/ui/lib/prisma";
 const Param = z.object({ id: z.string().min(1) });
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -157,3 +157,4 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: e?.message || "No se pudo abandonar la sala" }, { status: 500 });
   }
 }
+

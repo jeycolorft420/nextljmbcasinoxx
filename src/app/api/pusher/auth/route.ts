@@ -1,8 +1,8 @@
 // src/app/api/pusher/auth/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { pusherServer } from "@/lib/pusher-server";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { pusherServer } from "@/modules/ui/lib/pusher-server";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -33,3 +33,4 @@ export async function POST(req: Request) {
   const auth = pusherServer.authorizeChannel(socketId, channelName);
   return NextResponse.json(auth);
 }
+

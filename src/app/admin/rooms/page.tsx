@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { prisma } from "@/modules/ui/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -94,4 +94,5 @@ export default async function AdminRoomsPage() {
 }
 
 // Client component for the button to handle onClick
-import CreateRoomButton from "@/components/admin/CreateRoomButton";
+import CreateRoomButton from "@/modules/admin/components/admin/CreateRoomButton";
+

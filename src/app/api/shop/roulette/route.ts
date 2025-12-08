@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { TxKind } from "@prisma/client";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 import { z } from "zod";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -138,3 +138,4 @@ export async function PUT(req: Request) { // EQUIP
         return NextResponse.json({ error: "Error al equipar" }, { status: 500 });
     }
 }
+

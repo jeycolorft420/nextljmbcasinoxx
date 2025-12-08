@@ -2,11 +2,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { emitRoomsIndex } from "@/lib/emit-rooms";
-import prisma from "@/lib/prisma";
-import { generateServerSeed, generateHash } from "@/lib/provably-fair";
-import { checkAndMaintenanceRoom } from "@/lib/game-maintenance";
+import { authOptions } from "@/modules/auth/lib/auth";
+import { emitRoomsIndex } from "@/modules/rooms/lib/emit-rooms";
+import prisma from "@/modules/ui/lib/prisma";
+import { generateServerSeed, generateHash } from "@/modules/rooms/lib/provably-fair";
+import { checkAndMaintenanceRoom } from "@/modules/rooms/lib/game-maintenance";
 
 const ROOM_STATES = ["OPEN", "LOCKED", "FINISHED"] as const;
 const GAME_TYPES = ["ROULETTE", "DICE_DUEL"] as const;
@@ -149,3 +149,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No se pudo crear la sala" }, { status: 500 });
   }
 }
+

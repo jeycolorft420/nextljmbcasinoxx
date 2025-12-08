@@ -1,8 +1,8 @@
 // src/app/invite/[token]/page.tsx
-import { verifyInvite } from "@/lib/invite";
+import { verifyInvite } from "@/modules/auth/lib/invite";
 import Link from "next/link";
 import JoinButton from "./join-button";
-import prisma from "@/lib/prisma";
+import prisma from "@/modules/ui/lib/prisma";
 
 type Props = {
   params: { token: string };
@@ -101,3 +101,4 @@ export default async function InvitePage({ params }: Props) {
     </main>
   );
 }
+

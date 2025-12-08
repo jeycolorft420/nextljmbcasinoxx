@@ -3,11 +3,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
-import NavBar from "@/components/NavBar";
+import NavBar from "@/modules/ui/components/NavBar";
 import { Toaster } from "sonner";
-import prisma from "@/lib/prisma";
-import VerificationAlert from "@/components/verification/VerificationAlert";
-import UsernameModal from "@/components/UsernameModal";
+import prisma from "@/modules/ui/lib/prisma";
+import VerificationAlert from "@/modules/auth/components/verification/VerificationAlert";
+import UsernameModal from "@/modules/users/components/UsernameModal";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -76,3 +76,4 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     </html>
   );
 }
+

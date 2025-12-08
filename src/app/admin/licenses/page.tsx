@@ -329,3 +329,4 @@ export function LicenseManager() {
 export default function AdminLicensesPage() {
     return <LicenseManager />;
 }
+

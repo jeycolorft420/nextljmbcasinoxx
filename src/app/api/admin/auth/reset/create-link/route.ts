@@ -1,8 +1,8 @@
 // src/app/api/admin/auth/reset/create-link/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { authOptions } from "@/modules/auth/lib/auth";
+import prisma from "@/modules/ui/lib/prisma";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -57,3 +57,4 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ url, expiresAt });
 }
+

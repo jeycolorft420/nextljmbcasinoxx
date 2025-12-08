@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { RoomState, TxKind } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/modules/auth/lib/auth";
 
-import { emitRoomUpdate, emitRoomsIndex } from "@/lib/emit-rooms";
-import { buildRoomPayload } from "@/lib/room-payload";
-import { ratelimit } from "@/lib/ratelimit";
-import prisma from "@/lib/prisma";
-import { finishRoom, processWinnerPayout } from "@/lib/game-logic";
+import { emitRoomUpdate, emitRoomsIndex } from "@/modules/rooms/lib/emit-rooms";
+import { buildRoomPayload } from "@/modules/rooms/lib/room-payload";
+import { ratelimit } from "@/modules/ui/lib/ratelimit";
+import prisma from "@/modules/ui/lib/prisma";
+import { finishRoom, processWinnerPayout } from "@/modules/rooms/lib/game-logic";
 
 const Param = z.object({ id: z.string().min(1) });
 
@@ -247,3 +247,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: msg }, { status: code });
   }
 }
+
