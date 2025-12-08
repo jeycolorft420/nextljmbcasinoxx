@@ -18,8 +18,10 @@ const createSchema = z.object({
   capacity: z.number().int().min(2).max(100).optional(),
   title: z.string().min(1).optional(),
   gameType: z.enum(GAME_TYPES).optional().default("ROULETTE"),
-  botWaitMs: z.number().int().min(0).optional().default(0), // 👈 Added
+  botWaitMs: z.number().int().min(0).optional().default(0),
+  durationSeconds: z.number().int().min(10).optional().default(40), // Configurable duration
 });
+
 
 // GET /api/rooms?state=&gameType=&take=
 export async function GET(req: Request) {
@@ -123,7 +125,8 @@ export async function POST(req: Request) {
         gameType: body.gameType,
         currentServerSeed: serverSeed,
         currentServerHash: serverHash,
-        botWaitMs: body.botWaitMs, // 👈 Added
+        botWaitMs: body.botWaitMs,
+        durationSeconds: body.durationSeconds,
       },
       include: { _count: { select: { entries: true } } },
     });

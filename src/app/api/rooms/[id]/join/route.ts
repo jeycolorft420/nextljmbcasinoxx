@@ -186,8 +186,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           newAutoLockAt = new Date(Date.now() + seconds * 1000);
           shouldUpdateRoom = true;
         } else if (room.gameType === "ROULETTE") {
-          // 40 seconds for Roulette since first player joins
-          newAutoLockAt = new Date(Date.now() + 40 * 1000);
+          // Dynamic Timer based on Room Configuration
+          const seconds = (room as any).durationSeconds ?? 40;
+          newAutoLockAt = new Date(Date.now() + seconds * 1000);
           shouldUpdateRoom = true;
         }
       }

@@ -143,6 +143,7 @@ model Room {
 
   // 🤖 Natural Bot Logic
   botWaitMs     Int      @default(0) // 0 = Instant fill at end. >0 = Progressive fill interval.
+  durationSeconds Int    @default(40) // Configurable Game Duration (Seconds)
 
   deletedAt DateTime?
 
