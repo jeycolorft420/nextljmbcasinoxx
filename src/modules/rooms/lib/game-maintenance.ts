@@ -155,19 +155,21 @@ export async function checkAndMaintenanceRoom(room: any) {
                 const sum1 = r1[0] + r1[1];
                 const sum2 = r2[0] + r2[1];
 
-                // Damage: Scale based (Price/40) + Diff (Min 1 cent damage)
-                const scale = Math.max(1, Math.floor(freshRoom.priceCents / 40));
-                let damage = 0;
+                // Damage: Fixed 20% of room price per round
+                let damage = Math.max(1, Math.floor(freshRoom.priceCents * 0.20));
                 let roundWinner = null;
 
                 if (sum1 > sum2) {
-                    damage = (sum1 - sum2) * scale;
+                    // P1 Wins
                     balances[p2.userId] -= damage;
                     roundWinner = p1.userId;
                 } else if (sum2 > sum1) {
-                    damage = (sum2 - sum1) * scale;
+                    // P2 Wins
                     balances[p1.userId] -= damage;
                     roundWinner = p2.userId;
+                } else {
+                    // Tie - No damage
+                    damage = 0;
                 }
 
                 // Push History
