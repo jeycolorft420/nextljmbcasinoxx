@@ -162,10 +162,12 @@ export async function checkAndMaintenanceRoom(room: any) {
                 if (sum1 > sum2) {
                     // P1 Wins
                     balances[p2.userId] -= damage;
+                    balances[p1.userId] += damage; // Transfer: Zero-Sum Game
                     roundWinner = p1.userId;
                 } else if (sum2 > sum1) {
                     // P2 Wins
                     balances[p1.userId] -= damage;
+                    balances[p2.userId] += damage; // Transfer: Zero-Sum Game
                     roundWinner = p2.userId;
                 } else {
                     // Tie - No damage
