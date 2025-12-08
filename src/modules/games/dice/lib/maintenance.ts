@@ -78,19 +78,23 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
 
         // 🕒 Check Bot Delay
         const roundStartedAt = (meta.roundStartedAt as number) || 0;
-        const canBotAct = Date.now() >= roundStartedAt + 2000; // 2 seconds
+        const now = Date.now();
+        const canBotAct = now >= roundStartedAt + 2000; // 2 seconds
 
         // 1. EXECUTE BOT ROLLS
+        // Force roll if it's bot's turn and time has passed.
         if (!p1Rolled && p1IsBot && canBotAct) {
             rolls[p1.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
             p1Rolled = true;
             changesMade = true;
+            console.log(`[DiceDuel] 🎲 Bot P1 Force Roll: ${rolls[p1.userId]}`);
         }
 
         if (!p2Rolled && p2IsBot && canBotAct) {
             rolls[p2.userId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
             p2Rolled = true;
             changesMade = true;
+            console.log(`[DiceDuel] 🎲 Bot P2 Force Roll: ${rolls[p2.userId]}`);
         }
 
         // 2. RESOLVE ROUND (If both rolled)

@@ -38,8 +38,39 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
             if (!meEntry || !opponentEntry) throw new Error("Invalid players");
 
-            // Logic: Apply damage to ME, credit Opponent.
+            // CHECK: Is it actually my turn? OR is opponent taking too long?
+            // Actually, client timer handles "when" to call this.
+            // Server should verify that:
+            // 1. I have NOT rolled yet (actually I could have rolled and be waiting for them?)
+            // 2. Opponent has NOT rolled.
+            // If I already rolled, and they haven't, I win by timeout.
+            // If I haven't rolled, and they haven't needed to (e.g. they are waiting for me), then I forfeit?
+            // "Timeout" usually means "I ran out of time" -> I lose. 
+            // OR "Opponent ran out of time" -> I win.
+
+            // The client calls `handleTimeout` when `timeLeft` hits 0.
+            // `dice_timer` matches specific round and user.
+            // So if *I* timed out, I forfeit.
+            // We need to support "Claim Win" if opponent timed out too?
+            // For now, let's assume this endpoint is called when "I" time out (automatic forfeiture).
+
+            // BUT, if the bot gets stuck, the USER needs to be able to "Claim Win" or the system needs to auto-forfeit the bot.
+            // The `maintenance.ts` handles the bot logic. 
+            // This `timeout` route seems to be "I timed out, so I lose".
+
+            // Confirmed with code analysis:
+            // `history.push({ ... winnerEntryId: opponentEntry.id ... })` -> Opponent wins. 
+            // So this IS a "I Give Up / I Lost" endpoint.
+
+            // PROBLEM: User said "Bugged and doesn't let real user throw, causing them to lose by time".
+            // So the user sees "Your Turn", tries to throw, but maybe can't? Or bot doesn't throw, so user waits, then user timer runs out?
+            // If it's P2 bot, P1 rolls, then waits for P2. P1 timer shouldn't run if it's P2 turn.
+
             const meta = (room.gameMeta as any) || {};
+            const rolls = meta.rolls || {};
+
+            // Validation: Don't allow timeout if round already ended or invalid state
+            if (room.state === "FINISHED" as any) return { success: true }; // Harmless idempotency
 
             // Initialize balances if missing
             if (!meta.balances) {
@@ -127,7 +158,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
                 userId: (result as any).winnerUserId,
                 amountCents: (result as any).prize,
                 reason: `Victoria en Dice Duel`,
-                kind: "WIN",
+                kind: "WIN_CREDIT",
                 meta: { roomId: id }
             });
         }
