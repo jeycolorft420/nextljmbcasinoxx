@@ -16,6 +16,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const userId = (session.user as any).id;
 
         const { id } = paramSchema.parse(await ctx.params);
+        const body = await req.json().catch(() => ({}));
+        const { round } = body; // Expect round number from client
 
         // Lock room
         const result = await prisma.$transaction(async (tx) => {
@@ -32,6 +34,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
             // Ensure 2 players
             if (room.entries.length < 2) throw new Error("Waiting for players");
+
+            // VALIDATE ROUND (Prevent Lagging Client Timeouts)
+            if (round && round !== (room.currentRound ?? 1)) {
+                return { success: false, ignored: true }; // Ignore old timeouts
+            }
 
             const meEntry = room.entries.find(e => e.userId === userId);
             const opponentEntry = room.entries.find(e => e.userId !== userId);

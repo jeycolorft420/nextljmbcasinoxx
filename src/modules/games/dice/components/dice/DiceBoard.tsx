@@ -296,7 +296,11 @@ export default function DiceBoard({
     setRolling(true);
     setRolledThisRound(true);
     try {
-      const res = await fetch(`/api/rooms/${room.id}/timeout`, { method: "POST" });
+      const res = await fetch(`/api/rooms/${room.id}/timeout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round: room.currentRound ?? 1 })
+      });
       if (!res.ok) {
         console.error("Timeout API failed");
       }
@@ -369,23 +373,10 @@ export default function DiceBoard({
 
   useEffect(() => {
     if (myTurn && !rolledThisRound && !rolling) {
-      // 1. Check localStorage for existing start time
-      const storageKey = `dice_timer_${room.id}_${room.currentRound}_${meEntry?.id}`;
-      const storedStart = localStorage.getItem(storageKey);
-      let startTime = Date.now();
+      // RESET TIMER ON TURN START (No Persistence to avoid loops)
+      setTimeLeft(30);
 
-      if (storedStart) {
-        startTime = parseInt(storedStart, 10);
-      } else {
-        localStorage.setItem(storageKey, startTime.toString());
-      }
-
-      // 2. Calculate remaining time
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const remaining = Math.max(0, 30 - elapsed);
-      setTimeLeft(remaining);
-
-      // 3. Start interval
+      // Start interval
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -400,16 +391,11 @@ export default function DiceBoard({
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
       setTimeLeft(30);
-      // Clear storage if turn ended
-      if (!myTurn && meEntry?.id) {
-        const storageKey = `dice_timer_${room.id}_${room.currentRound}_${meEntry.id}`;
-        localStorage.removeItem(storageKey);
-      }
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [myTurn, rolledThisRound, rolling, room.currentRound, room.id, meEntry?.id]);
+  }, [myTurn, rolledThisRound, rolling, room.currentRound]); // Reset on round change implicitly via myTurn toggle? No, rely on room.currentRound dependency.
 
   // Auto-Leave Timer (30s)
   useEffect(() => {
