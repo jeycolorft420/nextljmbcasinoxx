@@ -59,7 +59,6 @@ export default function RoomPage() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [reloadHistoryKey, setReloadHistoryKey] = useState(0);
   const pendingRef = useRef(false);
 
