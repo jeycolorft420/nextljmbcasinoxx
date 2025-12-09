@@ -259,13 +259,18 @@ export default function RoomPage() {
     load().then(d => { if (d) handleRoomUpdate(d); });
     // Polling Speed: 1.5s for High Paced Dice Duel, 5s for Roulette
     const pollTime = room?.gameType === "DICE_DUEL" ? 1500 : 5000;
+    const pendingRef = useRef(false);
 
     const interval = setInterval(() => {
       if (document.visibilityState === "hidden") return;
+      if (pendingRef.current) return; // Skip if busy
+
+      pendingRef.current = true;
       fetch(`/api/rooms/${id}`, { cache: "no-store" })
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data) handleRoomUpdate(data); })
-        .catch(e => console.error("Polling error", e));
+        .catch(e => console.error("Polling error", e))
+        .finally(() => { pendingRef.current = false; });
     }, pollTime);
     return () => clearInterval(interval);
   }, [id, room?.gameType]);
