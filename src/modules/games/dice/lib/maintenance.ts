@@ -204,22 +204,30 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
 
             } else {
                 // 🔄 NEXT ROUND
-                await prisma.room.update({
-                    where: { id: roomId },
-                    data: {
-                        state: "OPEN", // Force OPEN state
-                        currentRound: { increment: 1 },
-                        gameMeta: {
-                            ...meta,
-                            balances,
-                            history: newHistory,
-                            rolls: {}, // Reset rolls
-                            lastDice,
-                            nextStarterUserId: roundWinner || meta.nextStarterUserId, // Winner starts, or keep previous if tie
-                            roundStartedAt: Date.now() // Reset Delay Timer
-                        } as any
-                    }
-                });
+                const nextRound = (freshRoom.currentRound ?? 1) + 1;
+
+                await prisma.$transaction([
+                    prisma.room.update({
+                        where: { id: roomId },
+                        data: {
+                            state: "OPEN", // Force OPEN state
+                            currentRound: nextRound,
+                            gameMeta: {
+                                ...meta,
+                                balances,
+                                history: newHistory,
+                                rolls: {}, // Reset rolls
+                                lastDice,
+                                nextStarterUserId: roundWinner || meta.nextStarterUserId, // Winner starts, or keep previous if tie
+                                roundStartedAt: Date.now() // Reset Delay Timer
+                            } as any
+                        }
+                    }),
+                    prisma.entry.updateMany({
+                        where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
+                        data: { round: nextRound }
+                    })
+                ]);
                 await emitRoomUpdate(roomId);
                 return freshRoom;
             }
