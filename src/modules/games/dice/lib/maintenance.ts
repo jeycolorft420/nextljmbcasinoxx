@@ -33,21 +33,23 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             const lastHistory = meta.history?.[meta.history.length - 1];
             const nextStarter = lastHistory?.winnerUserId || meta.nextStarterUserId;
 
-            await prisma.$transaction([
+            // Perform Transaction
+            const [updatedRoom] = await prisma.$transaction([
                 prisma.room.update({
                     where: { id: roomId },
                     data: {
-                        state: "OPEN", // Ensure OPEN
+                        state: "OPEN",
                         currentRound: nextRound,
                         gameMeta: {
                             ...meta,
-                            rolls: {}, // RESET ROLLS NOW
-                            lastDice: meta.rolls, // Optional: Keep for ghost trail if needed, but main rolls cleared
-                            roundResolvingUntil: 0, // CLEAR LOCK
+                            rolls: {}, // RESET ROLLS
+                            lastDice: meta.rolls,
+                            roundResolvingUntil: 0,
                             nextStarterUserId: nextStarter,
                             roundStartedAt: Date.now() // Reset Bot Clock
                         } as any
-                    }
+                    },
+                    include: { entries: true } // Return entries to ensure we have latest
                 }),
                 prisma.entry.updateMany({
                     where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
@@ -55,7 +57,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                 })
             ]);
             await emitRoomUpdate(roomId);
-            return freshRoom;
+            return updatedRoom;
         }
     }
 
@@ -67,7 +69,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
 
         let botUser = await prisma.user.findFirst({
             where: { isBot: true },
-            orderBy: { createdAt: 'desc' } // Just pick one
+            orderBy: { createdAt: 'desc' }
         });
 
         if (botUser) {
@@ -90,10 +92,11 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                     gameMeta: {
                         ...meta,
                         balances,
-                        roundStartedAt: Date.now(), // 🕒 Start the 2s Delay Clock
+                        roundStartedAt: Date.now(),
                         autoPlay: false
                     } as any
-                }
+                },
+                include: { entries: true }
             });
             await emitRoomUpdate(roomId);
             return updated;
@@ -134,20 +137,19 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
         if (nextToRollId) {
             const isBotTurn = (nextToRollId === p1.userId && p1IsBot) || (nextToRollId === p2.userId && p2IsBot);
 
-            // DEBUG LOGS
-            // console.log(`[DiceDebug] RoundStart: ${roundStartedAt}, Now: ${now}, CanAct: ${canBotAct}, P1Bot: ${p1IsBot}, P2Bot: ${p2IsBot}, Next: ${nextToRollId}, IsBotTurn: ${isBotTurn}`);
-
             // RELAXED BOT TIMING/CHECK
-            // If rounds matches, use standard 2s delay.
-            // If room seems "stuck" (last update > 5s ago), force roll.
-            const isStuck = (now - roundStartedAt) > 5000;
+            // Only consider "stuck" if roundStartedAt is actually set (>0)
+            const isStuck = roundStartedAt > 0 && (now - roundStartedAt) > 5000;
 
             if (isBotTurn && (canBotAct || isStuck)) {
+                // Ensure we don't roll too fast if round just started (sanity check)
+                // But canBotAct covers that (2s delay).
+
                 rolls[nextToRollId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
                 if (nextToRollId === p1.userId) p1Rolled = true;
                 if (nextToRollId === p2.userId) p2Rolled = true;
                 changesMade = true;
-                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Forced Roll (Dynamic Order) - Stuck: ${isStuck}`);
+                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Rolled.`);
             }
         }
 
@@ -204,9 +206,9 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                 const winnerUserId = winnerEntry.userId;
                 const prizeCents = freshRoom.priceCents * 2; // Winner takes all
 
-                await prisma.$transaction(async (tx) => {
+                const updatedRoom = await prisma.$transaction(async (tx) => {
                     // Update Room
-                    await tx.room.update({
+                    const r = await tx.room.update({
                         where: { id: roomId },
                         data: {
                             state: "FINISHED",
@@ -220,7 +222,8 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                                 rolls,
                                 ended: true
                             } as any
-                        }
+                        },
+                        include: { entries: true }
                     });
 
                     // Update Wallet
@@ -239,15 +242,17 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             meta: { roomId }
                         }
                     });
+
+                    return r;
                 });
 
                 await emitRoomUpdate(roomId);
                 await emitRoomsIndex();
-                return { ...freshRoom, state: "FINISHED" };
+                return updatedRoom;
 
             } else {
                 // ⏸️ NEW DELAY LOGIC: Set Timer, DO NOT clear rolls yet.
-                await prisma.room.update({
+                const delayRoom = await prisma.room.update({
                     where: { id: roomId },
                     data: {
                         gameMeta: {
@@ -259,21 +264,23 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             // Next Starter handled in resolution
                             roundResolvingUntil: Date.now() + 4000 // 4 Seconds Delay
                         } as any
-                    }
+                    },
+                    include: { entries: true }
                 });
                 console.log(`[DiceDuel] Round ${freshRoom.currentRound} Resolved. Entering Wait Phase (4s).`);
                 await emitRoomUpdate(roomId);
-                return freshRoom;
+                return delayRoom;
             }
 
         } else if (changesMade) {
             // Save Partial State (e.g. one person rolled)
-            await prisma.room.update({
+            const partialRoom = await prisma.room.update({
                 where: { id: roomId },
-                data: { gameMeta: { ...meta, rolls } as any }
+                data: { gameMeta: { ...meta, rolls } as any },
+                include: { entries: true }
             });
             await emitRoomUpdate(roomId);
-            return freshRoom;
+            return partialRoom;
         }
     }
 

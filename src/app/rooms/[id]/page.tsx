@@ -457,8 +457,28 @@ export default function RoomPage() {
   };
   const handleRejoin = async () => {
     if (!id) return;
+
+    // If room is finished, we must reset it first
+    if (room?.state === "FINISHED") {
+      try {
+        await fetch(`/api/rooms/${id}/reset`, { method: "POST" });
+        // Wait a bit for reset to propagate? handled by optimistic join?
+      } catch (e) {
+        toast.error("Error al reiniciar la sala");
+        return;
+      }
+    }
+
     await fetch(`/api/rooms/${id}/leave`, { method: "POST" }).catch(() => { });
-    await fetch(`/api/rooms/${id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: 1 }), }).catch(() => { });
+
+    // Join with quantity 1 (assume 1v1 or user preference? usually 1v1 implies 1 seat)
+    await fetch(`/api/rooms/${id}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity: 1 }),
+    }).catch(() => {
+      toast.error("Error al entrar");
+    });
   };
 
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
