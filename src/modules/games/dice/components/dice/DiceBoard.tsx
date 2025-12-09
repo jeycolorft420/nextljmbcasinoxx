@@ -258,23 +258,22 @@ export default function DiceBoard({
     statusText = "Juego Terminado";
   } else if (!topEntry || !bottomEntry) {
     statusText = "Esperando jugadores...";
-  } else if (isResolving) {
-    statusText = "Ronda Finalizada - Preparando siguiente...";
-    // Ensure we don't allow rolling during resolution
+  } else if (isResolving || winnerDisplay) {
+    // 🔒 STABLE STATE: During resolution or winner toast, show consistent message
+    statusText = "Ronda Finalizada";
     myTurn = false;
   } else if (!currentTurnUserId) {
-    statusText = "Calculando ganador...";
+    statusText = "Preparando ronda...";
   } else {
     // We have a defined turn
     const isMyTurn = meEntry?.user.id === currentTurnUserId;
     myTurn = isMyTurn;
 
     const turnName = room.entries?.find(e => e.user.id === currentTurnUserId)?.user.name;
-    const waitingName = turnName || "Oponente";
+    const waitingName = turnName ? turnName.split(' ')[0] : "Oponente";
 
-    // Debug info for user feedback
-    const debugInfo = `(R${room.currentRound} | St:${starterId ? starterId.slice(-4) : "?"} | Cur:${currentTurnUserId ? currentTurnUserId.slice(-4) : "?"})`;
-    statusText = myTurn ? "Tu Turno" : `Esperando a ${waitingName} ${debugInfo}`;
+    // Debug info removed for cleanliness, user requested clarity
+    statusText = myTurn ? "¡TU TURNO!" : `Esperando a ${waitingName}...`;
   }
 
   const [rolling, setRolling] = useState(false);

@@ -94,10 +94,10 @@ function DiceBox({
 
       {/* Dice Container */}
       <div className="relative py-2 md:py-4">
-        {isGhost && !pair && (
+        {isGhost && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-            <span className="bg-black/80 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold text-white/60 backdrop-blur-md uppercase tracking-widest border border-white/10 shadow-xl">
-              Esperando...
+            <span className="bg-black/60 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[9px] md:text-[10px] font-bold text-white/80 backdrop-blur-md uppercase tracking-widest border border-white/10 shadow-xl">
+              {pair ? "Ronda Anterior" : "Esperando..."}
             </span>
           </div>
         )}

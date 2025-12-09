@@ -725,7 +725,7 @@ export default function RoomPage() {
 
       {/* Mobile Seat Popup */}
       <div className="lg:hidden">
-        {room.state === "OPEN" &&
+        {!joining && room.state === "OPEN" &&
           (Math.max(0, room.capacity - (room.entries?.length ?? 0)) > 0) &&
           (room.gameType !== "DICE_DUEL" || !room.entries?.find(e => e.user.email === email)) && (
             <>

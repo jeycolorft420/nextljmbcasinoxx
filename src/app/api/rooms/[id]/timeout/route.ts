@@ -127,6 +127,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             } else {
                 // Continue
                 meta.rolls = {}; // Clear rolls
+                meta.nextStarterUserId = opponentEntry.userId; // Winner starts next round
                 meta.message = `${meEntry.user.name} perdió la ronda por tiempo.`;
                 finalState = "LOCKED";
             }
