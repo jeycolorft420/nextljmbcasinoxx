@@ -172,14 +172,17 @@ export default function DiceBoard({
         name: winnerName,
         amount: fmtUSD(damage)
       });
-
-      // Clear after 3s
-      const t = setTimeout(() => setWinnerDisplay(null), 3000);
-      lastHistoryLen.current = currentLen;
-      return () => clearTimeout(t);
     }
     lastHistoryLen.current = currentLen;
   }, [room.gameMeta?.history]);
+
+  // Auto-clear winner display
+  useEffect(() => {
+    if (winnerDisplay) {
+      const t = setTimeout(() => setWinnerDisplay(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [winnerDisplay]);
 
   // Helper to compare rolls
   const isDiff = (a: [number, number] | null, b: [number, number] | null) => {
