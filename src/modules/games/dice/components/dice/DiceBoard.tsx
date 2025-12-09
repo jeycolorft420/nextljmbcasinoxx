@@ -145,6 +145,7 @@ export default function DiceBoard({
   // Winner Display State (3s)
   const [winnerDisplay, setWinnerDisplay] = useState<{ name: string; amount: string } | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [localResolving, setLocalResolving] = useState(false); // 🔒 Local override to prevent flickering
 
   useEffect(() => {
     if (room.state === "FINISHED") {
@@ -161,6 +162,9 @@ export default function DiceBoard({
     const currentLen = room.gameMeta?.history?.length || 0;
     if (currentLen > lastHistoryLen.current) {
       // New Round Finished!
+      setLocalResolving(true);
+      const tLock = setTimeout(() => setLocalResolving(false), 4500); // 🔒 Force 4.5s waiting period
+
       // ⏳ DELAY: Wait for dice animation (approx 800ms) + buffer
       const timer = setTimeout(() => {
         const lastRound = room.gameMeta.history[currentLen - 1];
@@ -174,7 +178,7 @@ export default function DiceBoard({
           amount: fmtUSD(damage)
         });
       }, 1200);
-      return () => clearTimeout(timer);
+      return () => { clearTimeout(timer); clearTimeout(tLock); };
     }
     lastHistoryLen.current = currentLen;
   }, [room.gameMeta?.history]);
@@ -252,7 +256,8 @@ export default function DiceBoard({
 
   // Resolving Phase Check
   const resolvingUntil = (room.gameMeta?.roundResolvingUntil as number) || 0;
-  const isResolving = resolvingUntil > Date.now();
+  const isServerResolving = resolvingUntil > Date.now();
+  const isResolving = isServerResolving || localResolving;
 
   if (room.state === "FINISHED") {
     statusText = "Juego Terminado";
