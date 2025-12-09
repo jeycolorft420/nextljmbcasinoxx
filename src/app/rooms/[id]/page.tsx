@@ -257,15 +257,18 @@ export default function RoomPage() {
   // Polling
   useEffect(() => {
     load().then(d => { if (d) handleRoomUpdate(d); });
+    // Polling Speed: 1.5s for High Paced Dice Duel, 5s for Roulette
+    const pollTime = room?.gameType === "DICE_DUEL" ? 1500 : 5000;
+
     const interval = setInterval(() => {
       if (document.visibilityState === "hidden") return;
       fetch(`/api/rooms/${id}`, { cache: "no-store" })
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data) handleRoomUpdate(data); })
         .catch(e => console.error("Polling error", e));
-    }, 5000);
+    }, pollTime);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, room?.gameType]);
 
   // Watchdog reset time & Start Timer
   useEffect(() => {
@@ -544,7 +547,10 @@ export default function RoomPage() {
         {/* Info Bar */}
         <div className="flex justify-between px-6 py-2 text-xs font-mono opacity-60">
           <span>R#{room.currentRound ?? 1}</span>
-          <span className={stateBadgeClass(room.state)}>{room.state}</span>
+          <div className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-full ${room ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+            <span className={stateBadgeClass(room.state)}>{room.state}</span>
+          </div>
         </div>
 
         {/* Board Container - Centered */}
