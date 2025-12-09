@@ -59,7 +59,9 @@ export default function RoomPage() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [reloadHistoryKey, setReloadHistoryKey] = useState(0);
+  const pendingRef = useRef(false);
 
   // compra múltiple
   const [qty, setQty] = useState(1);
@@ -259,7 +261,6 @@ export default function RoomPage() {
     load().then(d => { if (d) handleRoomUpdate(d); });
     // Polling Speed: 1.5s for High Paced Dice Duel, 5s for Roulette
     const pollTime = room?.gameType === "DICE_DUEL" ? 1500 : 5000;
-    const pendingRef = useRef(false);
 
     const interval = setInterval(() => {
       if (document.visibilityState === "hidden") return;
