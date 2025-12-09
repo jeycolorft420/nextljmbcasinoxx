@@ -161,17 +161,20 @@ export default function DiceBoard({
     const currentLen = room.gameMeta?.history?.length || 0;
     if (currentLen > lastHistoryLen.current) {
       // New Round Finished!
-      const lastRound = room.gameMeta.history[currentLen - 1];
-      const winnerName =
-        room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador";
+      // ⏳ DELAY: Wait for dice animation (approx 800ms) + buffer
+      const timer = setTimeout(() => {
+        const lastRound = room.gameMeta.history[currentLen - 1];
+        const winnerName =
+          room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador";
 
-      // Calculate amount won (from history)
-      const damage = lastRound.damage ?? 0;
+        const damage = lastRound.damage ?? 0;
 
-      setWinnerDisplay({
-        name: winnerName,
-        amount: fmtUSD(damage)
-      });
+        setWinnerDisplay({
+          name: winnerName,
+          amount: fmtUSD(damage)
+        });
+      }, 1200);
+      return () => clearTimeout(timer);
     }
     lastHistoryLen.current = currentLen;
   }, [room.gameMeta?.history]);

@@ -226,8 +226,14 @@ export default function RoomPage() {
   // 🛡️ Logic centralizada
   const handleRoomUpdate = (payload: Room) => {
     setRoom((prev) => {
-      if (prev && (prev.currentRound !== payload.currentRound || (prev.state !== "FINISHED" && payload.state === "FINISHED"))) {
-        setReloadHistoryKey(n => n + 1);
+      if (prev) {
+        const historyChanged = (prev.gameMeta?.history?.length ?? 0) !== (payload.gameMeta?.history?.length ?? 0);
+        const roundChanged = prev.currentRound !== payload.currentRound;
+        const finishedNow = prev.state !== "FINISHED" && payload.state === "FINISHED";
+
+        if (historyChanged || roundChanged || finishedNow) {
+          setReloadHistoryKey(n => n + 1);
+        }
       }
       if (JSON.stringify(prev) === JSON.stringify(payload)) return prev;
       return payload;
