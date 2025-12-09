@@ -15,6 +15,50 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
     // Init P1 balance if missing
     if (p1 && !balances[p1.userId]) balances[p1.userId] = freshRoom.priceCents;
 
+    // 🕒 CHECK FOR RESOLVING PHASE (State: "RESOLVING")
+    const resolvingUntil = (meta.roundResolvingUntil as number) || 0;
+    const now = Date.now();
+
+    if (resolvingUntil > 0) {
+        if (now < resolvingUntil) {
+            // ⏳ Still Resolving - Do Nothing (Wait for visual delay)
+            return freshRoom;
+        } else {
+            // ⏩ RESOLUTION FINISHED -> START NEXT ROUND
+            const nextRound = (freshRoom.currentRound ?? 1) + 1;
+            console.log(`[DiceDuel] Round ${freshRoom.currentRound} Resolved. Starting Round ${nextRound}`);
+
+            // Determine starter based on last winner (stored in meta or calculate?)
+            // We can infer next starter from the history's last entry
+            const lastHistory = meta.history?.[meta.history.length - 1];
+            const nextStarter = lastHistory?.winnerUserId || meta.nextStarterUserId;
+
+            await prisma.$transaction([
+                prisma.room.update({
+                    where: { id: roomId },
+                    data: {
+                        state: "OPEN", // Ensure OPEN
+                        currentRound: nextRound,
+                        gameMeta: {
+                            ...meta,
+                            rolls: {}, // RESET ROLLS NOW
+                            lastDice: meta.rolls, // Optional: Keep for ghost trail if needed, but main rolls cleared
+                            roundResolvingUntil: 0, // CLEAR LOCK
+                            nextStarterUserId: nextStarter,
+                            roundStartedAt: Date.now() // Reset Bot Clock
+                        } as any
+                    }
+                }),
+                prisma.entry.updateMany({
+                    where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
+                    data: { round: nextRound }
+                })
+            ]);
+            await emitRoomUpdate(roomId);
+            return freshRoom;
+        }
+    }
+
     /* -------------------------------------------------------------------------- */
     /*                         SCENARIO A: ADD BOT (TIMEOUT)                      */
     /* -------------------------------------------------------------------------- */
@@ -75,7 +119,6 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
 
         // 🕒 Check Bot Delay
         const roundStartedAt = (meta.roundStartedAt as number) || 0;
-        const now = Date.now();
         const canBotAct = now >= roundStartedAt + 2000; // 2 seconds
 
         // 1. EXECUTE BOT ROLLS (Dynamic Turn Order)
@@ -92,7 +135,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             const isBotTurn = (nextToRollId === p1.userId && p1IsBot) || (nextToRollId === p2.userId && p2IsBot);
 
             // DEBUG LOGS
-            console.log(`[DiceDebug] RoundStart: ${roundStartedAt}, Now: ${now}, CanAct: ${canBotAct}, P1Bot: ${p1IsBot}, P2Bot: ${p2IsBot}, Next: ${nextToRollId}, IsBotTurn: ${isBotTurn}`);
+            // console.log(`[DiceDebug] RoundStart: ${roundStartedAt}, Now: ${now}, CanAct: ${canBotAct}, P1Bot: ${p1IsBot}, P2Bot: ${p2IsBot}, Next: ${nextToRollId}, IsBotTurn: ${isBotTurn}`);
 
             // RELAXED BOT TIMING/CHECK
             // If rounds matches, use standard 2s delay.
@@ -203,31 +246,22 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                 return { ...freshRoom, state: "FINISHED" };
 
             } else {
-                // 🔄 NEXT ROUND
-                const nextRound = (freshRoom.currentRound ?? 1) + 1;
-
-                await prisma.$transaction([
-                    prisma.room.update({
-                        where: { id: roomId },
-                        data: {
-                            state: "OPEN", // Force OPEN state
-                            currentRound: nextRound,
-                            gameMeta: {
-                                ...meta,
-                                balances,
-                                history: newHistory,
-                                rolls: {}, // Reset rolls
-                                lastDice,
-                                nextStarterUserId: roundWinner || meta.nextStarterUserId, // Winner starts, or keep previous if tie
-                                roundStartedAt: Date.now() // Reset Delay Timer
-                            } as any
-                        }
-                    }),
-                    prisma.entry.updateMany({
-                        where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
-                        data: { round: nextRound }
-                    })
-                ]);
+                // ⏸️ NEW DELAY LOGIC: Set Timer, DO NOT clear rolls yet.
+                await prisma.room.update({
+                    where: { id: roomId },
+                    data: {
+                        gameMeta: {
+                            ...meta,
+                            balances,
+                            history: newHistory,
+                            rolls, // Keep rolls for visualization
+                            lastDice,
+                            // Next Starter handled in resolution
+                            roundResolvingUntil: Date.now() + 4000 // 4 Seconds Delay
+                        } as any
+                    }
+                });
+                console.log(`[DiceDuel] Round ${freshRoom.currentRound} Resolved. Entering Wait Phase (4s).`);
                 await emitRoomUpdate(roomId);
                 return freshRoom;
             }

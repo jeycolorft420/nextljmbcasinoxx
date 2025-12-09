@@ -247,10 +247,18 @@ export default function DiceBoard({
   let myTurn = false;
   let statusText = "";
 
+  // Resolving Phase Check
+  const resolvingUntil = (room.gameMeta?.roundResolvingUntil as number) || 0;
+  const isResolving = resolvingUntil > Date.now();
+
   if (room.state === "FINISHED") {
     statusText = "Juego Terminado";
   } else if (!topEntry || !bottomEntry) {
     statusText = "Esperando jugadores...";
+  } else if (isResolving) {
+    statusText = "Ronda Finalizada - Preparando siguiente...";
+    // Ensure we don't allow rolling during resolution
+    myTurn = false;
   } else if (!currentTurnUserId) {
     statusText = "Calculando ganador...";
   } else {
