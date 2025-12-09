@@ -189,12 +189,16 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             }
 
             // History Log
+            const roundDice = { top: r1, bottom: r2 };
+            console.log(`[DiceDuel] 📜 Adding History: Round ${freshRoom.currentRound}, Dice:`, roundDice);
+
             const historyEntry = {
                 rolls: { [p1.userId]: r1, [p2.userId]: r2 },
+                dice: roundDice, // 👈 ADDED for RoomHistoryList compatibility
                 winnerUserId: roundWinner,
                 damage,
                 timestamp: Date.now(),
-                round: (meta.history?.length || 0) + 1,
+                round: freshRoom.currentRound ?? (meta.history?.length || 0) + 1,
                 balancesAfter: { ...balances },
                 winnerEntryId: roundWinner === p1.userId ? p1.id : (roundWinner === p2.userId ? p2.id : null)
             };
