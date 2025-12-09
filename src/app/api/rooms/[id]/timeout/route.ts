@@ -11,6 +11,8 @@ const paramSchema = z.object({ id: z.string().min(1) });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
     try {
+        const p = await ctx.params;
+        console.log(`[TimeoutRoute] POST request for room ${p.id}`);
         const session = await getServerSession(authOptions);
         if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         const userId = (session.user as any).id;
@@ -130,17 +132,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             }
 
             // Update DB
+            // Update DB
             const updated = await tx.room.update({
                 where: { id },
                 data: {
-                    data: {
-                        state: finalState === "FINISHED" ? "FINISHED" : "OPEN", // Ensure OPEN if continuing
-                        gameMeta: meta,
-                        winningEntryId: finalWinnerEntryId,
-                        prizeCents: finalPrize,
-                        finishedAt: finalState === "FINISHED" ? new Date() : null,
-                        currentRound: { increment: 1 }
-                    }
+                    state: finalState === "FINISHED" ? "FINISHED" : "OPEN", // Ensure OPEN if continuing
+                    gameMeta: meta,
+                    winningEntryId: finalWinnerEntryId,
+                    prizeCents: finalPrize,
+                    finishedAt: finalState === "FINISHED" ? new Date() : null,
+                    currentRound: { increment: 1 }
                 }
             });
 

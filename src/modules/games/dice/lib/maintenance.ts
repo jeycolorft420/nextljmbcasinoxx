@@ -19,14 +19,17 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
     const resolvingUntil = (meta.roundResolvingUntil as number) || 0;
     const now = Date.now();
 
+    // 🔍 LOGS: ENTRY
+    console.log(`[DiceDuel] Maintenance Tick | Room: ${roomId} | Round: ${freshRoom.currentRound} | State: ${freshRoom.state} | ResolvingUntil: ${resolvingUntil} | Now: ${now}`);
+
     if (resolvingUntil > 0) {
         if (now < resolvingUntil) {
-            // ⏳ Still Resolving - Do Nothing (Wait for visual delay)
+            // ⏳ Still Resolving
             return freshRoom;
         } else {
             // ⏩ RESOLUTION FINISHED -> START NEXT ROUND
             const nextRound = (freshRoom.currentRound ?? 1) + 1;
-            console.log(`[DiceDuel] Round ${freshRoom.currentRound} Resolved. Starting Round ${nextRound}`);
+            console.log(`[DiceDuel] ⏩ Round ${freshRoom.currentRound} Resolved. Transitioning to Round ${nextRound}`);
 
             // Determine starter based on last winner (stored in meta or calculate?)
             // We can infer next starter from the history's last entry
@@ -155,6 +158,15 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
 
         // 2. RESOLVE ROUND (If both rolled)
         if (p1Rolled && p2Rolled) {
+            // 🛡️ CRITICAL GUARD: Prevent duplicate resolution
+            const alreadyResolved = meta.history?.some((h: any) => h.round === freshRoom.currentRound);
+            if (alreadyResolved) {
+                console.warn(`[DiceDuel] ⚠️ Race Condition Guard: Round ${freshRoom.currentRound} already in history. Skipping.`);
+                return freshRoom;
+            }
+
+            console.log(`[DiceDuel] ⚔️ Resolving Round ${freshRoom.currentRound}...`);
+
             const r1 = rolls[p1.userId];
             const r2 = rolls[p2.userId];
             const sum1 = r1[0] + r1[1];
