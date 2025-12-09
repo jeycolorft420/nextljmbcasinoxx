@@ -246,219 +246,238 @@ export default function DiceBoard({
 
   if (room.state === "FINISHED") {
     statusText = "Juego Terminado";
+  } else if (!topEntry || !bottomEntry) {
+    statusText = "Esperando jugadores...";
+  } else if (!currentTurnUserId) {
+    statusText = "Calculando ganador...";
+  } else {
+    // We have a defined turn
+    const isMyTurn = meEntry?.user.id === currentTurnUserId;
+    myTurn = isMyTurn;
 
-    // Reset rolled state on new round
-    useEffect(() => {
-      setRolledThisRound(false);
-    }, [room.currentRound]);
+    const turnName = room.entries?.find(e => e.user.id === currentTurnUserId)?.user.name;
+    const waitingName = turnName || "Oponente";
 
-    const handleRoll = async () => {
-      if (rolling || rolledThisRound) return;
-      setRolling(true);
-      setRolledThisRound(true);
-      try {
-        const res = await fetch(`/api/rooms/${room.id}/roll`, { method: "POST" });
-        if (!res.ok) {
-          const d = await res.json();
-          toast.error(d.error || "Error al tirar");
-          setRolledThisRound(false);
-        }
-      } catch (e) {
-        toast.error("Error de conexión");
-        setRolledThisRound(false);
-      } finally {
-        setRolling(false);
-      }
-    };
-
-    const handleTimeout = async () => {
-      if (rolling || rolledThisRound) return;
-      setRolling(true);
-      setRolledThisRound(true);
-      try {
-        const res = await fetch(`/api/rooms/${room.id}/timeout`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ round: room.currentRound ?? 1 })
-        });
-        if (!res.ok) {
-          console.error("Timeout API failed");
-        }
-      } catch (e) {
-        console.error("Timeout error", e);
-      } finally {
-        setRolling(false);
-      }
-    };
-
-    // Sound & Animation Triggers
-    const lastTopRoll = useRef<string>("");
-    const lastBottomRoll = useRef<string>("");
-
-    useEffect(() => {
-      const tStr = JSON.stringify(currentTopRoll);
-      const bStr = JSON.stringify(currentBottomRoll);
-
-      if (tStr !== lastTopRoll.current && currentTopRoll) {
-        play("roll");
-        lastTopRoll.current = tStr;
-      }
-      if (bStr !== lastBottomRoll.current && currentBottomRoll) {
-        play("roll");
-        lastBottomRoll.current = bStr;
-      }
-    }, [currentTopRoll, currentBottomRoll, play]);
-
-    // Winner Sound
-    useEffect(() => {
-      if (room.state === "FINISHED" && room.winningEntryId === meEntry?.id) {
-        play("win");
-      }
-    }, [room.state, room.winningEntryId, meEntry?.id, play]);
-
-    // Confetti on Finish
-    useEffect(() => {
-      if (room.state === "FINISHED") {
-        confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#10b981", "#fbbf24", "#ffffff"]
-        });
-      }
-    }, [room.state]);
-
-
-    // Labels
-    const topLabel = (topEntry?.user.name || "Jugador 1") + (amTop ? " (Tú)" : "");
-    const bottomLabel = (bottomEntry?.user.name || "Jugador 2") + (amBottom ? " (Tú)" : "");
-
-    // Skins
-    const topSkin: DiceSkin = toSkin(topEntry?.user.selectedDiceColor);
-    const bottomSkin: DiceSkin = toSkin(bottomEntry?.user.selectedDiceColor);
-
-    // Balances
-    const topBalance = room.gameMeta?.balances?.[topEntry?.user.id || ""] ?? room.priceCents;
-    const bottomBalance = room.gameMeta?.balances?.[bottomEntry?.user.id || ""] ?? room.priceCents;
-
-    // VISUAL SWAP: If I am Top (P1), I want to see myself at Bottom.
-    const swapVisuals = amTop;
-
-    const realTopRolling = (amTop && rolling) || animatingTop;
-    const realBottomRolling = (amBottom && rolling) || animatingBottom;
-
-    // Timer Logic
-    const [timeLeft, setTimeLeft] = useState(30);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-      if (myTurn && !rolledThisRound && !rolling) {
-        // RESET TIMER ON TURN START (No Persistence to avoid loops)
-        setTimeLeft(30);
-
-        // Start interval
-        timerRef.current = setInterval(() => {
-          setTimeLeft((prev) => {
-            if (prev <= 1) {
-              if (timerRef.current) clearInterval(timerRef.current);
-              // Silent timeout (loss of round)
-              handleTimeout();
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        if (timerRef.current) clearInterval(timerRef.current);
-        setTimeLeft(30);
-      }
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
-    }, [myTurn, rolledThisRound, rolling, room.currentRound]); // Reset on round change implicitly via myTurn toggle? No, rely on room.currentRound dependency.
-
-    // Auto-Leave Timer (30s)
-    useEffect(() => {
-      if (room.state === "FINISHED" && meEntry) {
-        const t = setTimeout(() => {
-          onLeave();
-        }, 30000);
-        return () => clearTimeout(t);
-      }
-    }, [room.state, meEntry, onLeave]);
-
-    return (
-      <div className="relative flex flex-col items-center">
-        {/* TABLERO */}
-        <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
-          <DiceDuel
-            // Pass rolls directly (Swapped)
-            topRoll={swapVisuals ? displayedBottomRoll : displayedTopRoll}
-            bottomRoll={swapVisuals ? displayedTopRoll : displayedBottomRoll}
-
-            // Rolling States (Swapped)
-            isRollingTop={swapVisuals ? realBottomRolling : realTopRolling}
-            isRollingBottom={swapVisuals ? realTopRolling : realBottomRolling}
-
-            // Ghost States (Swapped)
-            isGhostTop={swapVisuals ? isGhostBottom : isGhostTop}
-            isGhostBottom={swapVisuals ? isGhostTop : isGhostBottom}
-
-            statusText={statusText}
-            subMessage={room.gameMeta?.message}
-            winnerDisplay={winnerDisplay}
-
-            onRoll={handleRoll}
-            canRoll={myTurn && !rolling && !rolledThisRound}
-            timeLeft={myTurn ? timeLeft : undefined} // Pass timer only if my turn
-
-            onExit={() => {
-              onLeave();
-            }}
-
-            onRejoin={onRejoin}
-            isFinished={room.state === "FINISHED"}
-            onOpenHistory={onOpenHistory}
-
-            // Labels & Skins (Swapped)
-            labelTop={swapVisuals ? bottomLabel : topLabel}
-            labelBottom={swapVisuals ? topLabel : bottomLabel}
-            diceColorTop={swapVisuals ? bottomSkin : topSkin}
-            diceColorBottom={swapVisuals ? topSkin : bottomSkin}
-
-            // Balances (Swapped)
-            balanceTop={fmtUSD(swapVisuals ? bottomBalance : topBalance)}
-            balanceBottom={fmtUSD(swapVisuals ? topBalance : bottomBalance)}
-          />
-
-          {/* POST-GAME OVERLAY */}
-          {room.state === "FINISHED" && meEntry && showOverlay && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm rounded-xl p-6 animate-in fade-in duration-500">
-              <h2 className="text-2xl font-bold text-white mb-2">Juego Terminado</h2>
-              <p className="text-white/70 mb-6 text-center text-sm">
-                ¿Quieres jugar otra vez?<br />
-                <span className="text-xs opacity-50">(Salida automática en 30s)</span>
-              </p>
-              <div className="flex flex-col gap-3 w-full max-w-[200px]">
-                <button
-                  onClick={() => onRejoin()}
-                  className="btn btn-primary w-full font-bold shadow-lg shadow-primary/20"
-                >
-                  Jugar de Nuevo
-                </button>
-                <button
-                  onClick={() => onLeave()}
-                  className="btn btn-outline w-full border-white/20 text-white hover:bg-white/10"
-                >
-                  Salir
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div>
-    );
+    // Debug info for user feedback
+    const debugInfo = `(R${room.currentRound} | St:${starterId ? starterId.slice(-4) : "?"} | Cur:${currentTurnUserId ? currentTurnUserId.slice(-4) : "?"})`;
+    statusText = myTurn ? "Tu Turno" : `Esperando a ${waitingName} ${debugInfo}`;
   }
+
+  const [rolling, setRolling] = useState(false);
+  const [rolledThisRound, setRolledThisRound] = useState(false);
+
+  // Reset rolled state on new round
+  useEffect(() => {
+    setRolledThisRound(false);
+  }, [room.currentRound]);
+
+  const handleRoll = async () => {
+    if (rolling || rolledThisRound) return;
+    setRolling(true);
+    setRolledThisRound(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}/roll`, { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json();
+        toast.error(d.error || "Error al tirar");
+        setRolledThisRound(false);
+      }
+    } catch (e) {
+      toast.error("Error de conexión");
+      setRolledThisRound(false);
+    } finally {
+      setRolling(false);
+    }
+  };
+
+  const handleTimeout = async () => {
+    if (rolling || rolledThisRound) return;
+    setRolling(true);
+    setRolledThisRound(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}/timeout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round: room.currentRound ?? 1 })
+      });
+      if (!res.ok) {
+        console.error("Timeout API failed");
+      }
+    } catch (e) {
+      console.error("Timeout error", e);
+    } finally {
+      setRolling(false);
+    }
+  };
+
+  // Sound & Animation Triggers
+  const lastTopRoll = useRef<string>("");
+  const lastBottomRoll = useRef<string>("");
+
+  useEffect(() => {
+    const tStr = JSON.stringify(currentTopRoll);
+    const bStr = JSON.stringify(currentBottomRoll);
+
+    if (tStr !== lastTopRoll.current && currentTopRoll) {
+      play("roll");
+      lastTopRoll.current = tStr;
+    }
+    if (bStr !== lastBottomRoll.current && currentBottomRoll) {
+      play("roll");
+      lastBottomRoll.current = bStr;
+    }
+  }, [currentTopRoll, currentBottomRoll, play]);
+
+  // Winner Sound
+  useEffect(() => {
+    if (room.state === "FINISHED" && room.winningEntryId === meEntry?.id) {
+      play("win");
+    }
+  }, [room.state, room.winningEntryId, meEntry?.id, play]);
+
+  // Confetti on Finish
+  useEffect(() => {
+    if (room.state === "FINISHED") {
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#10b981", "#fbbf24", "#ffffff"]
+      });
+    }
+  }, [room.state]);
+
+
+  // Labels
+  const topLabel = (topEntry?.user.name || "Jugador 1") + (amTop ? " (Tú)" : "");
+  const bottomLabel = (bottomEntry?.user.name || "Jugador 2") + (amBottom ? " (Tú)" : "");
+
+  // Skins
+  const topSkin: DiceSkin = toSkin(topEntry?.user.selectedDiceColor);
+  const bottomSkin: DiceSkin = toSkin(bottomEntry?.user.selectedDiceColor);
+
+  // Balances
+  const topBalance = room.gameMeta?.balances?.[topEntry?.user.id || ""] ?? room.priceCents;
+  const bottomBalance = room.gameMeta?.balances?.[bottomEntry?.user.id || ""] ?? room.priceCents;
+
+  // VISUAL SWAP: If I am Top (P1), I want to see myself at Bottom.
+  const swapVisuals = amTop;
+
+  const realTopRolling = (amTop && rolling) || animatingTop;
+  const realBottomRolling = (amBottom && rolling) || animatingBottom;
+
+  // Timer Logic
+  const [timeLeft, setTimeLeft] = useState(30);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (myTurn && !rolledThisRound && !rolling) {
+      // RESET TIMER ON TURN START (No Persistence to avoid loops)
+      setTimeLeft(30);
+
+      // Start interval
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            // Silent timeout (loss of round)
+            handleTimeout();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTimeLeft(30);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [myTurn, rolledThisRound, rolling, room.currentRound]); // Reset on round change implicitly via myTurn toggle? No, rely on room.currentRound dependency.
+
+  // Auto-Leave Timer (30s)
+  useEffect(() => {
+    if (room.state === "FINISHED" && meEntry) {
+      const t = setTimeout(() => {
+        onLeave();
+      }, 30000);
+      return () => clearTimeout(t);
+    }
+  }, [room.state, meEntry, onLeave]);
+
+  return (
+    <div className="relative flex flex-col items-center">
+      {/* TABLERO */}
+      <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
+        <DiceDuel
+          // Pass rolls directly (Swapped)
+          topRoll={swapVisuals ? displayedBottomRoll : displayedTopRoll}
+          bottomRoll={swapVisuals ? displayedTopRoll : displayedBottomRoll}
+
+          // Rolling States (Swapped)
+          isRollingTop={swapVisuals ? realBottomRolling : realTopRolling}
+          isRollingBottom={swapVisuals ? realTopRolling : realBottomRolling}
+
+          // Ghost States (Swapped)
+          isGhostTop={swapVisuals ? isGhostBottom : isGhostTop}
+          isGhostBottom={swapVisuals ? isGhostTop : isGhostBottom}
+
+          statusText={statusText}
+          subMessage={room.gameMeta?.message}
+          winnerDisplay={winnerDisplay}
+
+          onRoll={handleRoll}
+          canRoll={myTurn && !rolling && !rolledThisRound}
+          timeLeft={myTurn ? timeLeft : undefined} // Pass timer only if my turn
+
+          onExit={() => {
+            onLeave();
+          }}
+
+          onRejoin={onRejoin}
+          isFinished={room.state === "FINISHED"}
+          onOpenHistory={onOpenHistory}
+
+          // Labels & Skins (Swapped)
+          labelTop={swapVisuals ? bottomLabel : topLabel}
+          labelBottom={swapVisuals ? topLabel : bottomLabel}
+          diceColorTop={swapVisuals ? bottomSkin : topSkin}
+          diceColorBottom={swapVisuals ? topSkin : bottomSkin}
+
+          // Balances (Swapped)
+          balanceTop={fmtUSD(swapVisuals ? bottomBalance : topBalance)}
+          balanceBottom={fmtUSD(swapVisuals ? topBalance : bottomBalance)}
+        />
+
+        {/* POST-GAME OVERLAY */}
+        {room.state === "FINISHED" && meEntry && showOverlay && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm rounded-xl p-6 animate-in fade-in duration-500">
+            <h2 className="text-2xl font-bold text-white mb-2">Juego Terminado</h2>
+            <p className="text-white/70 mb-6 text-center text-sm">
+              ¿Quieres jugar otra vez?<br />
+              <span className="text-xs opacity-50">(Salida automática en 30s)</span>
+            </p>
+            <div className="flex flex-col gap-3 w-full max-w-[200px]">
+              <button
+                onClick={() => onRejoin()}
+                className="btn btn-primary w-full font-bold shadow-lg shadow-primary/20"
+              >
+                Jugar de Nuevo
+              </button>
+              <button
+                onClick={() => onLeave()}
+                className="btn btn-outline w-full border-white/20 text-white hover:bg-white/10"
+              >
+                Salir
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
 
 
