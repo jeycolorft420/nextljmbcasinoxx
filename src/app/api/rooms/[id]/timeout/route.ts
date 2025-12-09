@@ -133,12 +133,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             const updated = await tx.room.update({
                 where: { id },
                 data: {
-                    state: finalState,
-                    gameMeta: meta,
-                    winningEntryId: finalWinnerEntryId,
-                    prizeCents: finalPrize,
-                    finishedAt: finalState === "FINISHED" ? new Date() : null,
-                    currentRound: { increment: 1 }
+                    data: {
+                        state: finalState === "FINISHED" ? "FINISHED" : "OPEN", // Ensure OPEN if continuing
+                        gameMeta: meta,
+                        winningEntryId: finalWinnerEntryId,
+                        prizeCents: finalPrize,
+                        finishedAt: finalState === "FINISHED" ? new Date() : null,
+                        currentRound: { increment: 1 }
+                    }
                 }
             });
 

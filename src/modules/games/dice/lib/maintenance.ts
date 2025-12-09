@@ -94,12 +94,17 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             // DEBUG LOGS
             console.log(`[DiceDebug] RoundStart: ${roundStartedAt}, Now: ${now}, CanAct: ${canBotAct}, P1Bot: ${p1IsBot}, P2Bot: ${p2IsBot}, Next: ${nextToRollId}, IsBotTurn: ${isBotTurn}`);
 
-            if (isBotTurn && canBotAct) {
+            // RELAXED BOT TIMING/CHECK
+            // If rounds matches, use standard 2s delay.
+            // If room seems "stuck" (last update > 5s ago), force roll.
+            const isStuck = (now - roundStartedAt) > 5000;
+
+            if (isBotTurn && (canBotAct || isStuck)) {
                 rolls[nextToRollId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
                 if (nextToRollId === p1.userId) p1Rolled = true;
                 if (nextToRollId === p2.userId) p2Rolled = true;
                 changesMade = true;
-                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Forced Roll (Dynamic Order)`);
+                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Forced Roll (Dynamic Order) - Stuck: ${isStuck}`);
             }
         }
 
@@ -202,6 +207,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                 await prisma.room.update({
                     where: { id: roomId },
                     data: {
+                        state: "OPEN", // Force OPEN state
                         currentRound: { increment: 1 },
                         gameMeta: {
                             ...meta,
