@@ -94,7 +94,7 @@ function DiceBox({
 
       {/* Dice Container */}
       <div className="relative py-2 md:py-4">
-        {isGhost && (
+        {isGhost && !pair && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
             <span className="bg-black/80 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold text-white/60 backdrop-blur-md uppercase tracking-widest border border-white/10 shadow-xl">
               Esperando...
@@ -183,9 +183,19 @@ export default function DiceDuel({
         {winnerDisplay ? (
           // WINNER STATE
           <div className="bg-background border border-emerald-500/30 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl shadow-emerald-500/20 animate-in zoom-in duration-300 relative">
-            <div className="text-emerald-400 text-[10px] md:text-[10px] font-bold uppercase tracking-widest mb-1">¡Ronda Ganada!</div>
-            <div className="text-xl md:text-2xl font-bold text-white mb-1">{winnerDisplay.name}</div>
-            <div className="text-emerald-400 font-mono font-bold text-base md:text-lg">{winnerDisplay.amount}</div>
+            {(winnerDisplay.amount === "$0.00" || winnerDisplay.amount === "$0") ? (
+              <>
+                <div className="text-gray-400 text-[10px] md:text-[10px] font-bold uppercase tracking-widest mb-1">Resultado</div>
+                <div className="text-xl md:text-2xl font-bold text-white mb-1">¡EMPATE!</div>
+                <div className="text-gray-500 font-mono font-bold text-xs">Nadie gana</div>
+              </>
+            ) : (
+              <>
+                <div className="text-emerald-400 text-[10px] md:text-[10px] font-bold uppercase tracking-widest mb-1">¡Ronda Ganada!</div>
+                <div className="text-xl md:text-2xl font-bold text-white mb-1">{winnerDisplay.name}</div>
+                <div className="text-emerald-400 font-mono font-bold text-base md:text-lg">{winnerDisplay.amount}</div>
+              </>
+            )}
           </div>
         ) : (
           // GAME STATE
