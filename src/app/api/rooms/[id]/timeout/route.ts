@@ -78,11 +78,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             const meta = (room.gameMeta as any) || {};
             const rolls = meta.rolls || {};
 
-            // 🛡️ SERVER-SIDE TIMER VALIDATION
-            const roundStartedAt = (meta.roundStartedAt as number) || 0;
-            const elapsed = Date.now() - roundStartedAt;
-            if (roundStartedAt > 0 && elapsed < 32000) { // 30s + 2s Buffer
-                throw new Error(`Timer not expired. Elapsed: ${elapsed}ms`);
+            // CORRECCIÓN APLICADA: Validación de Tiempo Real
+            const startedAt = (room.gameMeta as any)?.roundStartedAt || 0;
+            const now = Date.now();
+            // Solo aceptar timeout si han pasado al menos 28 segundos reales
+            if (startedAt > 0 && (now - startedAt) < 28000) {
+                console.warn(`[Timeout] RECHAZADO: Muy temprano. Transcurrido: ${now - startedAt}ms`);
+                return { success: false, ignored: true, error: "Aún hay tiempo" };
             }
 
             // Validation: Don't allow timeout if round already ended or invalid state

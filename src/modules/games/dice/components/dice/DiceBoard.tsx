@@ -425,16 +425,17 @@ export default function DiceBoard({
     };
   }, [myTurn, rolledThisRound, rolling, roundStartedAt, room.state]);
 
-  // 🛡️ Safety Polling: Heartbeat when waiting for opponent
+  // CORRECCIÓN APLICADA: Heartbeat para despertar al bot
   useEffect(() => {
-    if (room.state === "OPEN" && !myTurn && !room.gameMeta?.ended) {
+    // Si la sala está abierta y NO es mi turno (es turno del bot/oponente)
+    if (!myTurn && room.state === "OPEN" && !room.winningEntryId) {
       const interval = setInterval(() => {
-        console.log("[DiceBoard] 💓 Safety Poll (Waiting for Turn)");
-        fetch(`/api/rooms/${room.id}`, { cache: "no-store" }).catch(() => { });
+        // Llamada ligera para forzar el mantenimiento del servidor
+        fetch(`/api/rooms/${room.id}`, { cache: "no-store" });
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [room.state, myTurn, room.gameMeta?.ended, room.id]);
+  }, [myTurn, room.state, room.winningEntryId, room.id]);
 
   // Auto-Leave Timer (30s)
   useEffect(() => {

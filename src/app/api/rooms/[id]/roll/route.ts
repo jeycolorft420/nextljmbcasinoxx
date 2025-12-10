@@ -84,11 +84,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             // Trigger maintenance only if round is full (2 players)
             const shouldResolve = Object.keys(currentRolls).length >= 2;
 
+            // CORRECCIÓN APLICADA: Reiniciar timer al tirar
             const finalMeta = {
                 ...meta,
                 rolls: currentRolls,
-                // 🕒 RESET TIMER for next player if round continues
-                roundStartedAt: !shouldResolve ? Date.now() : meta.roundStartedAt
+                roundStartedAt: Date.now() // <--- ESTO ES OBLIGATORIO
             };
 
             // Update DB (Just save roll)
