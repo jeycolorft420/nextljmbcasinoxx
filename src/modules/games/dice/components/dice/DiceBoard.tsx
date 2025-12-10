@@ -189,13 +189,12 @@ export default function DiceBoard({
     lastHistoryLen.current = currentLen;
   }, [room.gameMeta?.history]);
 
-  // Auto-clear winner display
+  // Sync Winner Display with Resolving State
   useEffect(() => {
-    if (winnerDisplay) {
-      const t = setTimeout(() => setWinnerDisplay(null), 3000);
-      return () => clearTimeout(t);
+    if (!localResolving) {
+      setWinnerDisplay(null);
     }
-  }, [winnerDisplay]);
+  }, [localResolving]);
 
   // Helper to compare rolls
   const isDiff = (a: [number, number] | null, b: [number, number] | null) => {

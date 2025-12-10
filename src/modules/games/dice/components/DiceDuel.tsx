@@ -95,7 +95,7 @@ function DiceBox({
       {/* Dice Container */}
       <div className="relative py-2 md:py-4">
         {isGhost && (
-          <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none bg-black/20">
+          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20">
             <span className="bg-black/80 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold text-white uppercase tracking-widest border border-white/20 shadow-2xl backdrop-blur-md">
               {pair ? "Ronda Anterior" : "Esperando..."}
             </span>
@@ -179,7 +179,7 @@ export default function DiceDuel({
 
       {/* 2. CENTRAL ACTION / STATUS CARD */}
       {/* Mobile: max-w-[220px]. Desktop: max-w-xs. */}
-      <div className="w-full max-w-[220px] md:max-w-[280px] z-20 shrink-0 my-2 md:my-0">
+      <div className="w-full max-w-[220px] md:max-w-[280px] z-50 shrink-0 my-2 md:my-0 relative">
         {winnerDisplay ? (
           // WINNER STATE
           <div className="bg-background border border-emerald-500/30 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl shadow-emerald-500/20 animate-in zoom-in duration-300 relative">
