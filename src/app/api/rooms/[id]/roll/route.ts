@@ -91,14 +91,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
                 }
             });
 
-            return { success: true, updated };
+            // Trigger maintenance only if round is full (2 players)
+            const shouldResolve = Object.keys(currentRolls).length >= 2;
+
+            return { success: true, updated, shouldResolve };
         });
 
         if ((result as any).error) return NextResponse.json({ error: (result as any).error }, { status: (result as any).status });
 
         // 🔄 TRIGGER MAINTENANCE: Let the central logic handle resolution, history, delay, etc.
         const updatedRoom = (result as any).updated;
-        const maintenanceResult = await checkAndMaintenanceRoom(updatedRoom);
+        let maintenanceResult = updatedRoom;
+
+        if ((result as any).shouldResolve) {
+            console.log("[DiceRoll] 🏁 Round Full - Triggering Maintenance");
+            maintenanceResult = await checkAndMaintenanceRoom(updatedRoom);
+        }
 
         // Emit final state (Maintenance might have updated it again via emit, but safety first)
         const payload = await buildRoomPayload(prisma, id);

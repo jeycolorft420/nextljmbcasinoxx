@@ -58,6 +58,7 @@ function DiceBox({
   isWinner?: boolean | null;
   color?: DiceSkin;
   balance?: string;
+  hideGhostLabel?: boolean;
 }) {
   const sum = pair ? pair[0] + pair[1] : 0;
   const f1 = pair ? pair[0] : null;
@@ -94,10 +95,10 @@ function DiceBox({
 
       {/* Dice Container */}
       <div className="relative py-2 md:py-4">
-        {isGhost && (
-          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20">
+        {isGhost && !hideGhostLabel && (
+          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/10">
             <span className="bg-black/80 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold text-white uppercase tracking-widest border border-white/20 shadow-2xl backdrop-blur-md">
-              {pair ? "Ronda Anterior" : "Esperando..."}
+              {pair ? "Ronda Pasada" : "Esperando..."}
             </span>
           </div>
         )}
@@ -265,6 +266,7 @@ export default function DiceDuel({
           isWinner={winnerBottom}
           color={diceColorBottom}
           balance={balanceBottom}
+          hideGhostLabel={canRoll}
         />
       </div>
 
