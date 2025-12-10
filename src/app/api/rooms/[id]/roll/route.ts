@@ -42,6 +42,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
             // Check Meta
             const meta = (room.gameMeta as any) || {};
+
+            // 🛡️ GUARD: Resolving Phase
+            if (meta.roundResolvingUntil && Date.now() < meta.roundResolvingUntil) {
+                return { error: "Ronda finalizando, espera...", status: 400 };
+            }
+
             const rolls = meta.rolls || {}; // { [userId]: [1, 5] }
 
             // Whose turn?

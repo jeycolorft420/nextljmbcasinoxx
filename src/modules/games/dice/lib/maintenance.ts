@@ -34,7 +34,8 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             // Determine starter based on last winner (stored in meta or calculate?)
             // We can infer next starter from the history's last entry
             const lastHistory = meta.history?.[meta.history.length - 1];
-            const nextStarter = lastHistory?.winnerUserId || meta.nextStarterUserId;
+            // If Tie (winnerUserId is null), preserve the previous starter to maintain order (or default to P1)
+            const nextStarter = lastHistory?.winnerUserId || meta.nextStarterUserId || p1.userId;
 
             // Perform Transaction
             const [updatedRoom] = await prisma.$transaction([
@@ -127,7 +128,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
         const roundStartedAt = (meta.roundStartedAt as number) || 0;
         const canBotAct = now >= roundStartedAt + 2000; // 2 seconds
 
-        // 1. EXECUTE BOT ROLLS (Dynamic Turn Order)
+        // 1. EXECUTE TURNS (Bot Logic & Human Timeout)
         const starterId = meta.nextStarterUserId || p1.userId;
         const secondId = starterId === p1.userId ? p2.userId : p1.userId;
 
@@ -140,19 +141,114 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
         if (nextToRollId) {
             const isBotTurn = (nextToRollId === p1.userId && p1IsBot) || (nextToRollId === p2.userId && p2IsBot);
 
-            // RELAXED BOT TIMING/CHECK
-            // Only consider "stuck" if roundStartedAt is actually set (>0)
-            const isStuck = roundStartedAt > 0 && (now - roundStartedAt) > 5000;
+            // A) BOT LOGIC
+            if (isBotTurn) {
+                // RELAXED BOT TIMING/CHECK
+                // Only consider "stuck" if roundStartedAt is actually set (>0)
+                const isStuck = roundStartedAt > 0 && (now - roundStartedAt) > 5000;
 
-            if (isBotTurn && (canBotAct || isStuck)) {
-                // Ensure we don't roll too fast if round just started (sanity check)
-                // But canBotAct covers that (2s delay).
+                if (canBotAct || isStuck) {
+                    // Ensure we don't roll too fast if round just started (sanity check)
+                    // But canBotAct covers that (2s delay).
 
-                rolls[nextToRollId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
-                if (nextToRollId === p1.userId) p1Rolled = true;
-                if (nextToRollId === p2.userId) p2Rolled = true;
-                changesMade = true;
-                console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Rolled.`);
+                    rolls[nextToRollId] = [crypto.randomInt(1, 7), crypto.randomInt(1, 7)];
+                    if (nextToRollId === p1.userId) p1Rolled = true;
+                    if (nextToRollId === p2.userId) p2Rolled = true;
+                    changesMade = true;
+                    console.log(`[DiceDuel] 🎲 Bot ${nextToRollId} Rolled.`);
+                }
+            }
+            // B) HUMAN TIMEOUT LOGIC
+            else {
+                // 35s Grace Period (Client UI is 30s)
+                if (roundStartedAt > 0 && (now - roundStartedAt) > 35000) {
+                    console.log(`[DiceDuel] ⏰ Human Timeout for ${nextToRollId}. Forfeiting.`);
+                    const forfeiterId = nextToRollId;
+                    const winnerId = forfeiterId === p1.userId ? p2.userId : p1.userId;
+                    const winnerEntry = winnerId === p1.userId ? p1 : p2;
+
+                    // Apply Damage
+                    const damage = Math.max(1, Math.floor(freshRoom.priceCents * 0.20));
+                    balances[forfeiterId] -= damage;
+                    balances[winnerId] += damage;
+
+                    // History
+                    const roundDice = { top: null, bottom: null };
+                    const historyEntry = {
+                        rolls: {},
+                        dice: roundDice,
+                        winnerUserId: winnerId,
+                        damage,
+                        timestamp: Date.now(),
+                        round: freshRoom.currentRound ?? (meta.history?.length || 0) + 1,
+                        balancesAfter: { ...balances },
+                        winnerEntryId: winnerEntry.id,
+                        timeoutForfeiterUserId: forfeiterId
+                    };
+                    const newHistory = [...(meta.history || []), historyEntry];
+
+                    // Check Bankruptcy
+                    if (balances[forfeiterId] <= 0) {
+                        // Game Over
+                        console.log(`[DiceDuel] 💀 Player ${forfeiterId} bankrupt by timeout.`);
+
+                        const updatedRoom = await prisma.room.update({
+                            where: { id: roomId },
+                            data: {
+                                state: "FINISHED",
+                                finishedAt: new Date(),
+                                winningEntryId: winnerEntry.id,
+                                prizeCents: freshRoom.priceCents * 2,
+                                gameMeta: { ...meta, balances, history: newHistory, rolls: {}, ended: true } as any
+                            },
+                            include: { entries: true }
+                        });
+
+                        // Credit Winner
+                        await prisma.user.update({
+                            where: { id: winnerId },
+                            data: { balanceCents: { increment: freshRoom.priceCents * 2 } }
+                        });
+
+                        // Transaction Record
+                        await prisma.transaction.create({
+                            data: {
+                                userId: winnerId,
+                                amountCents: freshRoom.priceCents * 2,
+                                kind: "WIN_CREDIT",
+                                reason: "Victoria Dados (Timeout)",
+                                meta: { roomId }
+                            }
+                        });
+
+                        await emitRoomUpdate(roomId);
+                        await emitRoomsIndex();
+                        return updatedRoom;
+
+                    } else {
+                        // Next Round
+                        console.log(`[DiceDuel] ⏩ Timeout Resolved. Next Round.`);
+                        const updatedRoom = await prisma.room.update({
+                            where: { id: roomId },
+                            data: {
+                                currentRound: { increment: 1 },
+                                gameMeta: {
+                                    ...meta,
+                                    balances,
+                                    history: newHistory,
+                                    rolls: {},
+                                    lastDice: roundDice,
+                                    roundResolvingUntil: 0,
+                                    nextStarterUserId: winnerId, // Winner starts next
+                                    roundStartedAt: Date.now()
+                                } as any
+                            },
+                            include: { entries: true }
+                        });
+                        await emitRoomUpdate(roomId);
+                        return updatedRoom;
+                    }
+                }
             }
         }
 
