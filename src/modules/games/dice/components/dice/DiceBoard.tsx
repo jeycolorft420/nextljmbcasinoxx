@@ -389,35 +389,41 @@ export default function DiceBoard({
   const realTopRolling = (amTop && rolling) || animatingTop;
   const realBottomRolling = (amBottom && rolling) || animatingBottom;
 
-  // Timer Logic
+  // Timer Logic (Server Synced)
   const [timeLeft, setTimeLeft] = useState(30);
+  const roundStartedAt = (room.gameMeta?.roundStartedAt as number) || 0;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (myTurn && !rolledThisRound && !rolling) {
-      // RESET TIMER ON TURN START (No Persistence to avoid loops)
-      setTimeLeft(30);
+    const calcTime = () => {
+      // If no server time, fallback to 30 (or 0 if safer?)
+      if (!roundStartedAt) return 30;
+      const elapsed = (Date.now() - roundStartedAt) / 1000;
+      return Math.max(0, 30 - Math.floor(elapsed));
+    };
 
-      // Start interval
+    if (myTurn && !rolledThisRound && !rolling && room.state !== "FINISHED") {
+      // Initial set
+      setTimeLeft(calcTime());
+
+      // Interval
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            // Silent timeout (loss of round)
-            handleTimeout();
-            return 0;
-          }
-          return prev - 1;
-        });
+        const rem = calcTime();
+        setTimeLeft(rem);
+        if (rem <= 0) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          handleTimeout();
+        }
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
       setTimeLeft(30);
     }
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [myTurn, rolledThisRound, rolling, room.currentRound]); // Reset on round change implicitly via myTurn toggle? No, rely on room.currentRound dependency.
+  }, [myTurn, rolledThisRound, rolling, roundStartedAt, room.state]);
 
   // Auto-Leave Timer (30s)
   useEffect(() => {
