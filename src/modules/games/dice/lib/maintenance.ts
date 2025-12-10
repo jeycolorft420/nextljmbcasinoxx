@@ -53,7 +53,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             roundStartedAt: Date.now() // Reset Bot Clock
                         } as any
                     },
-                    include: { entries: true } // Return entries to ensure we have latest
+                    include: { entries: { include: { user: true } } } // Return entries to ensure we have latest
                 }),
                 prisma.entry.updateMany({
                     where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
@@ -100,7 +100,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                         autoPlay: false
                     } as any
                 },
-                include: { entries: true }
+                include: { entries: { include: { user: true } } }
             });
             await emitRoomUpdate(roomId);
             return updated;
@@ -201,7 +201,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                                 prizeCents: freshRoom.priceCents * 2,
                                 gameMeta: { ...meta, balances, history: newHistory, rolls: {}, ended: true } as any
                             },
-                            include: { entries: true }
+                            include: { entries: { include: { user: true } } }
                         });
 
                         // Credit Winner
@@ -335,7 +335,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                                 ended: true
                             } as any
                         },
-                        include: { entries: true }
+                        include: { entries: { include: { user: true } } }
                     });
 
                     // Update Wallet
@@ -377,7 +377,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             roundResolvingUntil: Date.now() + 4000 // 4 Seconds Delay
                         } as any
                     },
-                    include: { entries: true }
+                    include: { entries: { include: { user: true } } }
                 });
                 console.log(`[DiceDuel] Round ${freshRoom.currentRound} Resolved. Entering Wait Phase (4s).`);
                 await emitRoomUpdate(roomId);
@@ -389,7 +389,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             const partialRoom = await prisma.room.update({
                 where: { id: roomId },
                 data: { gameMeta: { ...meta, rolls } as any },
-                include: { entries: true }
+                include: { entries: { include: { user: true } } }
             });
             await emitRoomUpdate(roomId);
             return partialRoom;
