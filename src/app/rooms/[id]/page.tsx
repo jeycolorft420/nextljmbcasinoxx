@@ -56,6 +56,7 @@ export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const { data: session, update: updateSession } = useSession();
   const email = session?.user?.email ?? null;
+  const userId = (session?.user as any)?.id ?? null;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
@@ -588,7 +589,7 @@ export default function RoomPage() {
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
             <div className="relative z-10 w-full max-w-md h-full">
-              <DiceBoard room={room} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} />
+              <DiceBoard room={room} userId={userId} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} />
             </div>
           ) : (
             <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
@@ -808,7 +809,7 @@ export default function RoomPage() {
             <div style={{ maxWidth: 450 }}>
               {room.gameType === "DICE_DUEL" ? (
                 // Reduced size for Desktop
-                <DiceBoard room={room} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={300} />
+                <DiceBoard room={room} userId={userId} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={300} />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
               )}

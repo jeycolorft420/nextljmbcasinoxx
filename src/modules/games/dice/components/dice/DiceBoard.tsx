@@ -92,7 +92,7 @@ export function DiceHistory({
 
 type Props = {
   room: Room;
-  email: string | null;
+  userId: string | null;
   onReroll: () => Promise<void>;
   onForfeit: () => Promise<void>;
   onLeave: () => Promise<void>;
@@ -112,7 +112,7 @@ function toSkin(s?: string | null): DiceSkin {
 
 export default function DiceBoard({
   room,
-  email,
+  userId,
   onReroll,
   onForfeit,
   onLeave,
@@ -124,7 +124,7 @@ export default function DiceBoard({
   const { play } = useAudio();
   const topEntry = room.entries?.find(e => e.position === 1);
   const bottomEntry = room.entries?.find(e => e.position === 2);
-  const meEntry = room.entries?.find((e) => e.user.email === email) ?? null;
+  const meEntry = room.entries?.find((e) => e.user.id === userId) ?? null;
 
   // Turn Logic
   const rolls = room.gameMeta?.rolls || {};
