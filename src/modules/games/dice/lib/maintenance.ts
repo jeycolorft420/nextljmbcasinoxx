@@ -392,7 +392,13 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             // Save Partial State (e.g. one person rolled)
             const partialRoom = await prisma.room.update({
                 where: { id: roomId },
-                data: { gameMeta: { ...meta, rolls } as any },
+                data: {
+                    gameMeta: {
+                        ...meta,
+                        rolls,
+                        roundStartedAt: Date.now() // 🕒 RESET TIMER ON TURN CHANGE
+                    } as any
+                },
                 include: { entries: { include: { user: true } } }
             });
             await emitRoomUpdate(roomId);

@@ -81,7 +81,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             // Log Roll
             console.log(`[DiceDuel] 🎲 User ${userId} Rolled: [${roll}]`);
 
-            const finalMeta = { ...meta, rolls: currentRolls };
+            // Trigger maintenance only if round is full (2 players)
+            const shouldResolve = Object.keys(currentRolls).length >= 2;
+
+            const finalMeta = {
+                ...meta,
+                rolls: currentRolls,
+                // 🕒 RESET TIMER for next player if round continues
+                roundStartedAt: !shouldResolve ? Date.now() : meta.roundStartedAt
+            };
 
             // Update DB (Just save roll)
             const updated = await tx.room.update({
@@ -91,8 +99,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
                 }
             });
 
-            // Trigger maintenance only if round is full (2 players)
-            const shouldResolve = Object.keys(currentRolls).length >= 2;
+
 
             return { success: true, updated, shouldResolve };
         });

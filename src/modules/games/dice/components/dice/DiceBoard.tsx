@@ -425,6 +425,17 @@ export default function DiceBoard({
     };
   }, [myTurn, rolledThisRound, rolling, roundStartedAt, room.state]);
 
+  // 🛡️ Safety Polling: Heartbeat when waiting for opponent
+  useEffect(() => {
+    if (room.state === "OPEN" && !myTurn && !room.gameMeta?.ended) {
+      const interval = setInterval(() => {
+        console.log("[DiceBoard] 💓 Safety Poll (Waiting for Turn)");
+        fetch(`/api/rooms/${room.id}`, { cache: "no-store" }).catch(() => { });
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [room.state, myTurn, room.gameMeta?.ended, room.id]);
+
   // Auto-Leave Timer (30s)
   useEffect(() => {
     if (room.state === "FINISHED" && meEntry) {

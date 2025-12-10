@@ -78,6 +78,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             const meta = (room.gameMeta as any) || {};
             const rolls = meta.rolls || {};
 
+            // 🛡️ SERVER-SIDE TIMER VALIDATION
+            const roundStartedAt = (meta.roundStartedAt as number) || 0;
+            const elapsed = Date.now() - roundStartedAt;
+            if (roundStartedAt > 0 && elapsed < 32000) { // 30s + 2s Buffer
+                throw new Error(`Timer not expired. Elapsed: ${elapsed}ms`);
+            }
+
             // Validation: Don't allow timeout if round already ended or invalid state
             if (room.state === "FINISHED" as any) return { success: true }; // Harmless idempotency
 
