@@ -22,7 +22,7 @@ export async function checkAndMaintenanceRoom(room: any) {
     const freshRoom = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-            entries: true,
+            entries: { include: { user: true } },
             _count: { select: { entries: true } }
         }
     });
