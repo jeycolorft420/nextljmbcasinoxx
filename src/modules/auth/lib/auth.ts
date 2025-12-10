@@ -14,6 +14,8 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import GoogleProvider from "next-auth/providers/google";
 
 export const authOptions: NextAuthOptions = {
+  // 🛡️ DEV FIX: Disable secure cookies for HTTP IP access
+  useSecureCookies: false,
   adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
