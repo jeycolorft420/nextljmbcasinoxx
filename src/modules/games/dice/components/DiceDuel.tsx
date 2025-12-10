@@ -21,7 +21,7 @@ export interface DiceDuelProps {
   // Status & Controls
   statusText?: string;
   subMessage?: string;
-  winnerDisplay?: { name: string; amount: string } | null;
+  winnerDisplay?: { name: string; amount: string; isTie?: boolean } | null;
   onExit?: () => void;
   onRejoin?: () => void;
   onRoll?: () => void;
@@ -183,7 +183,7 @@ export default function DiceDuel({
         {winnerDisplay ? (
           // WINNER STATE
           <div className="bg-background border border-emerald-500/30 rounded-xl md:rounded-2xl p-4 md:p-5 text-center shadow-2xl shadow-emerald-500/20 animate-in zoom-in duration-300 relative">
-            {(winnerDisplay.amount === "$0.00" || winnerDisplay.amount === "$0") ? (
+            {(winnerDisplay.isTie || winnerDisplay.amount === "$0.00" || winnerDisplay.amount === "$0") ? (
               <>
                 <div className="text-gray-400 text-[10px] md:text-[10px] font-bold uppercase tracking-widest mb-1">Resultado</div>
                 <div className="text-xl md:text-2xl font-bold text-white mb-1">¡EMPATE!</div>

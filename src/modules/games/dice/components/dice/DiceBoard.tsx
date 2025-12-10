@@ -143,7 +143,7 @@ export default function DiceBoard({
   const [animatingBottom, setAnimatingBottom] = useState(false);
 
   // Winner Display State (3s)
-  const [winnerDisplay, setWinnerDisplay] = useState<{ name: string; amount: string } | null>(null);
+  const [winnerDisplay, setWinnerDisplay] = useState<{ name: string; amount: string; isTie?: boolean } | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const [localResolving, setLocalResolving] = useState(false); // 🔒 Local override to prevent flickering
 
@@ -168,14 +168,19 @@ export default function DiceBoard({
       // ⏳ DELAY: Wait for dice animation (approx 800ms) + buffer
       const timer = setTimeout(() => {
         const lastRound = room.gameMeta.history[currentLen - 1];
-        const winnerName =
-          room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador";
+
+        // 🛡️ Robust Tie Detection: Trust ID over Damage
+        const isTie = !lastRound.winnerEntryId;
+        const winnerName = isTie
+          ? "Empate"
+          : (room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador");
 
         const damage = lastRound.damage ?? 0;
 
         setWinnerDisplay({
           name: winnerName,
-          amount: fmtUSD(damage)
+          amount: fmtUSD(damage),
+          isTie
         });
       }, 1200);
       return () => { clearTimeout(timer); clearTimeout(tLock); };
