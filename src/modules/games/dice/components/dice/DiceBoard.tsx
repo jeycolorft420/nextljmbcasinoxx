@@ -162,6 +162,7 @@ export default function DiceBoard({
     const currentLen = room.gameMeta?.history?.length || 0;
     if (currentLen > lastHistoryLen.current) {
       // New Round Finished!
+      console.log(`[DiceBoard] 📢 Round Finished:`, room.gameMeta.history[currentLen - 1]);
       setLocalResolving(true);
       const tLock = setTimeout(() => setLocalResolving(false), 4500); // 🔒 Force 4.5s waiting period
 

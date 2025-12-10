@@ -12,6 +12,10 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
     const p1 = freshRoom.entries.find((e: any) => e.position === 1);
     const p2 = freshRoom.entries.find((e: any) => e.position === 2);
 
+    // 🔍 DEBUG: Log Player Data Integrity
+    console.log(`[DiceDuel] 🔍 Players Check: P1=${p1?.userId.slice(0, 5)}.. (User=${!!p1?.user}), P2=${p2?.userId.slice(0, 5)}.. (User=${!!p2?.user})`);
+    console.log(`[DiceDuel] 🎲 Active Rolls:`, JSON.stringify(rolls));
+
     // Init P1 balance if missing
     if (p1 && !balances[p1.userId]) balances[p1.userId] = freshRoom.priceCents;
 

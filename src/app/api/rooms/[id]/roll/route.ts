@@ -42,9 +42,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
             // Check Meta
             const meta = (room.gameMeta as any) || {};
+            console.log(`[DiceRollRoute] 🔓 Room State: ${room.state}, ResolvingUntil=${meta.roundResolvingUntil || 0}, CurrentRolls=${JSON.stringify(meta.rolls)}`);
 
             // 🛡️ GUARD: Resolving Phase
             if (meta.roundResolvingUntil && Date.now() < meta.roundResolvingUntil) {
+                console.warn(`[DiceRollRoute] 🛑 REJECTED: Round is resolving.`);
                 return { error: "Ronda finalizando, espera...", status: 400 };
             }
 
