@@ -1,41 +1,39 @@
 .scene {
-  width: 100%;
-  height: 100%;
-  perspective: 600px;
   display: flex;
   justify-content: center;
   align-items: center;
+  perspective: 600px;
+  /* Profundidad de la cámara */
 }
 
 .cube {
+  position: relative;
   width: 100%;
   height: 100%;
-  position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.8s cubic-bezier(0.1, 0.9, 0.2, 1);
-  /* Suavizado "landing" */
-
-  /* 🚨 CORRECCIÓN CRÍTICA 3D: */
-  /* Mueve el punto de pivote al centro exacto del cubo 3D */
-  transform-origin: center center calc(var(--depth) * -1);
+  /* OBLIGATORIO: Crea el espacio 3D */
+  transition: transform 1s cubic-bezier(0.1, 0.9, 0.2, 1);
+  /* Frenado suave */
 }
 
 .cube__face {
   position: absolute;
   width: 100%;
   height: 100%;
-  border-radius: 14%;
-  /* Bordes más realistas */
+  background-color: var(--base-color, white);
   border: 1px solid rgba(0, 0, 0, 0.1);
-  background: white;
-  /* Fallback */
-  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.15);
-  /* Profundidad interna */
+  border-radius: 16%;
+  /* CRÍTICO: backface-visibility hidden hace que no se vean las caras de atrás "a través" del dado */
   backface-visibility: hidden;
-  /* Optimización */
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.15);
+
+  /* Centrar los puntos */
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-/* Posiciones de las caras */
+/* CARAS: Cada una se empuja la MITAD del tamaño hacia afuera */
 .cube__face--1 {
   transform: rotateY(0deg) translateZ(var(--depth));
 }
@@ -60,31 +58,29 @@
   transform: rotateX(-90deg) translateZ(var(--depth));
 }
 
-/* ANIMACIÓN ULTRA-REALISTA */
+/* ANIMACIÓN DE GIRO CAÓTICO (Tumbling) */
 @keyframes tumble {
   0% {
-    transform: rotateX(0) rotateY(0) rotateZ(0);
+    transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg);
   }
 
   25% {
-    transform: rotateX(180deg) rotateY(90deg) rotateZ(45deg);
+    transform: rotateX(90deg) rotateY(180deg) rotateZ(45deg);
   }
 
   50% {
-    transform: rotateX(360deg) rotateY(180deg) rotateZ(90deg);
+    transform: rotateX(180deg) rotateY(360deg) rotateZ(90deg);
   }
 
   75% {
-    transform: rotateX(540deg) rotateY(270deg) rotateZ(135deg);
+    transform: rotateX(270deg) rotateY(540deg) rotateZ(135deg);
   }
 
   100% {
-    transform: rotateX(720deg) rotateY(360deg) rotateZ(360deg);
+    transform: rotateX(360deg) rotateY(720deg) rotateZ(360deg);
   }
 }
 
 .is-rolling {
-  animation: tumble 0.6s linear infinite;
-  filter: blur(1px);
-  /* Motion Blur */
+  animation: tumble 0.5s linear infinite;
 }

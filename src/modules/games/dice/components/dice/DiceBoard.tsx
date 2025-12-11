@@ -232,21 +232,24 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
   const roundStartedAt = (room.gameMeta?.roundStartedAt as number) || 0;
 
   useEffect(() => {
-    if (myTurn && !rolling) {
+    if (myTurn && !rolling && !isResolving) {
       const tick = () => {
-        // Si no hay fecha de inicio (0), asumimos que el turno acaba de empezar (30s)
-        if (!roundStartedAt) {
-          setTimer(30);
-          return;
-        }
-        const elap = (Date.now() - roundStartedAt) / 1000;
-        setTimer(Math.max(0, 30 - Math.floor(elap)));
+        if (!roundStartedAt) { setTimer(30); return; }
+
+        // Cálculo: Tiempo transcurrido REAL
+        const elapsedSeconds = (Date.now() - roundStartedAt) / 1000;
+
+        // TRUCO: Le regalamos 2 segundos al visual para compensar el lag de red
+        // Math.min(30) asegura que nunca muestre "31" o "32".
+        const visualTime = Math.min(30, Math.floor(30 + 2 - elapsedSeconds));
+
+        setTimer(Math.max(0, visualTime));
       };
       tick();
       const t = setInterval(tick, 1000);
       return () => clearInterval(t);
     }
-  }, [myTurn, rolling, roundStartedAt]);
+  }, [myTurn, rolling, roundStartedAt, isResolving]);
 
   return (
     <div className="relative flex flex-col items-center">
