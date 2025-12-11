@@ -16,12 +16,14 @@ export async function GET(
   try {
     const { id } = Param.parse(await params);
 
-    // 🔒 LAZY MAINTENANCE: Trigger game start/bot fill if time expired
-    // We do this before building payload so user sees the result immediately
+    // 🔒 LAZY MAINTENANCE: COMENTADO - El servidor WebSocket ahora maneja el estado.
+    // Evitamos conflictos de escritura en DB que causan 500 errors.
+    /*
     const roomHeader = await prisma.room.findUnique({ where: { id } });
     if (roomHeader) {
       await checkAndMaintenanceRoom(roomHeader);
     }
+    */
 
     const payload = await buildRoomPayload(prisma, id);
 

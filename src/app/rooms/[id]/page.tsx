@@ -262,7 +262,8 @@ export default function RoomPage() {
     setReloadHistoryKey(n => n + 1); // Refresh history now that visual is done
   };
 
-  // Polling
+  // Polling DISABLED - Now handling updates via WebSocket (Strict Arbiter)
+  /*
   useEffect(() => {
     load().then(d => { if (d) handleRoomUpdate(d); });
     // Polling Speed: 1.5s for High Paced Dice Duel, 5s for Roulette
@@ -281,6 +282,11 @@ export default function RoomPage() {
     }, pollTime);
     return () => clearInterval(interval);
   }, [id, room?.gameType]);
+  */
+  // Load once
+  useEffect(() => {
+    load();
+  }, [id]);
 
   // Watchdog reset time & Start Timer
   useEffect(() => {
