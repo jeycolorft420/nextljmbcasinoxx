@@ -34,11 +34,33 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
     // Nota: Cambia localhost por tu IP pública si estás en producción, o usa un proxy.
     // Para desarrollo local: http://localhost:4000
     // Para producción (Hostinger): https://tudominio.com/socket (requiere config Nginx) o directo a la IP:4000
-    const SOCKET_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://31.187.76.102:4000";
+    // 1. Determinar URL del Socket
+    // Si estamos en producción (https), intentamos usar el mismo dominio (proxy nginx)
+    // Si hay variable de entorno, tiene prioridad.
+    // Default fallback: IP directa (solo dev/testing sin SSL)
+    const isProduction = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-    socket = io(SOCKET_URL, {
-      transports: ["websocket"], // Forzar websocket para máxima velocidad
-      reconnectionAttempts: 5
+    let SOCKET_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+
+    if (!SOCKET_URL) {
+      if (isProduction) {
+        // En Producción con HTTPS, usamos ruta relativa "/" 
+        // Esto asume que Nginx redirige /socket.io -> localhost:4000
+        SOCKET_URL = undefined;
+      } else {
+        // Dev / Fallback
+        SOCKET_URL = "http://31.187.76.102:4000";
+      }
+    }
+
+    // console.log("🔌 Conectando a:", SOCKET_URL || "Mismo Dominio");
+
+    socket = io(SOCKET_URL || window.location.origin, {
+      path: "/socket.io", // Ruta estándar
+      transports: ["websocket"],
+      reconnectionAttempts: 10,
+      secure: isProduction,
+      rejectUnauthorized: false
     });
 
     socket.on("connect", () => {
