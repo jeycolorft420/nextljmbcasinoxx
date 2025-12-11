@@ -7,7 +7,7 @@ import { RoomManager } from "./RoomManager";
 
 dotenv.config();
 
-const PORT = 3001; // Running on 3001 to avoid conflict with Next.js (3000)
+const PORT = 4000; // Updated to 4000 per user request
 const app = express();
 app.use(cors());
 

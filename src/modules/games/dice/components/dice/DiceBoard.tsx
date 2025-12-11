@@ -1,162 +1,151 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import io, { Socket } from "socket.io-client";
+import { io, Socket } from "socket.io-client"; // 🔌 Cliente Socket
 import DiceDuel from "@/modules/games/dice/components/DiceDuel";
 import { type DiceSkin } from "./ThreeDDice";
 import { toast } from "sonner";
-import { useAudio } from "@/context/AudioContext";
 import confetti from "canvas-confetti";
+import { useAudio } from "@/context/AudioContext";
 
-// Types matching Server
-type Player = {
-  id: string;
-  name: string;
-  isBot: boolean;
-  balance: number;
-  position: number;
-  color?: string;
-};
+// Conexión única fuera del componente para evitar reconexiones
+let socket: Socket;
 
-type GameState = {
-  state: "OPEN" | "LOCKED" | "FINISHED" | "RESOLVING";
-  currentRound: number;
-  players: Player[];
-  rolls: Record<string, number[]>;
-  lastDice: Record<string, number[]>;
-  roundStartedAt: number;
-  history: any[];
-  winner?: any;
-  timer: number;
-};
-
-type Props = {
-  room: any; // We still get initial room data from page
-  userId: string | null;
-  email?: string | null;
-  onLeave: () => Promise<void>;
-  onRejoin: () => Promise<void>;
-  wheelSize: number;
-};
 const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
 function toSkin(s?: string | null): DiceSkin {
   const allowed = ["white", "green", "blue", "yellow", "red", "purple", "black"];
   return (s && allowed.includes(s)) ? (s as DiceSkin) : "white";
 }
 
-export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize }: Props) {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const { play } = useAudio();
+export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize }: any) {
   const router = useRouter();
+  const { play } = useAudio();
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Init Socket
+  // Estado local sincronizado con el servidor de juegos
+  const [gameState, setGameState] = useState<any>(null);
+  const [rolling, setRolling] = useState(false);
+  const [opponentRolling, setOpponentRolling] = useState(false);
+
+  // Inicializar Socket
   useEffect(() => {
-    if (!userId) return;
+    // 1. Conectar al Game Server (Puerto 4000)
+    // Nota: Cambia localhost por tu IP pública si estás en producción, o usa un proxy.
+    // Para desarrollo local: http://localhost:4000
+    // Para producción (Hostinger): https://tudominio.com/socket (requiere config Nginx) o directo a la IP:4000
+    const SOCKET_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://31.187.76.102:4000";
 
-    // Connect to Game Server on Port 3001
-    const s = io("http://localhost:3001", {
-      query: { userId, roomId: room.id, autoJoin: "true" }
+    socket = io(SOCKET_URL, {
+      transports: ["websocket"], // Forzar websocket para máxima velocidad
+      reconnectionAttempts: 5
     });
 
-    s.on("connect", () => {
-      console.log("Connected to Game Server");
+    socket.on("connect", () => {
+      setIsConnected(true);
+      console.log("🟢 Conectado al Motor de Juego");
+
+      // 2. Unirse a la sala
+      socket.emit("join_room", {
+        roomId: room.id,
+        user: {
+          id: userId,
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+          isBot: false
+        }
+      });
     });
 
-    s.on("game_state", (state: GameState) => {
-      setGameState(state);
-      // Sync router if finished?
-      if (state.state === "FINISHED") {
-        play("win");
-        confetti({ particleCount: 150, spreed: 70, origin: { y: 0.6 } });
+    // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
+    socket.on("update_game", (data) => {
+      setGameState(data);
+    });
+
+    socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
+      play("roll");
+
+      if (rollerId === userId) {
+        setRolling(true);
+        setTimeout(() => setRolling(false), 800);
+      } else {
+        setOpponentRolling(true);
+        setTimeout(() => setOpponentRolling(false), 800);
       }
     });
 
-    setSocket(s);
+    socket.on("game_over", ({ winnerId }: any) => {
+      if (winnerId === userId) {
+        play("win");
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      }
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("🔴 Error de conexión:", err);
+      toast.error("Error de conexión con el servidor de juego");
+    });
 
     return () => {
-      s.disconnect();
+      socket.disconnect();
     };
-  }, [userId, room.id]);
+  }, [room.id, userId]);
 
-  // Handle Roll
+
+  // Mapear el estado del socket (gameState) a lo que espera DiceDuel
+  // Si gameState es null, usamos la info estática de la DB (room) como fallback
+  const players = gameState?.players || {};
+  const rolls = gameState?.rolls || {};
+
+  // Identificar quién es P1 y P2 en el socket state
+  // (Simplificación: Asumimos que el orden de keys es el orden de llegada)
+  const playerKeys = Object.keys(players);
+  // Intentar mapear con los entries de la DB para consistencia
+  const topEntry = room.entries?.find((e: any) => e.position === 1);
+  const bottomEntry = room.entries?.find((e: any) => e.position === 2);
+
+  const dTop = topEntry ? (rolls[topEntry.user.id] || null) : null;
+  const dBot = bottomEntry ? (rolls[bottomEntry.user.id] || null) : null;
+
+  // Lógica Visual
+  const amTop = topEntry?.user.id === userId;
+  const swapVisuals = amTop; // P1 ve abajo
+
+  const timer = gameState?.timer || 30;
+  const statusText = gameState?.winner ? `Ganador: ${gameState.winner === userId ? "TÚ" : "RIVAL"}` : "Jugando...";
+
   const handleRoll = () => {
-    if (socket) {
-      play("roll");
-      socket.emit("roll", { roomId: room.id, userId });
-    }
+    if (rolling) return;
+    socket.emit("roll_dice", { roomId: room.id, userId });
   };
-
-  if (!gameState) return <div className="text-center p-10">Connecting to Game Server...</div>;
-
-  // Map State to Visuals
-  const me = gameState.players.find(p => p.id === userId);
-  const opponent = gameState.players.find(p => p.id !== userId);
-  const amTop = me?.position === 1; // Or check persistent if needed
-
-  // Determine visual swap (P1 always bottom?)
-  // Let's stick to Server Position logic: P1 is Top, P2 is Bottom usually? 
-  // Wait, in previous logic "swapVisuals = amTop" -> If I am Top (P1), I swap so I appear at Bottom.
-
-  // Server: P1 (Pos 1), P2 (Pos 2).
-  // If I am P1:
-  //   Visually I want to be Bottom.
-  //   So Bottom Component = Me (P1).
-  //   Top Component = Opponent (P2).
-
-  // If I am P2:
-  //   Visually I want to be Bottom.
-  //   So Bottom Component = Me (P2).
-  //   Top Component = Opponent (P1).
-
-  // Data for Bottom (Me)
-  const bottomPlayer = me;
-  const topPlayer = opponent;
-
-  // Rolls
-  const rolls = gameState.rolls;
-  const lastDice = gameState.lastDice;
-  const isLock = gameState.state === "RESOLVING" || gameState.state === "FINISHED";
-
-  // If Locked/Resolving, show Rolls OR Last Dice
-  // Actually, rolls persists until next round.
-  const bottomRoll = rolls[me?.id || ""] || (isLock ? lastDice[me?.id || ""] : null);
-  const topRoll = rolls[opponent?.id || ""] || (isLock ? lastDice[opponent?.id || ""] : null);
 
   return (
     <div className="relative flex flex-col items-center">
+      {!isConnected && <div className="text-xs text-red-500 mb-2">Conectando al servidor en tiempo real...</div>}
+
       <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
         <DiceDuel
-          topRoll={topRoll}
-          bottomRoll={bottomRoll}
+          topRoll={swapVisuals ? dBot : dTop}
+          bottomRoll={swapVisuals ? dTop : dBot}
 
-          isRollingTop={false} // Todo: Add rolling state from server events?
-          isRollingBottom={false}
+          isRollingTop={swapVisuals ? rolling : opponentRolling}
+          isRollingBottom={swapVisuals ? opponentRolling : rolling}
 
-          statusText={gameState.state === "LOCKED" && !rolls[userId || ""] ? "¡TU TURNO!" : ""}
-          winnerDisplay={null} // TODO: Map winner from history
+          statusText={statusText}
+          winnerDisplay={gameState?.winner ? { name: gameState.winner } : null}
 
           onRoll={handleRoll}
-          canRoll={gameState.state === "LOCKED" && !rolls[userId || ""]}
+          canRoll={!rolling && !dTop /* Simplificado para test */}
+          timeLeft={timer}
 
-          labelTop={topPlayer?.name || "Esperando..."}
-          labelBottom={bottomPlayer?.name || "Tú"}
-
-          diceColorTop={toSkin(topPlayer?.color)}
-          diceColorBottom={toSkin(bottomPlayer?.color)}
-
-          balanceTop={fmtUSD(topPlayer?.balance || 0)}
-          balanceBottom={fmtUSD(bottomPlayer?.balance || 0)}
+          labelTop={swapVisuals ? "J2" : "J1"}
+          labelBottom="Tú"
+          diceColorTop="white"
+          diceColorBottom="white"
 
           onExit={onLeave}
           onRejoin={onRejoin}
-          isFinished={gameState.state === "FINISHED"}
+          isFinished={false}
         />
-      </div>
-
-      {/* Debug Info */}
-      <div className="text-xs text-white/30 mt-2">
-        Server State: {gameState.state} | Round: {gameState.currentRound}
       </div>
     </div>
   );
