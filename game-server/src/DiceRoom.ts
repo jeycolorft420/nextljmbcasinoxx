@@ -3,18 +3,16 @@ import { Server, Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-
-// Configuración
-const PERCENTAGE_PER_ROUND = 0.20; // 20% de la apuesta base
-const TURN_TIMEOUT_SECONDS = 15;   // Tiempo para tirar antes de que tire auto
+const PERCENTAGE_PER_ROUND = 0.20;
+const TURN_TIMEOUT_SECONDS = 15;
 
 interface PlayerState {
     socketId: string;
     userId: string;
     username: string;
     avatarUrl?: string;
-    position: 1 | 2; // 1 = Creador/Host, 2 = Retador
-    currentBalance: number; // Saldo virtual dentro de la partida
+    position: 1 | 2;
+    currentBalance: number;
     skin: string;
     isBot: boolean;
     connected: boolean;
@@ -22,45 +20,63 @@ interface PlayerState {
 
 export class DiceRoom {
     public id: string;
-    public priceCents: number; // Precio de entrada (ej: 500 = $5.00)
-    public stepValue: number;  // Valor de cada ronda (ej: 100 = $1.00)
+    public priceCents: number;
+    public stepValue: number;
+
+    // Tiempos
+    public botWaitMs: number;
+    public autoLockAt: Date | null;
 
     public players: PlayerState[] = [];
-    public status: 'WAITING' | 'PLAYING' | 'FINISHED' = 'WAITING';
+    public status: 'WAITING' | 'PLAYING' | 'FINISHED' | 'CLOSED' = 'WAITING';
 
-    // Estado de la ronda actual
     public round: number = 1;
     public turnUserId: string | null = null;
-    public rolls: { [userId: string]: number } = {}; // Guardar tiros de la ronda { "user1": 5, "user2": 3 }
+    public rolls: { [userId: string]: number } = {};
 
     private io: Server;
-    private timer: NodeJS.Timeout | null = null;
+    private turnTimer: NodeJS.Timeout | null = null;
+    private botInjectionTimer: NodeJS.Timeout | null = null;
+    private autoLockTimer: NodeJS.Timeout | null = null;
 
-    constructor(roomId: string, priceCents: number, io: Server) {
+    constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, io: Server) {
         this.id = roomId;
         this.priceCents = priceCents;
-        // Calculamos el 20% de la apuesta base
         this.stepValue = Math.floor(this.priceCents * PERCENTAGE_PER_ROUND);
+        this.botWaitMs = botWaitMs;
+        this.autoLockAt = autoLockAt;
         this.io = io;
+
+        this.scheduleAutoLock();
     }
 
     /**
-     * Un usuario intenta entrar a la sala
+     * MÉTODOS DE GESTIÓN DE SALA (JOIN/LEAVE)
      */
     public addPlayer(socket: Socket, user: { id: string, name: string, skin: string, avatar?: string }, isBot: boolean = false) {
-        // Si ya está, actualizamos socket
+        // 1. Reconexión: Si el usuario ya está, actualizamos su socket
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
-            existing.socketId = socket.connected ? socket.id : "bot";
+            existing.socketId = socket.id;
             existing.connected = true;
             this.broadcastState();
+
+            // Si estaba jugando y es su turno, reiniciar timer visual
+            if (this.status === 'PLAYING' && this.turnUserId === existing.userId) {
+                // Opcional: reenviar evento de "tu turno"
+            }
             return;
         }
 
-        if (this.players.length >= 2) return; // Sala llena
+        // 2. Validaciones de Entrada
+        if (this.players.length >= 2 || this.status !== 'WAITING') {
+            socket.emit('error', { message: 'Sala llena o en juego' });
+            return;
+        }
 
-        // Asignar posición: 1 si es el primero, 2 si es el segundo
-        const position = this.players.some(p => p.position === 1) ? 2 : 1;
+        // 3. Asignar Posición (Rellenar hueco: Si hay alguien en pos 1, voy a la 2)
+        const hasPos1 = this.players.some(p => p.position === 1);
+        const position = hasPos1 ? 2 : 1;
 
         const newPlayer: PlayerState = {
             socketId: socket.id,
@@ -68,225 +84,294 @@ export class DiceRoom {
             username: user.name,
             avatarUrl: user.avatar,
             position,
-            currentBalance: this.priceCents, // Empiezan con su apuesta completa (ej: $5)
+            currentBalance: this.priceCents,
             skin: user.skin || 'default',
             isBot,
             connected: true
         };
 
         this.players.push(newPlayer);
-
-        // Ordenar array para que pos 1 esté siempre en índice 0 (opcional pero útil)
+        // Ordenamos para que posición 1 siempre esté primero en el array (estético)
         this.players.sort((a, b) => a.position - b.position);
 
-        this.broadcastState();
-        this.checkStart();
-    }
+        // 4. Lógica de Timers y Arranque
+        this.broadcastState(); // Emitir inmediatamente para fluidez
 
-    /**
-     * Verificar si podemos iniciar el PvP
-     */
-    private checkStart() {
-        if (this.status === 'WAITING' && this.players.length === 2) {
-            console.log(`[Sala ${this.id}] Iniciando juego PvP...`);
+        if (this.players.length === 1) {
+            // Primer jugador: Iniciar cuenta atrás para Bot
+            this.scheduleBotEntry();
+        } else if (this.players.length === 2) {
+            // Sala llena: Cancelar espera de bot y ARRANCAR
+            this.cancelBotEntry();
             this.startGame();
         }
     }
 
+    public removePlayer(socketId: string) {
+        const playerIndex = this.players.findIndex(p => p.socketId === socketId);
+        if (playerIndex === -1) return;
+
+        const player = this.players[playerIndex];
+
+        // ESCENARIO A: Juego en espera (WAITING)
+        // Eliminamos al jugador totalmente para liberar el hueco
+        if (this.status === 'WAITING') {
+            this.players.splice(playerIndex, 1);
+            console.log(`[Sala ${this.id}] Jugador ${player.username} salió (WAITING). Hueco liberado.`);
+
+            // Si la sala quedó vacía, limpiamos el timer del bot
+            if (this.players.length === 0) {
+                this.cancelBotEntry();
+            } else {
+                // Si quedó 1 persona (porque se fue el 2do), reiniciamos el timer del bot?
+                // O lo dejamos correr? Normalmente se reinicia o se verifica.
+                // En este caso, si queda 1 solo humano, nos aseguramos que el timer esté corriendo.
+                this.scheduleBotEntry();
+            }
+
+            this.broadcastState();
+        }
+        // ESCENARIO B: Juego en curso (PLAYING/FINISHED)
+        // No eliminamos, solo marcamos desconectado (puede volver)
+        else {
+            player.connected = false;
+            console.log(`[Sala ${this.id}] Jugador ${player.username} desconectado (en juego).`);
+            this.broadcastState();
+        }
+    }
+
+    /**
+     * LOGICA DE TIMERS
+     */
+    private scheduleBotEntry() {
+        // Limpieza preventiva
+        if (this.botInjectionTimer) clearTimeout(this.botInjectionTimer);
+
+        // Solo programar si: hay 1 jugador, no es bot, y hay tiempo configurado
+        if (this.botWaitMs > 0 && this.players.length === 1 && !this.players[0].isBot) {
+            console.log(`[Sala ${this.id}] ⏳ Esperando bot en ${this.botWaitMs}ms`);
+
+            this.botInjectionTimer = setTimeout(() => {
+                this.injectBot();
+            }, this.botWaitMs);
+        }
+    }
+
+    private cancelBotEntry() {
+        if (this.botInjectionTimer) {
+            clearTimeout(this.botInjectionTimer);
+            this.botInjectionTimer = null;
+        }
+    }
+
+    private async injectBot() {
+        // Doble check de seguridad
+        if (this.status !== 'WAITING' || this.players.length !== 1) return;
+
+        try {
+            const botUser = await prisma.user.findFirst({
+                where: { isBot: true },
+            });
+
+            if (botUser) {
+                console.log(`[Sala ${this.id}] 🤖 Bot ${botUser.username} entrando...`);
+                // Simulamos socket con ID especial
+                const mockSocket = { id: `bot-${Date.now()}` } as any;
+
+                this.addPlayer(mockSocket, {
+                    id: botUser.id,
+                    name: botUser.username || "Bot",
+                    skin: botUser.selectedDiceColor || "red",
+                    avatar: botUser.avatarUrl || ""
+                }, true);
+            }
+        } catch (error) {
+            console.error("Error injectBot:", error);
+        }
+    }
+
+    private scheduleAutoLock() {
+        if (!this.autoLockAt) return;
+        const now = new Date();
+        const delay = this.autoLockAt.getTime() - now.getTime();
+
+        if (delay <= 0) {
+            this.closeRoom("Tiempo expirado");
+        } else {
+            this.autoLockTimer = setTimeout(() => {
+                // Solo cerramos si sigue esperando
+                if (this.status === 'WAITING' && this.players.length < 2) {
+                    this.closeRoom("Tiempo expirado");
+                }
+            }, delay);
+        }
+    }
+
+    private async closeRoom(reason: string) {
+        this.status = 'CLOSED';
+        this.cancelBotEntry();
+        this.io.to(this.id).emit('room_closed', { reason });
+        try {
+            await prisma.room.update({
+                where: { id: this.id },
+                data: { state: 'LOCKED', lockedAt: new Date() }
+            });
+        } catch (e) { }
+    }
+
+    /**
+     * MOTOR DE JUEGO
+     */
     private startGame() {
         this.status = 'PLAYING';
         this.round = 1;
         this.rolls = {};
 
-        // Regla: "El primer tiro lo tiene el que primero entró" (Posición 1)
+        // Cancelar timer de cierre si empezó el juego
+        if (this.autoLockTimer) clearTimeout(this.autoLockTimer);
+
+        // Turno inicial: Jugador en Posición 1
         const p1 = this.players.find(p => p.position === 1);
         this.turnUserId = p1 ? p1.userId : this.players[0].userId;
 
+        console.log(`[Sala ${this.id}] 🎮 Juego iniciado. Turno: ${this.turnUserId}`);
         this.broadcastState();
-
-        // Iniciar temporizador de turno (para evitar AFK)
         this.startTurnTimer();
     }
 
-    /**
-     * Manejar tiro de dados
-     */
     public handleRoll(userId: string) {
         if (this.status !== 'PLAYING') return;
-        if (this.turnUserId !== userId) return; // No es su turno
-        if (this.rolls[userId]) return; // Ya tiró en esta ronda
+        if (this.turnUserId !== userId) return;
+        if (this.rolls[userId]) return;
 
-        // 1. Generar número aleatorio (1-6)
-        // TODO: Aquí integrarías tu lógica "Provably Fair" si la tienes
+        // Generar tiro (1-6)
         const val = Math.floor(Math.random() * 6) + 1;
         this.rolls[userId] = val;
 
-        // Emitir el tiro inmeadiatamente para animación
+        // Emitir SOLO el evento de dados para animación rápida
         this.io.to(this.id).emit('dice_rolled', { userId, value: val });
 
-        // 2. Pasar turno o Evaluar Ronda
+        // Verificamos oponente
         const opponent = this.players.find(p => p.userId !== userId);
 
         if (opponent && !this.rolls[opponent.userId]) {
-            // El oponente falta por tirar
+            // Cambio de turno
             this.turnUserId = opponent.userId;
-            this.broadcastState();
+            this.broadcastState(); // Actualizar UI con nuevo turno
             this.startTurnTimer();
         } else {
-            // Ambos han tirado, resolver ronda
+            // Fin de ronda
             this.resolveRound();
         }
     }
 
-    /**
-     * Resolver quién ganó la ronda y mover el dinero
-     */
     private resolveRound() {
-        this.turnUserId = null; // Pausa momentánea
-        if (this.timer) clearTimeout(this.timer);
+        this.turnUserId = null;
+        if (this.turnTimer) clearTimeout(this.turnTimer);
 
-        const p1 = this.players[0];
-        const p2 = this.players[1];
+        // Esperar un poco para que la animación de dados termine en el cliente (1s)
+        setTimeout(() => {
+            const p1 = this.players[0];
+            const p2 = this.players[1];
+            const val1 = this.rolls[p1.userId];
+            const val2 = this.rolls[p2.userId];
 
-        const val1 = this.rolls[p1.userId];
-        const val2 = this.rolls[p2.userId];
+            let winnerId: string | null = "TIE";
 
-        let roundWinnerId: string | null = null;
+            if (val1 > val2) {
+                winnerId = p1.userId;
+                p1.currentBalance += this.stepValue;
+                p2.currentBalance -= this.stepValue;
+            } else if (val2 > val1) {
+                winnerId = p2.userId;
+                p2.currentBalance += this.stepValue;
+                p1.currentBalance -= this.stepValue;
+            }
 
-        // Lógica de Ganador de Ronda
-        if (val1 > val2) {
-            roundWinnerId = p1.userId;
-            // P1 roba a P2
-            p1.currentBalance += this.stepValue;
-            p2.currentBalance -= this.stepValue;
-        } else if (val2 > val1) {
-            roundWinnerId = p2.userId;
-            // P2 roba a P1
-            p2.currentBalance += this.stepValue;
-            p1.currentBalance -= this.stepValue;
-        } else {
-            // Empate: Nadie pierde saldo
-            roundWinnerId = "TIE";
-        }
+            // Validar límites (no negativos)
+            if (p1.currentBalance < 0) p1.currentBalance = 0;
+            if (p2.currentBalance < 0) p2.currentBalance = 0;
 
-        // Emitir resultado de la ronda
-        this.io.to(this.id).emit('round_result', {
-            rolls: this.rolls,
-            winnerId: roundWinnerId,
-            players: this.players.map(p => ({ userId: p.userId, balance: p.currentBalance }))
-        });
+            // Emitir resultado
+            this.io.to(this.id).emit('round_result', {
+                rolls: this.rolls,
+                winnerId,
+                players: this.players.map(p => ({ userId: p.userId, balance: p.currentBalance }))
+            });
 
-        // Verificar si alguien llegó a 0 (GAME OVER)
-        const bankruptPlayer = this.players.find(p => p.currentBalance <= 0);
-
-        if (bankruptPlayer) {
-            const winner = this.players.find(p => p.userId !== bankruptPlayer.userId);
-            this.finishGame(winner!);
-        } else {
-            // Siguiente Ronda en 3 segundos
-            setTimeout(() => {
-                this.nextRound();
-            }, 3000);
-        }
+            // Verificar Game Over
+            const bankrupt = this.players.find(p => p.currentBalance <= 0);
+            if (bankrupt) {
+                const winner = this.players.find(p => p.userId !== bankrupt.userId);
+                setTimeout(() => this.finishGame(winner!), 2000); // 2s drama
+            } else {
+                setTimeout(() => this.nextRound(), 3000); // 3s para ver resultado
+            }
+        }, 800); // Delay animación
     }
 
     private nextRound() {
         this.round++;
         this.rolls = {};
-
-        // Regla: "rondas tiene un tiro para cada jugador"
-        // Por tu descripción: "el primer tiro lo tiene el que primer entró", asumiremos fijo P1 o ganador.
-        // Vamos a dejar fijo a P1 inicia siempre la ronda por ahora para cumplir la regla básica.
+        // P1 siempre empieza ronda (regla simple)
         this.turnUserId = this.players.find(p => p.position === 1)?.userId || null;
 
         this.broadcastState();
         this.startTurnTimer();
     }
 
+    private startTurnTimer() {
+        if (this.turnTimer) clearTimeout(this.turnTimer);
+
+        const currentPlayer = this.players.find(p => p.userId === this.turnUserId);
+        if (!currentPlayer) return;
+
+        // Si es BOT: Tirar rápido (humanizado 1.5s - 3s)
+        if (currentPlayer.isBot) {
+            const delay = Math.floor(Math.random() * 1500) + 1500;
+            this.turnTimer = setTimeout(() => this.handleRoll(currentPlayer.userId), delay);
+        } else {
+            // Si es Humano: 15s límite
+            this.turnTimer = setTimeout(() => {
+                if (this.status === 'PLAYING') {
+                    // Auto-roll por timeout
+                    this.handleRoll(currentPlayer.userId);
+                }
+            }, TURN_TIMEOUT_SECONDS * 1000);
+        }
+    }
+
     private async finishGame(winner: PlayerState) {
         this.status = 'FINISHED';
+        const prizeTotal = this.players.reduce((sum, p) => sum + this.priceCents, 0); // Pozo total (apuesta A + apuesta B)
 
-        const loser = this.players.find(p => p.userId !== winner.userId);
-        const prizeTotal = this.players.reduce((sum, p) => sum + this.priceCents, 0); // Total del pozo original
-
-        // Emitir fin
         this.io.to(this.id).emit('game_over', {
             winnerId: winner.userId,
             prize: prizeTotal
         });
 
-        // --- PERSISTENCIA EN DB (PRISMA) ---
-        // Aquí guardamos el historial y movemos el dinero REAL en la base de datos
+        // Persistencia DB
         try {
-            // 1. Crear registro de resultado
-            // NOTE: Ajuste el esquema de Prisma si es necesario
-            /*
             await prisma.gameResult.create({
                 data: {
                     roomId: this.id,
                     winnerUserId: winner.userId,
                     winnerName: winner.username,
-                    prizeCents: prizeTotal, 
-                    roundNumber: this.round,
+                    prizeCents: prizeTotal,
+                    roundNumber: this.round
                 }
             });
-            */
-
-            // 2. Actualizar Saldos de Billetera (User)
-            // IMPORTANTE: Asumimos que el saldo YA se descontó al crear la Entry.
             await prisma.user.update({
                 where: { id: winner.userId },
-                data: {
-                    balanceCents: { increment: prizeTotal },
-                }
+                data: { balanceCents: { increment: prizeTotal } }
             });
-
-            // 3. Marcar sala como terminada
             await prisma.room.update({
                 where: { id: this.id },
-                data: {
-                    state: 'FINISHED',
-                    finishedAt: new Date(),
-                    //winningEntryId: winner.userId 
-                }
+                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId }
             });
-
-            console.log(`[Sala ${this.id}] Juego terminado. Ganador: ${winner.username}`);
-
-        } catch (error) {
-            console.error("Error guardando partida en DB:", error);
-        }
+        } catch (e) { console.error("Error DB finishGame:", e); }
     }
 
-    /**
-     * Timer para que si un jugador no tira, tire automático (o pierda turno)
-     */
-    private startTurnTimer() {
-        if (this.timer) clearTimeout(this.timer);
-
-        // Si el turno es de un BOT, tirar automáticamente rápido
-        const currentPlayer = this.players.find(p => p.userId === this.turnUserId);
-        if (currentPlayer && currentPlayer.isBot) {
-            const delay = Math.floor(Math.random() * 2000) + 1500; // 1.5s - 3.5s
-            this.timer = setTimeout(() => {
-                this.handleRoll(currentPlayer.userId);
-            }, delay);
-            return;
-        }
-
-        // Si es HUMANO, darle 15 segs
-        this.timer = setTimeout(() => {
-            if (this.status === 'PLAYING' && this.turnUserId) {
-                // Auto-roll random por demora
-                console.log(`Auto-rolling for ${this.turnUserId} due to timeout`);
-                this.handleRoll(this.turnUserId);
-            }
-        }, TURN_TIMEOUT_SECONDS * 1000);
-    }
-
-    /**
-     * Enviar estado completo a todos en la sala
-     */
     private broadcastState() {
         this.io.to(this.id).emit('update_game', {
             status: this.status,
@@ -296,23 +381,13 @@ export class DiceRoom {
                 balance: p.currentBalance,
                 avatar: p.avatarUrl,
                 skin: p.skin,
-                position: p.position
+                position: p.position,
+                isBot: p.isBot
             })),
             turnUserId: this.turnUserId,
             round: this.round,
             rolls: this.rolls,
-            pot: this.players.reduce((sum, p) => sum + p.currentBalance, 0) // Debe ser constante
+            pot: this.players.reduce((sum, p) => sum + p.currentBalance, 0)
         });
-    }
-
-    /**
-     * Usuario se desconecta
-     */
-    public removePlayer(socketId: string) {
-        const player = this.players.find(p => p.socketId === socketId);
-        if (player) {
-            player.connected = false;
-            this.io.to(this.id).emit('player_disconnected', { userId: player.userId });
-        }
     }
 }
