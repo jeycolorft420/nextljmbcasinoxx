@@ -10,6 +10,7 @@ const TURN_TIMEOUT_SECONDS = 15;   // 15 seg para tirar o tira auto
 interface PlayerState {
     socketId: string;
     userId: string;
+    dbEntryId: string;
     username: string;
     avatarUrl?: string;
     position: 1 | 2; // 1 = Arriba (Host), 2 = Abajo (Retador)
@@ -54,7 +55,7 @@ export class DiceRoom {
 
     // --- GESTIÓN DE JUGADORES ---
 
-    public addPlayer(socket: Socket, user: { id: string, name: string, skin: string, avatar?: string }, isBot: boolean = false) {
+    public addPlayer(socket: Socket, user: { id: string, entryId: string, name: string, skin: string, avatar?: string }, isBot: boolean = false) {
         // 1. Reconexión
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
@@ -75,6 +76,7 @@ export class DiceRoom {
         const newPlayer: PlayerState = {
             socketId: isBot ? `bot-${Date.now()}` : socket.id,
             userId: user.id,
+            dbEntryId: user.entryId,
             username: user.name,
             avatarUrl: user.avatar,
             position,
@@ -187,13 +189,16 @@ export class DiceRoom {
         const sum2 = roll2[0] + roll2[1];
 
         let winnerId: string | null = null; // null = Empate
+        let winnerEntryId: string | null = null;
 
         if (sum1 > sum2) {
             winnerId = p1.userId;
+            winnerEntryId = p1.dbEntryId;
             p1.currentBalance += this.stepValue;
             p2.currentBalance -= this.stepValue;
         } else if (sum2 > sum1) {
             winnerId = p2.userId;
+            winnerEntryId = p2.dbEntryId;
             p2.currentBalance += this.stepValue;
             p1.currentBalance -= this.stepValue;
         }
@@ -205,6 +210,7 @@ export class DiceRoom {
         // Emitir resultado de ronda
         this.io.to(this.id).emit('round_result', {
             winnerId,
+            winnerEntryId,
             rolls: this.currentRolls,
             balances: {
                 [p1.userId]: p1.currentBalance,
@@ -242,6 +248,7 @@ export class DiceRoom {
 
         this.io.to(this.id).emit('game_over', {
             winnerId: winner.userId,
+            winningEntryId: winner.dbEntryId,
             prize: prizeTotal
         });
 
@@ -264,7 +271,7 @@ export class DiceRoom {
             });
             await prisma.room.update({
                 where: { id: this.id },
-                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId }
+                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.dbEntryId }
             });
         } catch (e) { console.error("Error DB finishGame:", e); }
     }
@@ -323,6 +330,7 @@ export class DiceRoom {
                 const mockSocket = { id: `bot-int-${Date.now()}` } as any;
                 this.addPlayer(mockSocket, {
                     id: botUser.id,
+                    entryId: `bot-entry-${Date.now()}`,
                     name: botUser.name || "Bot",
                     skin: botUser.selectedDiceColor || "red",
                     avatar: botUser.avatarUrl || ""
@@ -364,7 +372,8 @@ export class DiceRoom {
                 position: p.position,
                 isBot: p.isBot,
                 hasRolled: p.hasRolled,
-                connected: p.connected
+                connected: p.connected,
+                // entryId: p.dbEntryId // Add if frontend needs it here
             })),
 
             // Estado de dados actual (para que los nuevos espectadores vean qué salió)
