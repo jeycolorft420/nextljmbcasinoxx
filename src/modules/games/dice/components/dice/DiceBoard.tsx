@@ -102,23 +102,6 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
   const currentTopRoll = activeTop || (isResolving ? lastDice.top : null) || lastDice.top || null;
   const currentBottomRoll = activeBottom || (isResolving ? lastDice.bottom : null) || lastDice.bottom || null;
 
-  // Estado para animar al oponente
-  const [opponentRolling, setOpponentRolling] = useState(false);
-  const prevOpponentRoll = useRef<string>("");
-
-  // Detectar cambio en los dados del oponente para animar
-  const opponentRollData = swapVisuals ? rolls[bottomEntry?.user.id || ""] : rolls[topEntry?.user.id || ""];
-
-  useEffect(() => {
-    const currentStr = JSON.stringify(opponentRollData);
-    // Si cambiaron los dados y no es nulo (es un tiro nuevo)
-    if (currentStr !== prevOpponentRoll.current && opponentRollData) {
-      play("roll");
-      setOpponentRolling(true);
-      setTimeout(() => setOpponentRolling(false), 1000); // 1s de animación
-    }
-    prevOpponentRoll.current = currentStr;
-  }, [opponentRollData, play]);
 
   // 4. Calcular Ganador (Solo si estamos en fase de resolución)
   const winnerDisplay = useMemo(() => {
@@ -217,6 +200,24 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
   // Visual Swap (Si soy P1, me veo abajo)
   const amTop = meEntry?.position === 1;
   const swapVisuals = amTop;
+
+  // Estado para animar al oponente
+  const [opponentRolling, setOpponentRolling] = useState(false);
+  const prevOpponentRoll = useRef<string>("");
+
+  // Detectar cambio en los dados del oponente para animar
+  const opponentRollData = swapVisuals ? rolls[bottomEntry?.user.id || ""] : rolls[topEntry?.user.id || ""];
+
+  useEffect(() => {
+    const currentStr = JSON.stringify(opponentRollData);
+    // Si cambiaron los dados y no es nulo (es un tiro nuevo)
+    if (currentStr !== prevOpponentRoll.current && opponentRollData) {
+      play("roll");
+      setOpponentRolling(true);
+      setTimeout(() => setOpponentRolling(false), 1000); // 1s de animación
+    }
+    prevOpponentRoll.current = currentStr;
+  }, [opponentRollData, play]);
   const topLabel = (topEntry?.user.name || "J1") + (amTop ? " (Tú)" : "");
   const bottomLabel = (bottomEntry?.user.name || "J2") + (!amTop && meEntry ? " (Tú)" : "");
 
