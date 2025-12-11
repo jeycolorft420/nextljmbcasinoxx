@@ -116,16 +116,17 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
 
   // Mapear el estado del socket (gameState) a lo que espera DiceDuel
   // Si gameState es null, usamos la info estática de la DB (room) como fallback
-  const players = gameState?.players || {};
+  // Mapear el estado del socket (gameState) a lo que espera DiceDuel
+  // players es ahora un array [{userId: "...", name: "..."}]
+  const playersArr = Array.isArray(gameState?.players) ? gameState.players : [];
   const rolls = gameState?.rolls || {};
 
-  // Identificar quién es P1 y P2 en el socket state
-  // (Simplificación: Asumimos que el orden de keys es el orden de llegada)
-  const playerKeys = Object.keys(players);
-  // Intentar mapear con los entries de la DB para consistencia
+  // Intentar mapear con los entries de la DB para consistencia visual (arriba/abajo)
+  // Entry 1 = Top (P1), Entry 2 = Bottom (P2)
   const topEntry = room.entries?.find((e: any) => e.position === 1);
   const bottomEntry = room.entries?.find((e: any) => e.position === 2);
 
+  // Buscar datos de roll usando el userId de los entries
   const dTop = topEntry ? (rolls[topEntry.user.id] || null) : null;
   const dBot = bottomEntry ? (rolls[bottomEntry.user.id] || null) : null;
 
