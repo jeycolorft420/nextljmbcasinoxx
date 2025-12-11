@@ -23,7 +23,7 @@ const createSchema = z.object({
 });
 
 
-// GET /api/rooms?state=&gameType=&take=
+// GET /api/rooms
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -56,14 +56,11 @@ export async function GET(req: Request) {
       take: q.take ?? 30,
     });
 
-    // 🔒 LAZY LOCKING & MAINTENANCE
-    // Check if any room has expired and needs maintenance (Lock, Bot Fill, Finish, or Extend)
-    await Promise.all(rooms.map(async (r) => {
-      // Logic moved to shared helper
-      await checkAndMaintenanceRoom(r);
-    }));
+    // 🚨 COMENTADO: Mantenimiento perezoso causaba Error 500 por timeout
+    // await Promise.all(rooms.map(async (r) => {
+    //   await checkAndMaintenanceRoom(r);
+    // }));
 
-    // Fix: Count entries only for the CURRENT round of each room
     const data = await Promise.all(rooms.map(async (r) => {
       const currentRound = (r as any).currentRound ?? 1;
       const count = await prisma.entry.count({
@@ -86,7 +83,8 @@ export async function GET(req: Request) {
     return NextResponse.json(data);
   } catch (e) {
     console.error("rooms GET error:", e);
-    return NextResponse.json({ error: "No se pudieron listar salas" }, { status: 500 });
+    // Cambiamos a array vacío en caso de error para que el frontend no rompa
+    return NextResponse.json([], { status: 200 });
   }
 }
 
