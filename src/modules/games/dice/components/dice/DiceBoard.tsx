@@ -117,7 +117,21 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
     const damage = lastRound.damage ?? 0;
 
     return { name: winnerName, amount: fmtUSD(damage), isTie };
+    return { name: winnerName, amount: fmtUSD(damage), isTie };
   }, [isResolving, room.gameMeta?.history, room.entries]);
+
+  // Estado para retrasar el cartel hasta que termine la animación
+  const [delayedWinner, setDelayedWinner] = useState<any>(null);
+
+  useEffect(() => {
+    if (winnerDisplay) {
+      // Si hay ganador, esperar 1.5s (tiempo de giro) antes de mostrarlo
+      const t = setTimeout(() => setDelayedWinner(winnerDisplay), 1500);
+      return () => clearTimeout(t);
+    } else {
+      setDelayedWinner(null);
+    }
+  }, [winnerDisplay]);
 
   // 5. Auto-Refresco Inteligente (Sincronización Perfecta)
   useEffect(() => {
@@ -267,7 +281,9 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
 
           statusText={statusText}
           subMessage={winnerDisplay ? undefined : room.gameMeta?.message}
-          winnerDisplay={winnerDisplay} // ESTO ES LO QUE MUESTRA EL CARTEL
+          statusText={statusText}
+          subMessage={delayedWinner ? undefined : room.gameMeta?.message}
+          winnerDisplay={delayedWinner} // ESTO ES LO QUE MUESTRA EL CARTEL
 
           onRoll={handleRoll}
           canRoll={myTurn && !rolling && !isResolving}

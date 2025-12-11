@@ -56,6 +56,7 @@ export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props)
                     transform: rolling ? undefined : getTransform(face || 1)
                 }}
             >
+                <div className="cube__inner" style={{ transform: `translateZ(-2px)` }}></div>
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                     <div key={n} className={`cube__face cube__face--${n}`}>
                         {/* Grid 3x3 para los puntos */}
