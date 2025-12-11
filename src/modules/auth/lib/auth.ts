@@ -104,7 +104,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token, user }) {
       // Nota: Con strategy="jwt", 'user' es undefined aquí, usamos 'token'.
       if (session.user) {
-        (session.user as any).id = token.id || token.sub;
+        (session.user as any).id = token.sub || token.id;
         session.user.email = token.email as string | undefined;
         session.user.name = token.name as string | null | undefined;
         (session.user as any).role = token.role;

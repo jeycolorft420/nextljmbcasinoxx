@@ -62,10 +62,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             else if (!rolls[secondId]) turnUserId = secondId;
             else throw new Error("All rolled"); // Should be finished
 
-            // Validation
-            if (userId !== turnUserId) {
-                // Determine name of who we are waiting for
-                const waitingFor = room.entries.find(e => e.userId === turnUserId)?.user.name || "Opponent";
+            // Validation (ID or Email fallback)
+            const currentUserEntry = room.entries.find(e => e.userId === turnUserId);
+            const isMyTurn = (userId === turnUserId) ||
+                (session.user?.email && currentUserEntry?.user.email === session.user.email);
+
+            if (!isMyTurn) {
+                const waitingFor = currentUserEntry?.user.name || "Opponent";
                 return { error: `Wait for ${waitingFor}`, status: 403 };
             }
 
