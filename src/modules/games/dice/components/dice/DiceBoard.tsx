@@ -131,24 +131,33 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
 
 
   // Mapear el estado del socket (gameState) a lo que espera DiceDuel
-  // Si gameState es null, usamos la info estática de la DB (room) como fallback
-  // Mapear el estado del socket (gameState) a lo que espera DiceDuel
   // players es ahora un array [{userId: "...", name: "..."}]
   const playersArr = Array.isArray(gameState?.players) ? gameState.players : [];
   const rolls = gameState?.rolls || {};
 
-  // Intentar mapear con los entries de la DB para consistencia visual (arriba/abajo)
-  // Entry 1 = Top (P1), Entry 2 = Bottom (P2)
-  const topEntry = room.entries?.find((e: any) => e.position === 1);
-  const bottomEntry = room.entries?.find((e: any) => e.position === 2);
+  // Mapeo DIRECTO del Socket (La verdad absoluta)
+  // P1 = Index 0, P2 = Index 1
+  const p1 = playersArr[0] || null;
+  const p2 = playersArr[1] || null;
 
-  // Buscar datos de roll usando el userId de los entries
-  const dTop = topEntry ? (rolls[topEntry.user.id] || null) : null;
-  const dBot = bottomEntry ? (rolls[bottomEntry.user.id] || null) : null;
+  // Determinar quién soy yo en el array del socket
+  const amP1 = p1?.userId === userId;
+  const amP2 = p2?.userId === userId;
 
-  // Lógica Visual
-  const amTop = topEntry?.user.id === userId;
-  const swapVisuals = amTop; // P1 ve abajo
+  // Si soy P1, veo P2 arriba. Si soy P2, veo P1 arriba.
+  // Si soy espectador, veo P1 arriba normal.
+  const swapVisuals = amP1; // Si soy P1, quiero verme abajo (Bottom), así que P2 va arriba (Top)
+
+  const topPlayer = swapVisuals ? p2 : p1;
+  const botPlayer = swapVisuals ? p1 : p2;
+
+  // Obtener Dados usando los IDs del socket
+  const dTop = topPlayer ? (rolls[topPlayer.userId] || null) : null;
+  const dBot = botPlayer ? (rolls[botPlayer.userId] || null) : null;
+
+  // Nombres para mostrar
+  const labelTop = topPlayer?.name || (swapVisuals ? "J2" : "J1");
+  const labelBot = botPlayer?.name || (swapVisuals ? "Tú" : "J2");
 
   const timer = gameState?.timer || 30;
   // Identificar el usuario actual
@@ -215,8 +224,8 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
           canRoll={!rolling && myTurn && !isWinner}
           timeLeft={timer}
 
-          labelTop={swapVisuals ? "J2" : "J1"}
-          labelBottom="Tú"
+          labelTop={labelTop}
+          labelBottom={labelBot}
           diceColorTop="white"
           diceColorBottom="white"
 
