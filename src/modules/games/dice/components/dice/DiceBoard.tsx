@@ -173,3 +173,36 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
     </div>
   );
 }
+// History Component
+export function DiceHistory({ room, swapVisuals, className }: { room: any, swapVisuals?: boolean, className?: string }) {
+  const history = room.gameMeta?.history || [];
+  // Reverse to show newest first
+  const list = [...history].reverse();
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {list.length === 0 && <div className="text-center text-xs text-white/30 py-4">No hay historial reciente</div>}
+
+      {list.map((h: any, i: number) => {
+        // h has: rolls: { userId: [1,2] }, winnerUserId, round...
+        // We need to map userId to Top/Bottom based on swapVisuals? 
+        // Or just show simplified view.
+
+        // Let's just show Winner Name + Damage for now to be safe and simple
+        const isTie = !h.winnerUserId;
+        const winnerName = room.entries?.find((e: any) => e.user.id === h.winnerUserId)?.user.name || "Desconocido";
+
+        return (
+          <div key={i} className="bg-black/20 p-2 rounded flex justify-between items-center text-xs">
+            <span className="opacity-50">Ronda {h.round}</span>
+            {isTie ? (
+              <span className="text-white/50 font-bold">Empate</span>
+            ) : (
+              <span className="text-emerald-400 font-bold">Ganó {winnerName}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
