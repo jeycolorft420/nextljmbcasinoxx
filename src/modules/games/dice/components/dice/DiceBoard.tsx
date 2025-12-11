@@ -11,7 +11,7 @@ import { useAudio } from "@/context/AudioContext";
 
 let socket: Socket;
 
-export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize }: any) {
+export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize, userSkin = "white" }: any) {
   const router = useRouter();
   const { play } = useAudio();
 
@@ -39,7 +39,8 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, whee
         roomId: room.id,
         user: {
           id: userId,
-          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador"
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+          selectedDiceColor: userSkin
         }
       });
     });
