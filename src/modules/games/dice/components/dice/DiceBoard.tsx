@@ -134,17 +134,32 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
   const swapVisuals = amTop; // P1 ve abajo
 
   const timer = gameState?.timer || 30;
-  const statusText = gameState?.winner ? `Ganador: ${gameState.winner === userId ? "TÚ" : "RIVAL"}` : "Jugando...";
+  // Identificar el usuario actual
+  // Nota: players es array o objeto? En el nuevo server es array.
+  // Pero aquí mantuvimos la lógica vieja de objeto {id: roll}.
+  // El nuevo server manda room.players array.
+  // Vamos a adaptar para leer turnUserId.
+
+  // VALIDACIÓN DE TURNO
+  const myTurn = gameState?.turnUserId === userId;
+  const isWinner = !!gameState?.winner;
+
+  // Status Text Inteligente
+  let statusText = "Esperando jugadores...";
+  if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
+  else if (gameState?.winner) statusText = gameState.winner === userId ? "¡GANASTE!" : (gameState.winner === "TIE" ? "EMPATE" : "Rival Ganó");
+  else if (myTurn) statusText = "¡TU TURNO! TIRA LOS DADOS";
+  else statusText = `Esperando a ${gameState?.turnUserId === "bot-juan" ? "Bot" : "Rival"}...`;
 
   // 🚨 FIX: Construir objeto completo para evitar React Error #130
   // Calcular nombre del ganador
-  let winnerName = "Rival";
+  let winnerName = gameState?.winner === "TIE" ? "EMPATE" : "Rival";
   const wId = gameState?.winner;
 
   if (wId === userId) winnerName = "TÚ";
   else if (wId && wId !== "TIE") {
-    // Buscar en jugadores del socket
-    const p = gameState?.players?.find((p: Player) => p.id === wId);
+    // Buscar en jugadores del socket (Array en nuevo server)
+    const p = gameState?.players?.find((p: any) => p.userId === wId);
     if (p) winnerName = p.name;
     else {
       // Fallback a room entries
@@ -180,7 +195,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
           winnerDisplay={winnerDisplay}
 
           onRoll={handleRoll}
-          canRoll={!rolling && !dTop /* Simplificado para test */}
+          canRoll={!rolling && myTurn && !isWinner}
           timeLeft={timer}
 
           labelTop={swapVisuals ? "J2" : "J1"}
