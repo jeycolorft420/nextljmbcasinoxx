@@ -15,12 +15,14 @@ const io = new Server(httpServer, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Mapa de Salas en Memoria
 const rooms: { [key: string]: DiceRoom } = {};
 const socketToRoom: { [key: string]: string } = {};
+// 👇 NUEVO: Mapa de seguridad para saber quién es dueño de qué socket
+const socketToUser: { [key: string]: string } = {};
 
 io.on('connection', (socket) => {
 
+    // --- JOIN ROOM (Aquí registramos la identidad) ---
     socket.on('join_room', async ({ roomId, user }) => {
         try {
             const dbRoom = await prisma.room.findUnique({
@@ -29,20 +31,22 @@ io.on('connection', (socket) => {
             });
 
             if (!dbRoom) {
-                socket.emit('error', { message: 'Sala no encontrada' });
+                socket.emit('error', { message: 'Sala no existe' });
                 return;
             }
 
+            // Registrar socket en los mapas
             socket.join(roomId);
             socketToRoom[socket.id] = roomId;
+            socketToUser[socket.id] = user.id; // <--- VINCULACIÓN SEGURA
 
-            // Instanciar con tiempos de bot y cierre
+            // Instanciar sala si no existe
             if (!rooms[roomId]) {
                 rooms[roomId] = new DiceRoom(
                     roomId,
                     Number(dbRoom.priceCents),
-                    dbRoom.botWaitMs || 0, // Timeout para bot
-                    dbRoom.autoLockAt || null, // Cierre automático
+                    dbRoom.botWaitMs || 0,
+                    dbRoom.autoLockAt || null,
                     io
                 );
             }
@@ -64,34 +68,47 @@ io.on('connection', (socket) => {
             }, false);
 
         } catch (e) {
-            console.error("Error joining room:", e);
+            console.error("Error join_room:", e);
         }
     });
 
-    socket.on('roll_dice', ({ roomId, userId }) => {
+    // --- ROLL DICE (BLINDADO) ---
+    // Ya no pedimos userId, lo sacamos del socket.
+    socket.on('roll_dice', ({ roomId }) => {
         const room = rooms[roomId];
+        const userId = socketToUser[socket.id]; // <--- IDENTIDAD VERIFICADA
+
+        if (!userId) {
+            console.log(`[Seguridad] Intento de tiro sin usuario autenticado: ${socket.id}`);
+            return;
+        }
+
         if (room) {
+            // El servidor decide si es tu turno, no el cliente.
             room.handleRoll(userId);
         }
     });
 
+    // --- DISCONNECT ---
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
+        // const userId = socketToUser[socket.id]; // Recuperamos quién era (unused but good for logging)
+
         if (roomId && rooms[roomId]) {
             const room = rooms[roomId];
 
             // Notificar salida a la sala (limpia si está en WAITING)
             room.removePlayer(socket.id);
 
-            // Limpieza de memoria si la sala está vacía y en estado terminal o waiting
-            // Para evitar fugas de memoria, si está WAITING y tiene 0 jugadores, se borra.
+            // Limpieza si la sala muere
             if (room.players.length === 0 && (room.status === 'CLOSED' || room.status === 'FINISHED' || room.status === 'WAITING')) {
-                console.log(`[RC] Sala ${roomId} eliminada de memoria (vacía).`);
                 delete rooms[roomId];
             }
-
-            delete socketToRoom[socket.id];
         }
+
+        // Limpiar mapas
+        delete socketToRoom[socket.id];
+        delete socketToUser[socket.id];
     });
 });
 

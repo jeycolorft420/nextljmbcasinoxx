@@ -54,32 +54,30 @@ export class DiceRoom {
      * MÉTODOS DE GESTIÓN DE SALA (JOIN/LEAVE)
      */
     public addPlayer(socket: Socket, user: { id: string, name: string, skin: string, avatar?: string }, isBot: boolean = false) {
-        // 1. Reconexión: Si el usuario ya está, actualizamos su socket
+        // 1. Reconexión
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
-            existing.socketId = socket.id;
+            // Si es bot, mantenemos su ID interno, si es humano actualizamos socket
+            if (!isBot) existing.socketId = socket.id;
+
             existing.connected = true;
-            this.broadcastState();
-
-            // Si estaba jugando y es su turno, reiniciar timer visual
-            if (this.status === 'PLAYING' && this.turnUserId === existing.userId) {
-                // Opcional: reenviar evento de "tu turno"
-            }
+            this.broadcastState(); // <--- IMPORTANTE: Avisar inmediatamente
             return;
         }
 
-        // 2. Validaciones de Entrada
         if (this.players.length >= 2 || this.status !== 'WAITING') {
-            socket.emit('error', { message: 'Sala llena o en juego' });
+            // Avoid adding more players if full or already playing
+            if (!isBot) socket.emit('error', { message: 'Sala llena o en juego' });
             return;
         }
 
-        // 3. Asignar Posición (Rellenar hueco: Si hay alguien en pos 1, voy a la 2)
-        const hasPos1 = this.players.some(p => p.position === 1);
-        const position = hasPos1 ? 2 : 1;
+        // 2. Asignar Posición Correcta
+        // Si ya existe la pos 1, asignamos la 2. Si no, la 1.
+        const takenPositions = this.players.map(p => p.position);
+        const position = takenPositions.includes(1) ? 2 : 1;
 
         const newPlayer: PlayerState = {
-            socketId: socket.id,
+            socketId: isBot ? `bot-internal-${Date.now()}` : socket.id, // ID seguro para el bot
             userId: user.id,
             username: user.name,
             avatarUrl: user.avatar,
@@ -91,19 +89,21 @@ export class DiceRoom {
         };
 
         this.players.push(newPlayer);
-        // Ordenamos para que posición 1 siempre esté primero en el array (estético)
+        // Ordenar siempre: Posición 1 primero
         this.players.sort((a, b) => a.position - b.position);
 
-        // 4. Lógica de Timers y Arranque
-        this.broadcastState(); // Emitir inmediatamente para fluidez
+        console.log(`[Sala ${this.id}] Entró ${newPlayer.username} (Pos: ${position}, Bot: ${isBot})`);
 
+        // 3. Emitir estado NUEVO a todos
+        this.broadcastState();
+
+        // 4. Gestión de Juego
         if (this.players.length === 1) {
-            // Primer jugador: Iniciar cuenta atrás para Bot
             this.scheduleBotEntry();
         } else if (this.players.length === 2) {
-            // Sala llena: Cancelar espera de bot y ARRANCAR
             this.cancelBotEntry();
-            this.startGame();
+            // Pequeño delay para asegurar que el cliente procesó el "player_join" antes del "start"
+            setTimeout(() => this.startGame(), 500);
         }
     }
 
@@ -123,9 +123,7 @@ export class DiceRoom {
             if (this.players.length === 0) {
                 this.cancelBotEntry();
             } else {
-                // Si quedó 1 persona (porque se fue el 2do), reiniciamos el timer del bot?
-                // O lo dejamos correr? Normalmente se reinicia o se verifica.
-                // En este caso, si queda 1 solo humano, nos aseguramos que el timer esté corriendo.
+                // Si quedó 1 persona, reiniciamos el timer del bot
                 this.scheduleBotEntry();
             }
 
@@ -382,7 +380,8 @@ export class DiceRoom {
                 avatar: p.avatarUrl,
                 skin: p.skin,
                 position: p.position,
-                isBot: p.isBot
+                isBot: p.isBot,
+                connected: p.connected
             })),
             turnUserId: this.turnUserId,
             round: this.round,
