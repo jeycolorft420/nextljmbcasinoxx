@@ -102,6 +102,24 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
   const currentTopRoll = activeTop || (isResolving ? lastDice.top : null) || lastDice.top || null;
   const currentBottomRoll = activeBottom || (isResolving ? lastDice.bottom : null) || lastDice.bottom || null;
 
+  // Estado para animar al oponente
+  const [opponentRolling, setOpponentRolling] = useState(false);
+  const prevOpponentRoll = useRef<string>("");
+
+  // Detectar cambio en los dados del oponente para animar
+  const opponentRollData = swapVisuals ? rolls[bottomEntry?.user.id || ""] : rolls[topEntry?.user.id || ""];
+
+  useEffect(() => {
+    const currentStr = JSON.stringify(opponentRollData);
+    // Si cambiaron los dados y no es nulo (es un tiro nuevo)
+    if (currentStr !== prevOpponentRoll.current && opponentRollData) {
+      play("roll");
+      setOpponentRolling(true);
+      setTimeout(() => setOpponentRolling(false), 1000); // 1s de animación
+    }
+    prevOpponentRoll.current = currentStr;
+  }, [opponentRollData, play]);
+
   // 4. Calcular Ganador (Solo si estamos en fase de resolución)
   const winnerDisplay = useMemo(() => {
     if (!isResolving) return null;
@@ -215,6 +233,11 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
   useEffect(() => {
     if (myTurn && !rolling) {
       const tick = () => {
+        // Si no hay fecha de inicio (0), asumimos que el turno acaba de empezar (30s)
+        if (!roundStartedAt) {
+          setTimer(30);
+          return;
+        }
         const elap = (Date.now() - roundStartedAt) / 1000;
         setTimer(Math.max(0, 30 - Math.floor(elap)));
       };
@@ -231,8 +254,8 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
           topRoll={swapVisuals ? currentBottomRoll : currentTopRoll}
           bottomRoll={swapVisuals ? currentTopRoll : currentBottomRoll}
 
-          isRollingTop={false}
-          isRollingBottom={false}
+          isRollingBottom={rolling}       // Mi animación (siempre abajo visualmente)
+          isRollingTop={opponentRolling}  // Animación del oponente (siempre arriba visualmente)
 
           // Ghost: Si no hay roll activo y no estamos resolviendo, mostrar gris
           isGhostTop={swapVisuals ? (!activeBottom && !isResolving) : (!activeTop && !isResolving)}
