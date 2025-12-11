@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DiceDuel from "@/modules/games/dice/components/DiceDuel";
@@ -8,11 +7,11 @@ import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { useAudio } from "@/context/AudioContext";
 
-// ... (Types Entry y Room se mantienen igual) ...
+// Types
 type Entry = {
   id: string;
   position: number;
-  user: { id: string; name: string | null; email: string; selectedDiceColor?: string | null };
+  user: { id: string; name: string | null; email: string; selectedDiceColor?: string | null; isBot?: boolean };
 };
 
 type Room = {
@@ -28,9 +27,8 @@ type Room = {
   currentRound?: number;
 };
 
-// ... (DiceHistory se mantiene igual) ...
+// DiceHistory Component
 export function DiceHistory({ room, className = "", maxHeight = 220, swapVisuals = false }: { room: Room; className?: string; maxHeight?: number; swapVisuals?: boolean }) {
-  // ... (Tu código de historial existente) ...
   const topEntry = room.entries?.find(e => e.position === 1);
   const bottomEntry = room.entries?.find(e => e.position === 2);
   const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
@@ -73,222 +71,177 @@ type Props = {
 
 const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
 function toSkin(s?: string | null): DiceSkin {
-  const allowed: DiceSkin[] = ["white", "green", "blue", "yellow", "red", "purple", "black"];
-  return (s && (allowed as readonly string[]).includes(s)) ? (s as DiceSkin) : "white";
+  const allowed = ["white", "green", "blue", "yellow", "red", "purple", "black"];
+  return (s && allowed.includes(s)) ? (s as DiceSkin) : "white";
 }
 
 export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize }: Props) {
   const router = useRouter();
   const { play } = useAudio();
 
-  // 1. MEMORIA DE POSICIÓN (Evita el "Seat Swap")
-  const persistentPosition = useRef<number | null>(null);
+  // 1. POSICIÓN PERSISTENTE
+  const persistentPos = useRef<number | null>(null);
+  const meEntry = room.entries?.find((e) => e.user.id === userId || (email && e.user.email === email));
+  if (meEntry && persistentPos.current === null) persistentPos.current = meEntry.position;
 
-  const meEntryRaw = room.entries?.find((e) => e.user.id === userId || (email && e.user.email === email)) ?? null;
-  if (meEntryRaw && persistentPosition.current === null) {
-    persistentPosition.current = meEntryRaw.position;
-  }
+  const amTop = persistentPos.current === 1;
+  const swapVisuals = amTop; // P1 siempre se ve abajo
 
-  // Si tenemos posición guardada, la forzamos visualmente aunque la API falle un frame
-  const amTop = persistentPosition.current === 1;
-  const swapVisuals = amTop; // Si soy el 1, me pongo abajo (swap)
+  const topEntry = room.entries?.find((e) => e.position === 1);
+  const bottomEntry = room.entries?.find((e) => e.position === 2);
 
-  // Identificar Jugadores por Posición Fija
-  const topEntry = room.entries?.find(e => e.position === 1);
-  const bottomEntry = room.entries?.find(e => e.position === 2);
-
-  // 2. ESTADO VISUAL BLINDADO
+  // 2. ESTADO
   const [visualWinner, setVisualWinner] = useState<any>(null);
-  const [animationLock, setAnimationLock] = useState(false); // Bloqueo global de UI
+  const [animationLock, setAnimationLock] = useState(false);
   const [rolling, setRolling] = useState(false);
+  const [timer, setTimer] = useState(30);
 
-  // Detectar ganador real desde el servidor
+  // 3. DETECTAR GANADOR (Server)
   const serverWinner = useMemo(() => {
     const history = room.gameMeta?.history || [];
     if (!history.length) return null;
-    const lastRound = history[history.length - 1];
-    // Solo consideramos ganador si la ronda del historial coincide o es reciente
+    const last = history[history.length - 1];
     return {
-      name: !lastRound.winnerEntryId ? "Empate" : (room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador"),
-      amount: fmtUSD(lastRound.damage ?? 0),
-      isTie: !lastRound.winnerEntryId,
-      round: lastRound.round
+      name: !last.winnerEntryId ? "Empate" : (room.entries?.find((e) => e.id === last.winnerEntryId)?.user?.name || "Jugador"),
+      amount: fmtUSD(last.damage ?? 0),
+      isTie: !last.winnerEntryId,
+      round: last.round
     };
   }, [room.gameMeta?.history, room.entries]);
 
-  // Sincronización de Cartel (RADICAL: Obliga a esperar)
-  const lastProcessedRound = useRef<number>(0);
-
+  // 4. SINCRONIZACIÓN DE ANIMACIÓN
+  const lastRound = useRef(0);
   useEffect(() => {
-    if (serverWinner && serverWinner.round !== lastProcessedRound.current) {
-      lastProcessedRound.current = serverWinner.round;
-      setAnimationLock(true); // 🔒 BLOQUEAR INTERFAZ
-
-      // Secuencia: Rodar (1.5s) -> Mostrar Ganador (4s) -> Desbloquear
+    if (serverWinner && serverWinner.round !== lastRound.current) {
+      lastRound.current = serverWinner.round;
+      setAnimationLock(true);
+      // 1.5s rodar -> 4s cartel -> Unlock
       setTimeout(() => {
         setVisualWinner(serverWinner);
-        if (room.state === "FINISHED") {
-          play("win");
-          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-        }
-
-        // Mantener cartel 4 segundos COMPLETOS
+        if (room.state === "FINISHED") play("win");
         setTimeout(() => {
           setVisualWinner(null);
-          setAnimationLock(false); // 🔓 DESBLOQUEAR
+          setAnimationLock(false);
           router.refresh();
         }, 4000);
-
-      }, 1500); // Esperar a que los dados "paren" visualmente
+      }, 1500);
     }
   }, [serverWinner, room.state, router, play]);
 
-
-  // 3. TIMER RADICAL (Siempre 30s)
-  const [timer, setTimer] = useState(30);
+  // 5. TIMER REFORZADO
   const roundStartedAt = (room.gameMeta?.roundStartedAt as number) || 0;
-
   useEffect(() => {
-    // Si hay bloqueo de animación, no tocamos el timer (se queda en lo que estaba o 0)
     if (animationLock) return;
-
     const tick = () => {
-      if (!roundStartedAt) {
-        setTimer(30);
-        return;
-      }
-
-      const now = Date.now();
-      // El servidor nos da roundStartedAt en el FUTURO (+2000ms).
-      // Si now < roundStartedAt, elapsed es negativo, perfecto para mantener 30s.
-      const elapsed = (now - roundStartedAt) / 1000;
-
-      // Si elapsed es -2, -1, 0, 0.5... visualTime será > 30.
-      // Math.min(30) lo clava en 30.
-      const visualTime = Math.min(30, Math.floor(30 - elapsed));
-
-      setTimer(Math.max(0, visualTime));
+      if (!roundStartedAt) { setTimer(30); return; }
+      const elapsed = (Date.now() - roundStartedAt) / 1000;
+      // El servidor manda tiempo futuro (+2s o +5s). Math.min lo clava en 30.
+      setTimer(Math.max(0, Math.min(30, Math.floor(30 - elapsed))));
     };
-
-    // Ejecutar inmediatamente y luego en intervalo
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [roundStartedAt, animationLock]);
 
+  // 6. SKINS SEGURAS (Bot no roba color)
+  const getSkin = (e?: Entry) => {
+    if (!e) return "white";
+    if (e.user.isBot) return "red"; // Bot siempre rojo (ejemplo)
+    return toSkin(e.user.selectedDiceColor);
+  }
+  const topSkin = getSkin(topEntry);
+  const bottomSkin = getSkin(bottomEntry);
 
-  // 4. LÓGICA DE DADOS Y ANIMACIÓN
+  // 7. RENDER
   const rolls = room.gameMeta?.rolls || {};
   const lastDice = room.gameMeta?.lastDice || {};
 
-  const activeTop = topEntry ? rolls[topEntry.user.id] : null;
-  const activeBottom = bottomEntry ? rolls[bottomEntry.user.id] : null;
+  // Si hay lock, mostrar lastDice. Si no, rolls actuales.
+  const dTop = animationLock ? lastDice.top : (rolls[topEntry?.user.id || ""] || lastDice.top);
+  const dBot = animationLock ? lastDice.bottom : (rolls[bottomEntry?.user.id || ""] || lastDice.bottom);
 
-  // Si hay bloqueo, mostramos los dados "finales" (lastDice)
-  // Si no, mostramos los dados activos
-  const currentTopRoll = animationLock ? lastDice.top : (activeTop || lastDice.top);
-  const currentBottomRoll = animationLock ? lastDice.bottom : (activeBottom || lastDice.bottom);
-
-  // Animación del oponente
+  // Animación Oponente
   const [opponentRolling, setOpponentRolling] = useState(false);
-  const prevOppRoll = useRef("");
-  const opRollData = swapVisuals ? activeBottom : activeTop; // El oponente es el "otro"
+  const opRollData = swapVisuals ? rolls[bottomEntry?.user.id || ""] : rolls[topEntry?.user.id || ""];
+  const prevOpRoll = useRef("");
 
   useEffect(() => {
     const s = JSON.stringify(opRollData);
-    if (s !== prevOppRoll.current && opRollData && !animationLock) {
-      play("roll");
+    if (s !== prevOpRoll.current && opRollData && !animationLock) {
       setOpponentRolling(true);
+      play("roll");
       setTimeout(() => setOpponentRolling(false), 800);
     }
-    prevOppRoll.current = s;
+    prevOpRoll.current = s;
   }, [opRollData, animationLock, play]);
 
-
-  // 5. STATUS TEXT (Limpio)
-  let statusText = "";
-  let myTurn = false;
-
-  if (room.state === "FINISHED") statusText = "Juego Terminado";
-  else if (animationLock || visualWinner) statusText = ""; // 🤫 Silencio durante animación
-  else {
-    // Lógica de turno estándar
-    const starterId = room.gameMeta?.nextStarterUserId || topEntry?.user.id;
-    const isTopStarter = topEntry?.user.id === starterId;
-    const hasRolledTop = !!rolls[topEntry?.user.id || ""];
-    const hasRolledBottom = !!rolls[bottomEntry?.user.id || ""];
-
-    let turnId = null;
-    if (isTopStarter) turnId = !hasRolledTop ? topEntry?.user.id : bottomEntry?.user.id;
-    else turnId = !hasRolledBottom ? bottomEntry?.user.id : topEntry?.user.id;
-
-    if (turnId) {
-      myTurn = meEntryRaw?.user.id === turnId;
-      statusText = myTurn ? "¡TU TURNO!" : "Esperando al oponente...";
-    }
-  }
-
-  // ACCIÓN DE TIRAR
   const handleRoll = async () => {
     if (rolling || animationLock) return;
-    setRolling(true);
-    play("roll");
-    try {
-      await fetch(`/api/rooms/${room.id}/roll`, { method: "POST" });
-      router.refresh();
-    } catch { toast.error("Error"); }
+    setRolling(true); play("roll");
+    try { await fetch(`/api/rooms/${room.id}/roll`, { method: "POST" }); router.refresh(); }
+    catch { toast.error("Error"); }
     finally { setTimeout(() => setRolling(false), 500); }
   };
 
-  // Heartbeat para despertar bots
+  let statusText = animationLock ? "" : (meEntry ? ((meEntry.user.id === (room.gameMeta?.nextStarterUserId || topEntry?.user.id) ? "¡TU TURNO!" : "Esperando...")) : "Espectador");
+
+  // Refined Status Check
+  if (!animationLock && meEntry) {
+    const starterId = room.gameMeta?.nextStarterUserId || topEntry?.user.id;
+    const isMyTurnInitial = meEntry.user.id === starterId;
+    // If I am starter and haven't rolled -> My Turn
+    // If I am starter and HAVE rolled -> Opponent Turn
+    const myRoll = rolls[meEntry.user.id];
+    if (isMyTurnInitial && !myRoll) statusText = "¡TU TURNO!";
+    else if (isMyTurnInitial && myRoll) statusText = "Esperando al oponente...";
+    else if (!isMyTurnInitial) {
+      // I'm second. If starter hasn't rolled -> Waiting
+      // If starter rolled -> My Turn (if I havent rolled)
+      const starterRoll = rolls[starterId || ""];
+      if (!starterRoll) statusText = "Esperando al oponente...";
+      else if (!myRoll) statusText = "¡TU TURNO!";
+      else statusText = "Esperando resultado...";
+    }
+  }
+
+  // Heartbeat
   useEffect(() => {
-    if (!myTurn && !animationLock && room.state === "OPEN") {
+    if (!animationLock && room.state === "OPEN") {
       const t = setInterval(() => router.refresh(), 3000);
       return () => clearInterval(t);
     }
-  }, [myTurn, animationLock, room.state, router]);
-
-  // SKINS
-  const lastTopSkin = useRef<DiceSkin>("white");
-  const lastBottomSkin = useRef<DiceSkin>("white");
-  if (topEntry?.user.selectedDiceColor) lastTopSkin.current = toSkin(topEntry.user.selectedDiceColor);
-  if (bottomEntry?.user.selectedDiceColor) lastBottomSkin.current = toSkin(bottomEntry.user.selectedDiceColor);
+  }, [animationLock, room.state, router]);
 
   return (
     <div className="relative flex flex-col items-center">
       <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
         <DiceDuel
-          // VISUALES SWAP (Para que siempre estés abajo)
-          topRoll={swapVisuals ? currentBottomRoll : currentTopRoll}
-          bottomRoll={swapVisuals ? currentTopRoll : currentBottomRoll}
+          topRoll={swapVisuals ? dBot : dTop}
+          bottomRoll={swapVisuals ? dTop : dBot}
 
           isRollingTop={swapVisuals ? rolling : opponentRolling}
           isRollingBottom={swapVisuals ? opponentRolling : rolling}
 
-          // Ghost: Solo mostramos fantasmas si NO hay animación bloqueante
-          isGhostTop={!animationLock && (swapVisuals ? !activeBottom : !activeTop)}
-          isGhostBottom={!animationLock && (swapVisuals ? !activeTop : !activeBottom)}
+          isGhostTop={false}
+          isGhostBottom={false}
 
           statusText={statusText}
-          winnerDisplay={visualWinner} // Usamos el ganador "Delayed"
-
+          winnerDisplay={visualWinner}
           onRoll={handleRoll}
-          canRoll={myTurn && !rolling && !animationLock}
-          timeLeft={myTurn && !animationLock ? timer : undefined} // Ocultar timer en animación
+          canRoll={statusText === "¡TU TURNO!" && !rolling && !animationLock}
+          timeLeft={!animationLock ? timer : undefined}
 
-          onExit={onLeave}
-          onRejoin={onRejoin}
-          isFinished={room.state === "FINISHED"}
-          onOpenHistory={onOpenHistory}
+          labelTop={swapVisuals ? (bottomEntry?.user.name || "J2") : (topEntry?.user.name || "J1")}
+          labelBottom="Tú"
 
-          labelTop={(swapVisuals ? bottomEntry?.user.name : topEntry?.user.name) || "J1"}
-          labelBottom={(swapVisuals ? topEntry?.user.name : bottomEntry?.user.name) || "Tú"}
-
-          diceColorTop={swapVisuals ? lastBottomSkin.current : lastTopSkin.current}
-          diceColorBottom={swapVisuals ? lastTopSkin.current : lastBottomSkin.current}
+          diceColorTop={swapVisuals ? bottomSkin : topSkin}
+          diceColorBottom={swapVisuals ? topSkin : bottomSkin}
 
           balanceTop={fmtUSD(room.gameMeta?.balances?.[swapVisuals ? bottomEntry?.user.id! : topEntry?.user.id!] ?? room.priceCents)}
           balanceBottom={fmtUSD(room.gameMeta?.balances?.[swapVisuals ? topEntry?.user.id! : bottomEntry?.user.id!] ?? room.priceCents)}
+
+          onExit={onLeave} onRejoin={onRejoin} isFinished={room.state === "FINISHED"}
+          onOpenHistory={onOpenHistory}
         />
       </div>
     </div>

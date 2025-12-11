@@ -15,26 +15,22 @@
 
 .cube__face {
   position: absolute;
-  /* 🚨 FIX RADICAL: 102% para solapar bordes y tapar huecos */
+  /* 🚨 FIX: 102% tapa las líneas blancas de las aristas */
   width: 102%;
   height: 102%;
   left: -1%;
   top: -1%;
-
   background-color: var(--base-color, white);
   border-radius: 12%;
-  /* Un poco menos redondo para cerrar esquinas */
   backface-visibility: hidden;
-  /* Oculta el interior */
   box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
   display: flex;
   justify-content: center;
   align-items: center;
   border: 1px solid rgba(0, 0, 0, 0.05);
-  /* Borde sutil */
 }
 
-/* Núcleo oscuro para dar sensación de masa si se ve un hueco */
+/* Núcleo oscuro para dar sensación de masa */
 .cube__inner {
   position: absolute;
   width: 98%;
@@ -45,7 +41,6 @@
   transform: translateZ(1px);
 }
 
-/* Transformaciones (Se mantienen igual, pero la geometría ahora es sólida) */
 .cube__face--1 {
   transform: rotateY(0deg) translateZ(var(--depth));
 }

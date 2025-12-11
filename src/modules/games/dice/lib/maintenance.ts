@@ -26,112 +26,79 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
     // 🔍 LOGS: ENTRY
     console.log(`[DiceDuel] Maintenance Tick | Room: ${roomId} | Round: ${freshRoom.currentRound} | State: ${freshRoom.state} | ResolvingUntil: ${resolvingUntil} | Now: ${now}`);
 
-    if (resolvingUntil > 0) {
-        if (now < resolvingUntil) {
-            // ⏳ Still Resolving
-            return freshRoom;
-        } else {
-            // ⏩ RESOLUTION FINISHED -> START NEXT ROUND
-            const nextRound = (freshRoom.currentRound ?? 1) + 1;
-            console.log(`[DiceDuel] ⏩ Round ${freshRoom.currentRound} Resolved. Transitioning to Round ${nextRound}`);
+    if (resolvingUntil > 0 && now > resolvingUntil) {
+        console.log(`[DiceDuel] ⏩ New Round in Room ${roomId}`);
+        const nextRound = (freshRoom.currentRound || 1) + 1;
 
-            // Determine starter based on last winner (stored in meta or calculate?)
-            // We can infer next starter from the history's last entry
-            const lastHistory = meta.history?.[meta.history.length - 1];
-            // If Tie (winnerUserId is null), preserve the previous starter to maintain order (or default to P1)
-            const nextStarter = lastHistory?.winnerUserId || meta.nextStarterUserId || p1.userId;
+        // 🚨 FIX TIMER: Sumamos 5s. 4s de cartel + 1s de buffer.
+        // El cliente verá el reloj clavado en 30s al terminar la animación.
+        const futureStart = Date.now() + 5000;
 
-            // Perform Transaction
-            const [updatedRoom] = await prisma.$transaction([
-                prisma.room.update({
-                    where: { id: roomId },
-                    data: {
-                        state: "OPEN",
-                        currentRound: nextRound,
-                        gameMeta: {
-                            ...meta,
-                            rolls: {}, // RESET ROLLS
-                            lastDice: meta.lastDice,
-                            roundResolvingUntil: 0,
-                            nextStarterUserId: nextStarter,
-                            roundStartedAt: Date.now() // Reset Bot Clock
-                        } as any
-                    },
-                    include: { entries: { include: { user: true } } } // Return entries to ensure we have latest
-                }),
-                prisma.entry.updateMany({
-                    where: { roomId: roomId, round: freshRoom.currentRound ?? 1 },
-                    data: { round: nextRound }
-                })
-            ]);
-            await emitRoomUpdate(roomId);
-            return updatedRoom;
-        }
+        const updated = await prisma.room.update({
+            where: { id: roomId },
+            data: {
+                currentRound: nextRound,
+                gameMeta: {
+                    ...meta,
+                    rolls: {},
+                    lastDice: meta.lastDice,
+                    roundResolvingUntil: 0,
+                    roundStartedAt: futureStart, // <--- 5 SEGUNDOS AL FUTURO
+                    history: meta.history
+                } as any
+            },
+            include: { entries: { include: { user: true } } }
+        });
+        await emitRoomUpdate(roomId);
+        return updated;
     }
 
-    /* -------------------------------------------------------------------------- */
-    /* SCENARIO A: BOT MANAGEMENT (Uniqueness & Cleanup)                     */
-    /* -------------------------------------------------------------------------- */
+    /* SCENARIO A: BOT MANAGEMENT (Strict Shadow Logic) */
 
-    // 1. ANTI-LONELINESS: Si solo hay 1 jugador y es un BOT, sacarlo.
-    if (p1 && !p2) {
-        const userP1 = await prisma.user.findUnique({ where: { id: p1.userId } });
-        if (userP1?.isBot) {
-            console.log(`[DiceDuel] 🧹 Removing lonely bot ${userP1.name} from room ${roomId}`);
-            await prisma.entry.delete({ where: { id: p1.id } });
-            // Devolvemos la sala a estado OPEN limpio
-            const cleaned = await prisma.room.update({
-                where: { id: roomId },
-                data: { state: "OPEN", autoLockAt: null, gameMeta: {} as any },
-                include: { entries: { include: { user: true } } }
-            });
-            await emitRoomUpdate(roomId);
-            return cleaned;
-        }
+    // 1. 🧹 KICK LONELY BOT: Si P1 es bot y no hay P2, eliminarlo.
+    if (p1 && !p2 && p1.user.isBot) {
+        console.log(`[DiceDuel] 🧹 Kicking lonely bot ${p1.user.name}`);
+        await prisma.entry.delete({ where: { id: p1.id } });
+        const cleaned = await prisma.room.update({
+            where: { id: roomId },
+            data: { state: "OPEN", autoLockAt: null, gameMeta: {} as any },
+            include: { entries: { include: { user: true } } }
+        });
+        await emitRoomUpdate(roomId);
+        return cleaned;
     }
 
-    // 2. ADD BOT (Smart Selection)
-    if (!p2 && freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt) {
-        console.log(`[DiceMaintenance] Timer Expired. Looking for available bot...`);
+    // 2. 🤖 ADD BOT: Solo si hay HUMANO esperando y pasó el tiempo
+    if (p1 && !p2 && freshRoom.autoLockAt && now > freshRoom.autoLockAt.getTime()) {
+        if (p1.user.isBot) return freshRoom; // Si el que espera es bot, no hacer nada
 
-        // Buscamos un bot que NO esté jugando actualmente
+        // Verificar que pasaron 5s desde el último update para no ser intrusivo
+        const lastUpd = new Date(freshRoom.updatedAt).getTime();
+        if (now - lastUpd < 5000) return freshRoom;
+
         let botUser = await prisma.user.findFirst({
             where: {
                 isBot: true,
-                // CRÍTICO: Asegurar que no esté en otra sala activa
-                entries: {
-                    none: {
-                        room: {
-                            state: { in: ["OPEN", "LOCKED"] }
-                        }
-                    }
-                }
+                entries: { none: { room: { state: { in: ["OPEN", "LOCKED"] } } } }
             },
-            orderBy: { createdAt: 'desc' } // O 'updatedAt' para rotación
+            orderBy: { updatedAt: 'asc' }
         });
 
         if (botUser) {
-            console.log(`[DiceDuel] 🤖 Adding Bot: ${botUser.name} to Room ${roomId}`);
             await prisma.entry.create({
-                data: {
-                    roomId,
-                    userId: botUser.id,
-                    position: 2,
-                    round: freshRoom.currentRound ?? 1
-                }
+                data: { roomId, userId: botUser.id, position: 2, round: freshRoom.currentRound ?? 1 }
             });
-
-            // Init bot balance
             balances[botUser.id] = freshRoom.priceCents;
 
             const updated = await prisma.room.update({
                 where: { id: roomId },
                 data: {
                     autoLockAt: null,
+                    state: "LOCKED",
                     gameMeta: {
                         ...meta,
                         balances,
-                        roundStartedAt: Date.now() + 2000,
+                        roundStartedAt: Date.now() + 2000, // <--- 2s de cortesía para "sentarse"
                         autoPlay: false
                     } as any
                 },
@@ -139,8 +106,6 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             });
             await emitRoomUpdate(roomId);
             return updated;
-        } else {
-            console.log("[DiceDuel] ⚠️ No available bots found (all busy).");
         }
     }
 
