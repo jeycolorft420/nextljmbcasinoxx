@@ -57,7 +57,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
 
     socket = io(SOCKET_URL || window.location.origin, {
       path: "/socket.io", // Ruta estándar
-      transports: ["websocket"],
+      // transports: ["websocket"], // ⚡ COMENTADO: Dejar que negocie (Polling -> WS) para mayor compatibilidad
       reconnectionAttempts: 10,
       secure: isProduction,
       rejectUnauthorized: false
@@ -65,6 +65,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
 
     socket.on("connect", () => {
       setIsConnected(true);
+      console.log("🟢 Conectado al Motor de Juego", socket.id);
       console.log("🟢 Conectado al Motor de Juego");
 
       // 2. Unirse a la sala
