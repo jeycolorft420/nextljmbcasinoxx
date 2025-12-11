@@ -164,7 +164,9 @@ export default function DiceBoard({
       // New Round Finished!
       console.log(`[DiceBoard] 📢 Round Finished:`, room.gameMeta.history[currentLen - 1]);
       setLocalResolving(true);
-      const tLock = setTimeout(() => setLocalResolving(false), 4500); // 🔒 Force 4.5s waiting period
+      // ⚡ CORRECCIÓN: Bajamos a 2000ms (2s) para liberar la UI rápido.
+      // El servidor espera 4000ms, así que esto nos da 2s de ventaja para ver el botón "Tirar".
+      const tLock = setTimeout(() => setLocalResolving(false), 2000);
 
       // ⏳ DELAY: Wait for dice animation (approx 800ms) + buffer
       const timer = setTimeout(() => {
@@ -376,8 +378,20 @@ export default function DiceBoard({
   const bottomLabel = (bottomEntry?.user.name || "Jugador 2") + (amBottom ? " (Tú)" : "");
 
   // Skins
-  const topSkin: DiceSkin = toSkin(topEntry?.user.selectedDiceColor);
-  const bottomSkin: DiceSkin = toSkin(bottomEntry?.user.selectedDiceColor);
+  // CORRECCIÓN VISUAL: Persistencia de Skins (Evita parpadeo blanco)
+  const topSkinRaw = topEntry?.user.selectedDiceColor;
+  const bottomSkinRaw = bottomEntry?.user.selectedDiceColor;
+
+  const lastTopSkin = useRef<DiceSkin>("white");
+  const lastBottomSkin = useRef<DiceSkin>("white");
+
+  // Solo actualizamos la memoria si llega un color válido del servidor
+  if (topSkinRaw) lastTopSkin.current = toSkin(topSkinRaw);
+  if (bottomSkinRaw) lastBottomSkin.current = toSkin(bottomSkinRaw);
+
+  // Usamos el color actual, o la memoria si falla la carga momentánea
+  const topSkin = topSkinRaw ? toSkin(topSkinRaw) : lastTopSkin.current;
+  const bottomSkin = bottomSkinRaw ? toSkin(bottomSkinRaw) : lastBottomSkin.current;
 
   // Balances
   const topBalance = room.gameMeta?.balances?.[topEntry?.user.id || ""] ?? room.priceCents;
