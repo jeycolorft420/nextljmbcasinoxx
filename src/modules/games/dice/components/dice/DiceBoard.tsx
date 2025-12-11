@@ -21,180 +21,202 @@ function toSkin(s?: string | null): DiceSkin {
 // Update DiceBoard signature
 export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize, userSkin = "white" }: any) {
   const router = useRouter();
-  // ...
-  socket.on("connect", () => {
-    setIsConnected(true);
-    console.log("🟢 Conectado al Motor de Juego");
+  const { play } = useAudio();
+  const [isConnected, setIsConnected] = useState(false);
+  const [gameState, setGameState] = useState<any>(null);
+  const [rolling, setRolling] = useState(false);
+  const [opponentRolling, setOpponentRolling] = useState(false);
 
-    // 2. Unirse a la sala
-    socket.emit("join_room", {
-      roomId: room.id,
-      user: {
-        id: userId,
-        name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-        isBot: false,
-        skin: userSkin // 🎨 Enviar Skin seleccionado
+  useEffect(() => {
+    // 1. Inicializar Socket
+    const isProduction = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    let SOCKET_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+
+    if (!SOCKET_URL) {
+      // Fallback lógica
+      SOCKET_URL = isProduction ? undefined : "http://31.187.76.102:4000";
+    }
+
+    socket = io(SOCKET_URL || window.location.origin, {
+      path: "/socket.io",
+      reconnectionAttempts: 10,
+      secure: isProduction,
+      rejectUnauthorized: false
+    });
+
+    socket.on("connect", () => {
+      setIsConnected(true);
+      console.log("🟢 Conectado al Motor de Juego");
+
+      // 2. Unirse a la sala
+      socket.emit("join_room", {
+        roomId: room.id,
+        user: {
+          id: userId,
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+          isBot: false,
+          skin: userSkin // 🎨 Enviar Skin seleccionado
+        }
+      });
+    });
+
+    // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
+    socket.on("update_game", (data) => {
+      console.log("📥 UPDATE GAME RECIBIDO:", data);
+      setGameState(data);
+    });
+
+    socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
+      play("roll");
+
+      if (rollerId === userId) {
+        setRolling(true);
+        setTimeout(() => setRolling(false), 800);
+      } else {
+        setOpponentRolling(true);
+        setTimeout(() => setOpponentRolling(false), 800);
       }
     });
-  });
 
-  // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
-  socket.on("update_game", (data) => {
-    console.log("📥 UPDATE GAME RECIBIDO:", data);
-    setGameState(data);
-  });
-
-  socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
-    play("roll");
-
-    if (rollerId === userId) {
-      setRolling(true);
-      setTimeout(() => setRolling(false), 800);
-    } else {
-      setOpponentRolling(true);
-      setTimeout(() => setOpponentRolling(false), 800);
-    }
-  });
-
-  socket.on("game_over", ({ winnerId }: any) => {
-    if (winnerId === userId) {
-      play("win");
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-    }
-  });
-
-  socket.on("connect_error", (err) => {
-    console.error("🔴 Error de conexión:", err);
-    toast.error("Error de conexión con el servidor de juego");
-  });
-
-  // WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
-  const watchdog = setTimeout(() => {
-    if (!socket.connected) return;
-    console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
-    socket.emit("join_room", {
-      roomId: room.id,
-      user: {
-        id: userId,
-        name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-        isBot: false
+    socket.on("game_over", ({ winnerId }: any) => {
+      if (winnerId === userId) {
+        play("win");
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
       }
     });
-  }, 2000);
 
-  return () => {
-    clearTimeout(watchdog);
-    socket.disconnect();
-  };
-}, [room.id, userId]);
+    socket.on("connect_error", (err) => {
+      console.error("🔴 Error de conexión:", err);
+      toast.error("Error de conexión con el servidor de juego");
+    });
+
+    // WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
+    const watchdog = setTimeout(() => {
+      if (!socket.connected) return;
+      console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
+      socket.emit("join_room", {
+        roomId: room.id,
+        user: {
+          id: userId,
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+          isBot: false
+        }
+      });
+    }, 2000);
+
+    return () => {
+      clearTimeout(watchdog);
+      socket.disconnect();
+    };
+  }, [room.id, userId]);
 
 
-// Mapear el estado del socket (gameState) a lo que espera DiceDuel
-// players es ahora un array [{userId: "...", name: "..."}]
-const playersArr = Array.isArray(gameState?.players) ? gameState.players : [];
-const rolls = gameState?.rolls || {};
+  // Mapear el estado del socket (gameState) a lo que espera DiceDuel
+  // players es ahora un array [{userId: "...", name: "..."}]
+  const playersArr = Array.isArray(gameState?.players) ? gameState.players : [];
+  const rolls = gameState?.rolls || {};
 
-// Mapeo DIRECTO del Socket (La verdad absoluta)
-// P1 = Index 0, P2 = Index 1
-const p1 = playersArr[0] || null;
-const p2 = playersArr[1] || null;
+  // Mapeo DIRECTO del Socket (La verdad absoluta)
+  // P1 = Index 0, P2 = Index 1
+  const p1 = playersArr[0] || null;
+  const p2 = playersArr[1] || null;
 
-// Determinar quién soy yo en el array del socket
-const amP1 = p1?.userId === userId;
-const amP2 = p2?.userId === userId;
+  // Determinar quién soy yo en el array del socket
+  const amP1 = p1?.userId === userId;
+  const amP2 = p2?.userId === userId;
 
-// Si soy P1, veo P2 arriba. Si soy P2, veo P1 arriba.
-// Si soy espectador, veo P1 arriba normal.
-const swapVisuals = amP1; // Si soy P1, quiero verme abajo (Bottom), así que P2 va arriba (Top)
+  // Si soy P1, veo P2 arriba. Si soy P2, veo P1 arriba.
+  // Si soy espectador, veo P1 arriba normal.
+  const swapVisuals = amP1; // Si soy P1, quiero verme abajo (Bottom), así que P2 va arriba (Top)
 
-const topPlayer = swapVisuals ? p2 : p1;
-const botPlayer = swapVisuals ? p1 : p2;
+  const topPlayer = swapVisuals ? p2 : p1;
+  const botPlayer = swapVisuals ? p1 : p2;
 
-// Obtener Dados usando los IDs del socket
-const dTop = topPlayer ? (rolls[topPlayer.userId] || null) : null;
-const dBot = botPlayer ? (rolls[botPlayer.userId] || null) : null;
+  // Obtener Dados usando los IDs del socket
+  const dTop = topPlayer ? (rolls[topPlayer.userId] || null) : null;
+  const dBot = botPlayer ? (rolls[botPlayer.userId] || null) : null;
 
-// Nombres para mostrar
-const labelTop = topPlayer?.name || (swapVisuals ? "J2" : "J1");
-const labelBot = botPlayer?.name || (swapVisuals ? "Tú" : "J2");
+  // Nombres para mostrar
+  const labelTop = topPlayer?.name || (swapVisuals ? "J2" : "J1");
+  const labelBot = botPlayer?.name || (swapVisuals ? "Tú" : "J2");
 
-const timer = gameState?.timer || 30;
-// Identificar el usuario actual
-// Nota: players es array o objeto? En el nuevo server es array.
-// Pero aquí mantuvimos la lógica vieja de objeto {id: roll}.
-// El nuevo server manda room.players array.
-// Vamos a adaptar para leer turnUserId.
+  const timer = gameState?.timer || 30;
+  // Identificar el usuario actual
+  // Nota: players es array o objeto? En el nuevo server es array.
+  // Pero aquí mantuvimos la lógica vieja de objeto {id: roll}.
+  // El nuevo server manda room.players array.
+  // Vamos a adaptar para leer turnUserId.
 
-// VALIDACIÓN DE TURNO
-const myTurn = gameState?.turnUserId === userId;
-const isWinner = !!gameState?.winner;
+  // VALIDACIÓN DE TURNO
+  const myTurn = gameState?.turnUserId === userId;
+  const isWinner = !!gameState?.winner;
 
-// Status Text Inteligente
-let statusText = "Esperando jugadores...";
-if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
-else if (gameState?.winner) statusText = gameState.winner === userId ? "¡GANASTE!" : (gameState.winner === "TIE" ? "EMPATE" : "Rival Ganó");
-else if (myTurn) statusText = "¡TU TURNO! TIRA LOS DADOS";
-else statusText = `Esperando a ${gameState?.turnUserId === "bot-juan" ? "Bot" : "Rival"}...`;
+  // Status Text Inteligente
+  let statusText = "Esperando jugadores...";
+  if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
+  else if (gameState?.winner) statusText = gameState.winner === userId ? "¡GANASTE!" : (gameState.winner === "TIE" ? "EMPATE" : "Rival Ganó");
+  else if (myTurn) statusText = "¡TU TURNO! TIRA LOS DADOS";
+  else statusText = `Esperando a ${gameState?.turnUserId === "bot-juan" ? "Bot" : "Rival"}...`;
 
-// 🚨 FIX: Construir objeto completo para evitar React Error #130
-// Calcular nombre del ganador
-let winnerName = gameState?.winner === "TIE" ? "EMPATE" : "Rival";
-const wId = gameState?.winner;
+  // 🚨 FIX: Construir objeto completo para evitar React Error #130
+  // Calcular nombre del ganador
+  let winnerName = gameState?.winner === "TIE" ? "EMPATE" : "Rival";
+  const wId = gameState?.winner;
 
-if (wId === userId) winnerName = "TÚ";
-else if (wId && wId !== "TIE") {
-  // Buscar en jugadores del socket (Array en nuevo server)
-  const p = gameState?.players?.find((p: any) => p.userId === wId);
-  if (p) winnerName = p.name;
-  else {
-    // Fallback a room entries
-    const entry = room.entries?.find((e: any) => e.user.id === wId);
-    if (entry) winnerName = entry.user.name;
+  if (wId === userId) winnerName = "TÚ";
+  else if (wId && wId !== "TIE") {
+    // Buscar en jugadores del socket (Array en nuevo server)
+    const p = gameState?.players?.find((p: any) => p.userId === wId);
+    if (p) winnerName = p.name;
+    else {
+      // Fallback a room entries
+      const entry = room.entries?.find((e: any) => e.user.id === wId);
+      if (entry) winnerName = entry.user.name;
+    }
   }
-}
 
-const winnerDisplay = wId ? {
-  name: winnerName,
-  amount: fmtUSD(room.priceCents || 0),
-  isTie: wId === "TIE"
-} : null;
+  const winnerDisplay = wId ? {
+    name: winnerName,
+    amount: fmtUSD(room.priceCents || 0),
+    isTie: wId === "TIE"
+  } : null;
 
-const handleRoll = () => {
-  if (rolling) return;
-  socket.emit("roll_dice", { roomId: room.id, userId });
-};
+  const handleRoll = () => {
+    if (rolling) return;
+    socket.emit("roll_dice", { roomId: room.id, userId });
+  };
 
-return (
-  <div className="relative flex flex-col items-center">
-    {!isConnected && <div className="text-xs text-red-500 mb-2">Conectando al servidor en tiempo real...</div>}
+  return (
+    <div className="relative flex flex-col items-center">
+      {!isConnected && <div className="text-xs text-red-500 mb-2">Conectando al servidor en tiempo real...</div>}
 
-    <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
-      <DiceDuel
-        topRoll={swapVisuals ? dBot : dTop}
-        bottomRoll={swapVisuals ? dTop : dBot}
+      <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
+        <DiceDuel
+          topRoll={swapVisuals ? dBot : dTop}
+          bottomRoll={swapVisuals ? dTop : dBot}
 
-        isRollingTop={swapVisuals ? rolling : opponentRolling}
-        isRollingBottom={swapVisuals ? opponentRolling : rolling}
+          isRollingTop={swapVisuals ? rolling : opponentRolling}
+          isRollingBottom={swapVisuals ? opponentRolling : rolling}
 
-        statusText={statusText}
-        winnerDisplay={winnerDisplay}
+          statusText={statusText}
+          winnerDisplay={winnerDisplay}
 
-        onRoll={handleRoll}
-        canRoll={!rolling && myTurn && !isWinner}
-        timeLeft={timer}
+          onRoll={handleRoll}
+          canRoll={!rolling && myTurn && !isWinner}
+          timeLeft={timer}
 
-        labelTop={labelTop}
-        labelBottom={labelBot}
-        diceColorTop="white"
-        diceColorBottom="white"
+          labelTop={labelTop}
+          labelBottom={labelBot}
+          diceColorTop="white"
+          diceColorBottom="white"
 
-        onExit={onLeave}
-        onRejoin={onRejoin}
-        isFinished={false}
-      />
+          onExit={onLeave}
+          onRejoin={onRejoin}
+          isFinished={false}
+        />
+      </div>
     </div>
-  </div>
-);
+  );
 }
 // History Component
 export function DiceHistory({ room, swapVisuals, className }: { room: any, swapVisuals?: boolean, className?: string }) {
