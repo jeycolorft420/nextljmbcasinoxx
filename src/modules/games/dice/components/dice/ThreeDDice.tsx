@@ -1,67 +1,50 @@
+"use client";
+
 import React from "react";
 import "./ThreeDDice.css";
 
-export type DiceSkin = "white" | "red" | "blue" | "green" | "purple" | "yellow" | "dark";
+export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 
 interface Props {
-    face: number | null; // 1-6, or null for unknown
+    face: number | null;
     rolling: boolean;
     skin?: DiceSkin;
-    size?: number; // px (default 80)
-    variant?: number;
+    size?: number;
+    variant?: 1 | 2;
 }
 
-export function ThreeDDice({ face, rolling, skin = "white", size = 80, variant = 1 }: Props) {
-    // Map skin to CSS class if needed (though we might rely on default 'white' + pips or specific skin logic)
-    // Existing logic used .skin-color class, we'll keep that but applied to the cube or faces.
-    const skinClass = skin === "white" ? "" : `skin-${skin}`;
+// Mapa de colores brillantes tipo "Neon/Casino"
+const SKIN_COLORS: Record<string, string> = {
+    white: "#f8fafc",
+    red: "#ef4444",
+    blue: "#3b82f6",
+    green: "#10b981",
+    yellow: "#f59e0b",
+    purple: "#8b5cf6",
+    black: "#1e293b",
+};
 
-    // Calculate dynamic style for depth
+// Puntos de los dados (Posiciones CSS Grid)
+const DOTS_MAP: Record<number, number[]> = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+};
+
+export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props) => {
     const style = {
         width: size,
         height: size,
-        "--depth": `${size / 2}px`
+        "--depth": `${size / 2}px`,
     } as React.CSSProperties;
 
-    // Helper to render content (Pips)
-    const renderContent = (n: number) => {
-        // Unknown state (and NOT rolling) -> show ?
-        if (face === null && !rolling && n === 1) {
-            return <div className="flex items-center justify-center w-full h-full text-3xl font-bold text-black/20">?</div>;
-        }
+    const baseColor = SKIN_COLORS[skin] || SKIN_COLORS.white;
+    const isDarkSkin = skin === "black" || skin === "blue" || skin === "purple" || skin === "red";
+    const dotColor = isDarkSkin ? "white" : "black";
 
-        const pips = [];
-        const layouts: Record<number, number[]> = {
-            1: [5],
-            2: [1, 9],
-            3: [1, 5, 9],
-            4: [1, 3, 7, 9],
-            5: [1, 3, 5, 7, 9],
-            6: [1, 3, 4, 6, 7, 9]
-        };
-        const active = new Set(layouts[n] || []);
-
-        // Render 9-grid pips
-        // We reuse existing .pip/.pip-grid classes or inline them if they were in CSS we overwrote.
-        // Since we overwrote CSS, we need to ensure pips render correctly.
-        // Let's use simple flex/grid styles here to be safe and self-contained.
-        return (
-            <div className="w-full h-full grid grid-cols-3 grid-rows-3 p-[15%] gap-0.5">
-                {Array.from({ length: 9 }).map((_, i) => {
-                    const pipIndex = i + 1;
-                    return (
-                        <div key={pipIndex} className="flex items-center justify-center">
-                            {active.has(pipIndex) && (
-                                <div className={`w-full h-full rounded-full ${skin === 'dark' ? 'bg-white' : 'bg-black'} shadow-sm`} />
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        );
-    };
-
-    // Rotation Map
     const getTransform = (val: number) => {
         switch (val) {
             case 1: return 'rotateY(0deg)';
@@ -79,16 +62,40 @@ export function ThreeDDice({ face, rolling, skin = "white", size = 80, variant =
     return (
         <div className="scene" style={{ width: size, height: size }}>
             <div
-                className={`cube ${rolling ? "is-rolling" : ""} ${skinClass}`}
+                className={`cube ${rolling ? "is-rolling" : ""}`}
                 style={{ ...style, transform: rolling ? undefined : transform }}
             >
-                {[1, 2, 3, 4, 5, 6].map((f) => (
-                    <div key={f} className={`cube__face cube__face--${f} ${skin !== 'white' ? `bg-${skin}-100` : 'bg-white'}`}>
-                        {/* Render Pips (or Images if we had them) */}
-                        {renderContent(f)}
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <div
+                        key={n}
+                        className={`cube__face cube__face--${n}`}
+                        style={{
+                            backgroundColor: baseColor,
+                            border: `1px solid ${isDarkSkin ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+                            boxShadow: `inset 0 0 15px ${isDarkSkin ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.05)'}`
+                        }}
+                    >
+                        {/* Renderizar Puntos */}
+                        <div className="w-full h-full grid grid-cols-3 grid-rows-3 p-[15%]">
+                            {[...Array(9)].map((_, i) => (
+                                <div key={i} className="flex justify-center items-center">
+                                    {DOTS_MAP[n]?.includes(i) && (
+                                        <div
+                                            className="rounded-full shadow-sm"
+                                            style={{
+                                                width: '80%',
+                                                height: '80%',
+                                                backgroundColor: dotColor,
+                                                boxShadow: 'inset 1px 1px 2px rgba(0,0,0,0.3)'
+                                            }}
+                                        />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 ))}
             </div>
         </div>
     );
-}
+};

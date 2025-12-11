@@ -148,6 +148,18 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
     /*                         SCENARIO B: GAME LOOP                              */
     /* -------------------------------------------------------------------------- */
     if (p1 && p2) {
+        // 🚨 FIX: Iniciar reloj en el primer turno si viene vacío
+        if (!meta.roundStartedAt || meta.roundStartedAt === 0) {
+            console.log(`[DiceDuel] 🏁 Starting first round clock for Room ${roomId}`);
+            const startedRoom = await prisma.room.update({
+                where: { id: roomId },
+                data: { gameMeta: { ...meta, roundStartedAt: Date.now() } as any },
+                include: { entries: { include: { user: true } } }
+            });
+            await emitRoomUpdate(roomId);
+            return startedRoom;
+        }
+
         // Init P2 Balance
         if (!balances[p2.userId]) balances[p2.userId] = freshRoom.priceCents;
 
@@ -411,7 +423,8 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                             rolls, // Keep rolls for visualization
                             lastDice,
                             // Next Starter handled in resolution
-                            roundResolvingUntil: Date.now() + 4000 // 4 Seconds Delay
+                            // Next Starter handled in resolution
+                            roundResolvingUntil: Date.now() + 6000 // 6 Seconds Delay
                         } as any
                     },
                     include: { entries: { include: { user: true } } }
