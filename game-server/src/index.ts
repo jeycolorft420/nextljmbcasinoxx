@@ -101,7 +101,7 @@ io.on('connection', (socket) => {
             room.removePlayer(socket.id);
 
             // Limpieza si la sala muere
-            if (room.players.length === 0 && (room.status === 'CLOSED' || room.status === 'FINISHED' || room.status === 'WAITING')) {
+            if (room.players.length === 0 && (room.status === 'CLOSED' || room.status === 'FINISHED' || room.status === 'OPEN')) {
                 delete rooms[roomId];
             }
         }

@@ -4,24 +4,26 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const PERCENTAGE_PER_ROUND = 0.20;
-const ROUND_TIMEOUT_SECONDS = 15; // Tiempo máximo para dar "Ready"
+const ROUND_TIMEOUT_SECONDS = 30; // 30s as seen in screenshot
 
 interface PlayerState {
     socketId: string;
     userId: string;
     username: string;
+    email?: string; // Legacy needs email field sometimes
     avatarUrl?: string;
     position: 1 | 2;
     currentBalance: number;
     skin: string;
     isBot: boolean;
     connected: boolean;
+    ready: boolean;
 }
 
-// Estructura de dados legacy: { p1: [1, 6], p2: [3, 2] }
+// Legacy format: top/bottom
 interface RoundDice {
-    p1: [number, number];
-    p2: [number, number];
+    top: [number, number];
+    bottom: [number, number];
 }
 
 export class DiceRoom {
@@ -29,19 +31,15 @@ export class DiceRoom {
     public priceCents: number;
     public stepValue: number;
 
-    // Tiempos
     public botWaitMs: number;
     public autoLockAt: Date | null;
 
     public players: PlayerState[] = [];
-    public status: 'WAITING' | 'PLAYING' | 'FINISHED' | 'CLOSED' = 'WAITING';
+    public status: 'OPEN' | 'LOCKED' | 'FINISHED' | 'CLOSED' = 'OPEN'; // Mapped to Legacy RoomState
 
     public round: number = 1;
-
-    // Legacy Logic: No "Active Turn", but "Both Ready"
-    public roundReady = new Set<string>(); // IDs de usuarios que dieron "Roll"
-
     public lastDice: RoundDice | null = null;
+    public history: any[] = []; // Legacy history buffer
 
     private io: Server;
     private actionTimer: NodeJS.Timeout | null = null;
@@ -59,10 +57,7 @@ export class DiceRoom {
         this.scheduleAutoLock();
     }
 
-    /**
-     * MÉTODOS DE GESTIÓN DE SALA (JOIN/LEAVE)
-     */
-    public addPlayer(socket: Socket, user: { id: string, name: string, skin: string, avatar?: string }, isBot: boolean = false) {
+    public addPlayer(socket: Socket, user: { id: string, name: string, email?: string, skin: string, avatar?: string }, isBot: boolean = false) {
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
             if (!isBot) existing.socketId = socket.id;
@@ -71,8 +66,8 @@ export class DiceRoom {
             return;
         }
 
-        if (this.players.length >= 2 || this.status !== 'WAITING') {
-            if (!isBot) socket.emit('error', { message: 'Sala llena o en juego' });
+        if (this.players.length >= 2) {
+            if (!isBot) socket.emit('error', { message: 'Sala llena' });
             return;
         }
 
@@ -83,25 +78,30 @@ export class DiceRoom {
             socketId: isBot ? `bot-internal-${Date.now()}` : socket.id,
             userId: user.id,
             username: user.name,
+            email: user.email || `bot-${Date.now()}@example.com`,
             avatarUrl: user.avatar,
             position,
             currentBalance: this.priceCents,
-            skin: user.skin || 'default',
+            skin: user.skin || 'default', // Legacy uses colors: "red", "blue"
             isBot,
-            connected: true
+            connected: true,
+            ready: false
         };
 
         this.players.push(newPlayer);
         this.players.sort((a, b) => a.position - b.position);
 
-        this.broadcastState();
-
-        if (this.players.length === 1) {
-            this.scheduleBotEntry();
-        } else if (this.players.length === 2) {
+        // State Check
+        if (this.players.length === 2) {
+            this.status = 'LOCKED'; // Playing state in Legacy is often LOCKED
             this.cancelBotEntry();
-            setTimeout(() => this.startGame(), 500);
+            setTimeout(() => this.startGame(), 200);
+        } else {
+            this.status = 'OPEN';
+            this.scheduleBotEntry();
         }
+
+        this.broadcastState();
     }
 
     public removePlayer(socketId: string) {
@@ -110,93 +110,78 @@ export class DiceRoom {
 
         const player = this.players[playerIndex];
 
-        if (this.status === 'WAITING') {
+        // If game hasn't really started (OPEN), remove fully
+        if (this.status === 'OPEN') {
             this.players.splice(playerIndex, 1);
-
             if (this.players.length === 0) {
                 this.cancelBotEntry();
             } else {
                 this.scheduleBotEntry();
             }
-            this.broadcastState();
         } else {
             player.connected = false;
-            this.broadcastState();
         }
-    }
-
-    /**
-     * MOTOR DE JUEGO
-     */
-    private startGame() {
-        this.status = 'PLAYING';
-        this.round = 1;
-        this.roundReady.clear();
-        this.lastDice = null;
-
-        if (this.autoLockTimer) clearTimeout(this.autoLockTimer);
-
-        console.log(`[Sala ${this.id}] 🎮 Legacy Game Started`);
         this.broadcastState();
-        this.startActionTimer();
     }
 
-    // El cliente llama a esto cuando presiona "Tirar"
+    private startGame() {
+        this.round = 1;
+        this.players.forEach(p => p.ready = false);
+        this.lastDice = null;
+        if (this.autoLockTimer) clearTimeout(this.autoLockTimer);
+        this.startActionTimer();
+        this.broadcastState();
+    }
+
     public handleRoll(userId: string) {
-        if (this.status !== 'PLAYING') return;
+        if (this.status !== 'LOCKED') return; // Must be in playing state
 
-        // Si ya está ready, ignorar
-        if (this.roundReady.has(userId)) return;
+        const player = this.players.find(p => p.userId === userId);
+        if (!player || player.ready) return;
 
-        // Marcar ready
-        this.roundReady.add(userId);
-        this.io.to(this.id).emit('player_ready', { userId }); // Feedback visual
+        player.ready = true;
+        this.broadcastState(); // Update UI to show "Ready" checkmark or status
 
-        // Verificar si es necesario activar al BOT
-        const opponent = this.players.find(p => p.userId !== userId);
-        if (opponent && opponent.isBot && !this.roundReady.has(opponent.userId)) {
-            // Bot reacciona rápido
-            setTimeout(() => {
-                this.handleRoll(opponent.userId);
-            }, Math.random() * 1000 + 500);
+        // Bot Trigger
+        const bot = this.players.find(p => p.isBot && !p.ready);
+        if (bot) {
+            setTimeout(() => this.handleRoll(bot.userId), Math.random() * 1000 + 500);
         }
 
-        // Si ambos ready -> Resolver
-        if (this.roundReady.size >= 2) {
+        // Check if all ready
+        if (this.players.every(p => p.ready)) {
             this.resolveRound();
-        } else {
-            this.broadcastState();
         }
     }
 
     private resolveRound() {
         if (this.actionTimer) clearTimeout(this.actionTimer);
 
-        // 1. Roll Logic (Legacy: 2 dice per player, no ties)
+        // Roll Logic (Legacy: Top vs Bottom, no ties)
         const rollDie = () => Math.floor(Math.random() * 6) + 1;
 
-        let p1Dice: [number, number];
-        let p2Dice: [number, number];
-        let p1Sum = 0;
-        let p2Sum = 0;
+        let top: [number, number];
+        let bottom: [number, number];
+        let topSum = 0;
+        let bottomSum = 0;
 
-        // Loop hasta que no haya empate
         do {
-            p1Dice = [rollDie(), rollDie()];
-            p2Dice = [rollDie(), rollDie()];
-            p1Sum = p1Dice[0] + p1Dice[1];
-            p2Sum = p2Dice[0] + p2Dice[1];
-        } while (p1Sum === p2Sum);
+            top = [rollDie(), rollDie()];
+            bottom = [rollDie(), rollDie()];
+            topSum = top[0] + top[1];
+            bottomSum = bottom[0] + bottom[1];
+        } while (topSum === bottomSum);
 
-        this.lastDice = { p1: p1Dice, p2: p2Dice };
+        this.lastDice = { top, bottom };
 
-        // 2. Determine Winner
-        const p1 = this.players[0]; // Position 1
-        const p2 = this.players[1]; // Position 2
+        // Determine Winner (Player 1 is Top, Player 2 is Bottom usually)
+        // Legacy: room.entries[0] is Top, room.entries[1] is Bottom
+        const p1 = this.players[0];
+        const p2 = this.players[1];
 
         let winnerId: string;
 
-        if (p1Sum > p2Sum) {
+        if (topSum > bottomSum) {
             winnerId = p1.userId;
             p1.currentBalance += this.stepValue;
             p2.currentBalance -= this.stepValue;
@@ -206,46 +191,46 @@ export class DiceRoom {
             p1.currentBalance -= this.stepValue;
         }
 
-        // Clamp balances
+        // Clamp
         if (p1.currentBalance < 0) p1.currentBalance = 0;
         if (p2.currentBalance < 0) p2.currentBalance = 0;
 
-        // 3. Emit Result
-        this.io.to(this.id).emit('round_result', {
+        // Add to History
+        this.history.push({
+            at: new Date(),
+            round: this.round,
             dice: this.lastDice,
-            winnerId,
-            players: this.players.map(p => ({ userId: p.userId, balance: p.currentBalance })),
-            // Legacy format extra info if needed
-            p1Sum,
-            p2Sum
+            winnerEntryId: winnerId, // Using userId as entryId proxy for simplicity
+            balancesAfter: {
+                [p1.userId]: p1.currentBalance,
+                [p2.userId]: p2.currentBalance
+            }
         });
 
-        // 4. Check Match End
+        this.broadcastState();
+
+        // Check End
         const bankrupt = this.players.find(p => p.currentBalance <= 0);
         if (bankrupt) {
             const winner = this.players.find(p => p.userId !== bankrupt.userId);
             setTimeout(() => this.finishGame(winner!), 3000);
         } else {
-            // Next Round
-            setTimeout(() => this.nextRound(), 4000); // 4s para ver resultado
+            setTimeout(() => this.nextRound(), 4000);
         }
     }
 
     private nextRound() {
         this.round++;
-        this.roundReady.clear();
-        this.lastDice = null;
+        this.players.forEach(p => p.ready = false);
+        this.lastDice = null; // Clear dice for next round waiting state
         this.broadcastState();
         this.startActionTimer();
 
-        // Si hay un bot, quizás él inicia primero a veces?
-        // Legacy strategy: Wait for broadcast. Bot logic is in handleRoll trigger or here.
-        // Vamos a hacer que si hay un bot, tenga chance de darle "Ready" primero random
+        // Random bot start
         const bot = this.players.find(p => p.isBot);
         if (bot) {
             setTimeout(() => {
-                // Solo si sigue siendo la misma ronda y no ha tirado
-                if (this.status === 'PLAYING' && !this.roundReady.has(bot.userId)) {
+                if (this.status === 'LOCKED' && !bot.ready) {
                     this.handleRoll(bot.userId);
                 }
             }, Math.random() * 2000 + 1000);
@@ -254,17 +239,9 @@ export class DiceRoom {
 
     private startActionTimer() {
         if (this.actionTimer) clearTimeout(this.actionTimer);
-
-        // Timeout para forzar jugada si alguien se duerme
         this.actionTimer = setTimeout(() => {
-            if (this.status === 'PLAYING') {
-                // Si falta 1, forzamos su roll
-                // Si faltan 2, forzamos ambos
-                const pending = this.players.filter(p => !this.roundReady.has(p.userId));
-                pending.forEach(p => {
-                    console.log(`[Sala ${this.id}] Auto-roll for timeout: ${p.username}`);
-                    this.handleRoll(p.userId);
-                });
+            if (this.status === 'LOCKED') {
+                this.players.filter(p => !p.ready).forEach(p => this.handleRoll(p.userId));
             }
         }, ROUND_TIMEOUT_SECONDS * 1000);
     }
@@ -277,6 +254,9 @@ export class DiceRoom {
             winnerId: winner.userId,
             prize: prizeTotal
         });
+
+        // Broadcast final state one last time
+        this.broadcastState();
 
         try {
             await prisma.gameResult.create({
@@ -299,24 +279,74 @@ export class DiceRoom {
         } catch (e) { console.error("Error DB finishGame:", e); }
     }
 
-    // --- UTILS ---
+    // --- LEGACY PAYLOAD BUILDER ---
+    private broadcastState() {
+        // Construct "slots" array
+        const slots = Array.from({ length: 2 }, (_, idx) => {
+            const position = idx + 1;
+            const player = this.players.find(p => p.position === position);
+            return {
+                position,
+                taken: !!player,
+                user: player ? {
+                    id: player.userId,
+                    name: player.username,
+                    email: player.email,
+                    selectedDiceColor: player.skin
+                } : null,
+                entryId: player ? player.socketId : null, // Proxy for entryId
+            };
+        });
 
+        // Construct "gameMeta"
+        const balances: any = {};
+        const ready: any = {};
+        this.players.forEach(p => {
+            balances[p.userId] = p.currentBalance;
+            if (p.ready) ready[p.userId] = true;
+        });
+
+        const gameMeta = {
+            balances,
+            ready,
+            history: this.history,
+            dice: this.lastDice, // { top: [x,y], bottom: [x,y] }
+            ended: this.status === 'FINISHED'
+        };
+
+        const payload = {
+            id: this.id,
+            priceCents: this.priceCents,
+            state: this.status, // OPEN, LOCKED, FINISHED
+            capacity: 2,
+
+            // Legacy Frontend often expects these directly in root or inside meta
+            counts: {
+                taken: this.players.length,
+                free: 2 - this.players.length
+            },
+            slots,
+            gameMeta,
+
+            // Extra identifiers for easy access
+            turnUserId: null, // Legacy doesn't use this anymore
+        };
+
+        this.io.to(this.id).emit('update_game', payload);
+    }
+
+    // --- TIMERS ---
     private scheduleBotEntry() {
         if (this.botInjectionTimer) clearTimeout(this.botInjectionTimer);
         if (this.botWaitMs > 0 && this.players.length === 1 && !this.players[0].isBot) {
             this.botInjectionTimer = setTimeout(() => this.injectBot(), this.botWaitMs);
         }
     }
-
     private cancelBotEntry() {
-        if (this.botInjectionTimer) {
-            clearTimeout(this.botInjectionTimer);
-            this.botInjectionTimer = null;
-        }
+        if (this.botInjectionTimer) { clearTimeout(this.botInjectionTimer); this.botInjectionTimer = null; }
     }
-
     private async injectBot() {
-        if (this.status !== 'WAITING' || this.players.length !== 1) return;
+        if (this.status !== 'OPEN' || this.players.length !== 1) return;
         try {
             const botUser = await prisma.user.findFirst({ where: { isBot: true } });
             if (botUser) {
@@ -324,49 +354,25 @@ export class DiceRoom {
                 this.addPlayer(mockSocket, {
                     id: botUser.id,
                     name: botUser.username || "Bot",
+                    email: botUser.email || "bot@galaxy.com",
                     skin: botUser.selectedDiceColor || "red",
                     avatar: botUser.avatarUrl || ""
                 }, true);
             }
         } catch (error) { console.error("Error injectBot:", error); }
     }
-
     private scheduleAutoLock() {
         if (!this.autoLockAt) return;
         const now = new Date();
         const delay = this.autoLockAt.getTime() - now.getTime();
         this.autoLockTimer = setTimeout(() => {
-            if (this.status === 'WAITING' && this.players.length < 2) {
-                this.closeRoom("Tiempo expirado");
-            }
+            if (this.status === 'OPEN' && this.players.length < 2) this.closeRoom("Tiempo expirado");
         }, Math.max(0, delay));
     }
-
     private async closeRoom(reason: string) {
         this.status = 'CLOSED';
         this.cancelBotEntry();
         this.io.to(this.id).emit('room_closed', { reason });
         await prisma.room.update({ where: { id: this.id }, data: { state: 'LOCKED', lockedAt: new Date() } }).catch(() => { });
-    }
-
-    private broadcastState() {
-        this.io.to(this.id).emit('update_game', {
-            status: this.status,
-            players: this.players.map(p => ({
-                userId: p.userId,
-                name: p.username,
-                balance: p.currentBalance,
-                avatar: p.avatarUrl,
-                skin: p.skin,
-                position: p.position,
-                isBot: p.isBot,
-                connected: p.connected,
-                // UI helper: isReady para saber si ya tiró en esta ronda
-                isReady: this.roundReady.has(p.userId)
-            })),
-            round: this.round,
-            lastDice: this.lastDice,
-            pot: this.players.reduce((sum, p) => sum + p.currentBalance, 0)
-        });
     }
 }
