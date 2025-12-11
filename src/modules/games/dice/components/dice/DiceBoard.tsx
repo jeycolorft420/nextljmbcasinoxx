@@ -280,8 +280,6 @@ export default function DiceBoard({ room, userId, email, onReroll, onForfeit, on
           isGhostBottom={swapVisuals ? (!activeTop && !isResolving) : (!activeBottom && !isResolving)}
 
           statusText={statusText}
-          subMessage={winnerDisplay ? undefined : room.gameMeta?.message}
-          statusText={statusText}
           subMessage={delayedWinner ? undefined : room.gameMeta?.message}
           winnerDisplay={delayedWinner} // ESTO ES LO QUE MUESTRA EL CARTEL
 
