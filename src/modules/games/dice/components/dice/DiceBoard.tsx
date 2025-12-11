@@ -22,67 +22,71 @@ function toSkin(s?: string | null): DiceSkin {
 export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize, userSkin = "white" }: any) {
   const router = useRouter();
   // ...
-  // 2. Unirse a la sala
-  socket.emit("join_room", {
-    roomId: room.id,
-    user: {
-      id: userId,
-      name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-      isBot: false,
-      skin: userSkin // 🎨 Enviar Skin seleccionado
+  socket.on("connect", () => {
+    setIsConnected(true);
+    console.log("🟢 Conectado al Motor de Juego");
+
+    // 2. Unirse a la sala
+    socket.emit("join_room", {
+      roomId: room.id,
+      user: {
+        id: userId,
+        name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+        isBot: false,
+        skin: userSkin // 🎨 Enviar Skin seleccionado
+      }
+    });
+  });
+
+  // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
+  socket.on("update_game", (data) => {
+    console.log("📥 UPDATE GAME RECIBIDO:", data);
+    setGameState(data);
+  });
+
+  socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
+    play("roll");
+
+    if (rollerId === userId) {
+      setRolling(true);
+      setTimeout(() => setRolling(false), 800);
+    } else {
+      setOpponentRolling(true);
+      setTimeout(() => setOpponentRolling(false), 800);
     }
   });
-});
 
-// 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
-socket.on("update_game", (data) => {
-  console.log("📥 UPDATE GAME RECIBIDO:", data);
-  setGameState(data);
-});
-
-socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
-  play("roll");
-
-  if (rollerId === userId) {
-    setRolling(true);
-    setTimeout(() => setRolling(false), 800);
-  } else {
-    setOpponentRolling(true);
-    setTimeout(() => setOpponentRolling(false), 800);
-  }
-});
-
-socket.on("game_over", ({ winnerId }: any) => {
-  if (winnerId === userId) {
-    play("win");
-    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-  }
-});
-
-socket.on("connect_error", (err) => {
-  console.error("🔴 Error de conexión:", err);
-  toast.error("Error de conexión con el servidor de juego");
-});
-
-// WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
-const watchdog = setTimeout(() => {
-  if (!socket.connected) return;
-  console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
-  socket.emit("join_room", {
-    roomId: room.id,
-    user: {
-      id: userId,
-      name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-      isBot: false
+  socket.on("game_over", ({ winnerId }: any) => {
+    if (winnerId === userId) {
+      play("win");
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
     }
   });
-}, 2000);
 
-return () => {
-  clearTimeout(watchdog);
-  socket.disconnect();
-};
-  }, [room.id, userId]);
+  socket.on("connect_error", (err) => {
+    console.error("🔴 Error de conexión:", err);
+    toast.error("Error de conexión con el servidor de juego");
+  });
+
+  // WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
+  const watchdog = setTimeout(() => {
+    if (!socket.connected) return;
+    console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
+    socket.emit("join_room", {
+      roomId: room.id,
+      user: {
+        id: userId,
+        name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+        isBot: false
+      }
+    });
+  }, 2000);
+
+  return () => {
+    clearTimeout(watchdog);
+    socket.disconnect();
+  };
+}, [room.id, userId]);
 
 
 // Mapear el estado del socket (gameState) a lo que espera DiceDuel
