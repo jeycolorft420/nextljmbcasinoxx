@@ -80,7 +80,7 @@ export function ThreeDDice({ face, rolling, skin = "white", size = 80, variant =
         <div className="scene" style={{ width: size, height: size }}>
             <div
                 className={`cube ${rolling ? "is-rolling" : ""} ${skinClass}`}
-                style={{ ...style, transform }}
+                style={{ ...style, transform: rolling ? undefined : transform }}
             >
                 {[1, 2, 3, 4, 5, 6].map((f) => (
                     <div key={f} className={`cube__face cube__face--${f} ${skin !== 'white' ? `bg-${skin}-100` : 'bg-white'}`}>
