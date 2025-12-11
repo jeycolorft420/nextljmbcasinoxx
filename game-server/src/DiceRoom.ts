@@ -4,13 +4,14 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const PERCENTAGE_PER_ROUND = 0.20;
-const ROUND_TIMEOUT_SECONDS = 30; // 30s as seen in screenshot
+const ROUND_TIMEOUT_SECONDS = 30;
 
 interface PlayerState {
     socketId: string;
     userId: string;
+    dbEntryId: string; // Real Entry ID from DB
     username: string;
-    email?: string; // Legacy needs email field sometimes
+    email?: string;
     avatarUrl?: string;
     position: 1 | 2;
     currentBalance: number;
@@ -35,11 +36,11 @@ export class DiceRoom {
     public autoLockAt: Date | null;
 
     public players: PlayerState[] = [];
-    public status: 'OPEN' | 'LOCKED' | 'FINISHED' | 'CLOSED' = 'OPEN'; // Mapped to Legacy RoomState
+    public status: 'OPEN' | 'LOCKED' | 'FINISHED' | 'CLOSED' = 'OPEN';
 
     public round: number = 1;
     public lastDice: RoundDice | null = null;
-    public history: any[] = []; // Legacy history buffer
+    public history: any[] = [];
 
     private io: Server;
     private actionTimer: NodeJS.Timeout | null = null;
@@ -57,7 +58,7 @@ export class DiceRoom {
         this.scheduleAutoLock();
     }
 
-    public addPlayer(socket: Socket, user: { id: string, name: string, email?: string, skin: string, avatar?: string }, isBot: boolean = false) {
+    public addPlayer(socket: Socket, user: { id: string, entryId: string, name: string, email?: string, skin: string, avatar?: string }, isBot: boolean = false) {
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
             if (!isBot) existing.socketId = socket.id;
@@ -77,12 +78,13 @@ export class DiceRoom {
         const newPlayer: PlayerState = {
             socketId: isBot ? `bot-internal-${Date.now()}` : socket.id,
             userId: user.id,
+            dbEntryId: user.entryId, // Use passed DB Entry ID
             username: user.name,
             email: user.email || `bot-${Date.now()}@example.com`,
             avatarUrl: user.avatar,
             position,
             currentBalance: this.priceCents,
-            skin: user.skin || 'default', // Legacy uses colors: "red", "blue"
+            skin: user.skin || 'default',
             isBot,
             connected: true,
             ready: false
@@ -92,11 +94,11 @@ export class DiceRoom {
         this.players.sort((a, b) => a.position - b.position);
 
         // State Check
-        if (this.players.length === 2) {
-            this.status = 'LOCKED'; // Playing state in Legacy is often LOCKED
+        if (this.players.length === 2 && this.status !== 'FINISHED') {
+            this.status = 'LOCKED';
             this.cancelBotEntry();
             setTimeout(() => this.startGame(), 200);
-        } else {
+        } else if (this.players.length === 1) {
             this.status = 'OPEN';
             this.scheduleBotEntry();
         }
@@ -110,7 +112,6 @@ export class DiceRoom {
 
         const player = this.players[playerIndex];
 
-        // If game hasn't really started (OPEN), remove fully
         if (this.status === 'OPEN') {
             this.players.splice(playerIndex, 1);
             if (this.players.length === 0) {
@@ -134,15 +135,14 @@ export class DiceRoom {
     }
 
     public handleRoll(userId: string) {
-        if (this.status !== 'LOCKED') return; // Must be in playing state
+        if (this.status !== 'LOCKED') return;
 
         const player = this.players.find(p => p.userId === userId);
         if (!player || player.ready) return;
 
         player.ready = true;
-        this.broadcastState(); // Update UI to show "Ready" checkmark or status
+        this.broadcastState();
 
-        // Bot Trigger
         const bot = this.players.find(p => p.isBot && !p.ready);
         if (bot) {
             setTimeout(() => this.handleRoll(bot.userId), Math.random() * 1000 + 500);
@@ -150,14 +150,13 @@ export class DiceRoom {
 
         // Check if all ready
         if (this.players.every(p => p.ready)) {
+            // Cancel timeout immediately to stop auto-rolls
+            if (this.actionTimer) clearTimeout(this.actionTimer);
             this.resolveRound();
         }
     }
 
     private resolveRound() {
-        if (this.actionTimer) clearTimeout(this.actionTimer);
-
-        // Roll Logic (Legacy: Top vs Bottom, no ties)
         const rollDie = () => Math.floor(Math.random() * 6) + 1;
 
         let top: [number, number];
@@ -174,33 +173,31 @@ export class DiceRoom {
 
         this.lastDice = { top, bottom };
 
-        // Determine Winner (Player 1 is Top, Player 2 is Bottom usually)
-        // Legacy: room.entries[0] is Top, room.entries[1] is Bottom
         const p1 = this.players[0];
         const p2 = this.players[1];
 
-        let winnerId: string;
+        // Winner is determined by Sum. Winner ID is user ID, but legacy history uses ENTRY ID.
+        let winnerEntryId: string;
 
         if (topSum > bottomSum) {
-            winnerId = p1.userId;
+            winnerEntryId = p1.dbEntryId;
             p1.currentBalance += this.stepValue;
             p2.currentBalance -= this.stepValue;
         } else {
-            winnerId = p2.userId;
+            winnerEntryId = p2.dbEntryId;
             p2.currentBalance += this.stepValue;
             p1.currentBalance -= this.stepValue;
         }
 
-        // Clamp
         if (p1.currentBalance < 0) p1.currentBalance = 0;
         if (p2.currentBalance < 0) p2.currentBalance = 0;
 
-        // Add to History
         this.history.push({
             at: new Date(),
             round: this.round,
             dice: this.lastDice,
-            winnerEntryId: winnerId, // Using userId as entryId proxy for simplicity
+            winnerEntryId, // Correct DB Entry ID
+            prizeCents: this.stepValue * 2, // Legacy visual
             balancesAfter: {
                 [p1.userId]: p1.currentBalance,
                 [p2.userId]: p2.currentBalance
@@ -209,7 +206,6 @@ export class DiceRoom {
 
         this.broadcastState();
 
-        // Check End
         const bankrupt = this.players.find(p => p.currentBalance <= 0);
         if (bankrupt) {
             const winner = this.players.find(p => p.userId !== bankrupt.userId);
@@ -222,11 +218,11 @@ export class DiceRoom {
     private nextRound() {
         this.round++;
         this.players.forEach(p => p.ready = false);
-        this.lastDice = null; // Clear dice for next round waiting state
+        this.lastDice = null;
         this.broadcastState();
         this.startActionTimer();
 
-        // Random bot start
+        // Bot random start
         const bot = this.players.find(p => p.isBot);
         if (bot) {
             setTimeout(() => {
@@ -252,10 +248,10 @@ export class DiceRoom {
 
         this.io.to(this.id).emit('game_over', {
             winnerId: winner.userId,
+            winningEntryId: winner.dbEntryId, // Send correct entry ID
             prize: prizeTotal
         });
 
-        // Broadcast final state one last time
         this.broadcastState();
 
         try {
@@ -274,14 +270,12 @@ export class DiceRoom {
             });
             await prisma.room.update({
                 where: { id: this.id },
-                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId }
+                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.dbEntryId }
             });
         } catch (e) { console.error("Error DB finishGame:", e); }
     }
 
-    // --- LEGACY PAYLOAD BUILDER ---
     private broadcastState() {
-        // Construct "slots" array
         const slots = Array.from({ length: 2 }, (_, idx) => {
             const position = idx + 1;
             const player = this.players.find(p => p.position === position);
@@ -294,11 +288,10 @@ export class DiceRoom {
                     email: player.email,
                     selectedDiceColor: player.skin
                 } : null,
-                entryId: player ? player.socketId : null, // Proxy for entryId
+                entryId: player ? player.dbEntryId : null, // Correct DB Entry ID
             };
         });
 
-        // Construct "gameMeta"
         const balances: any = {};
         const ready: any = {};
         this.players.forEach(p => {
@@ -310,32 +303,27 @@ export class DiceRoom {
             balances,
             ready,
             history: this.history,
-            dice: this.lastDice, // { top: [x,y], bottom: [x,y] }
+            dice: this.lastDice,
             ended: this.status === 'FINISHED'
         };
 
         const payload = {
             id: this.id,
             priceCents: this.priceCents,
-            state: this.status, // OPEN, LOCKED, FINISHED
+            state: this.status,
             capacity: 2,
 
-            // Legacy Frontend often expects these directly in root or inside meta
             counts: {
                 taken: this.players.length,
                 free: 2 - this.players.length
             },
             slots,
             gameMeta,
-
-            // Extra identifiers for easy access
-            turnUserId: null, // Legacy doesn't use this anymore
         };
 
         this.io.to(this.id).emit('update_game', payload);
     }
 
-    // --- TIMERS ---
     private scheduleBotEntry() {
         if (this.botInjectionTimer) clearTimeout(this.botInjectionTimer);
         if (this.botWaitMs > 0 && this.players.length === 1 && !this.players[0].isBot) {
@@ -351,8 +339,13 @@ export class DiceRoom {
             const botUser = await prisma.user.findFirst({ where: { isBot: true } });
             if (botUser) {
                 const mockSocket = { id: `bot-internal-${Date.now()}` } as any;
+                // Generate fake entry ID for bot since it doesn't have a DB entry yet
+                // Or maybe we should create one? For now, fake CUID.
+                const fakeEntryId = `cbot-${Date.now()}`;
+
                 this.addPlayer(mockSocket, {
                     id: botUser.id,
+                    entryId: fakeEntryId,
                     name: botUser.username || "Bot",
                     email: botUser.email || "bot@galaxy.com",
                     skin: botUser.selectedDiceColor || "red",

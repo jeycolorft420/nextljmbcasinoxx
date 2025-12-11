@@ -17,12 +17,10 @@ const io = new Server(httpServer, {
 
 const rooms: { [key: string]: DiceRoom } = {};
 const socketToRoom: { [key: string]: string } = {};
-// 👇 NUEVO: Mapa de seguridad para saber quién es dueño de qué socket
 const socketToUser: { [key: string]: string } = {};
 
 io.on('connection', (socket) => {
 
-    // --- JOIN ROOM (Aquí registramos la identidad) ---
     socket.on('join_room', async ({ roomId, user }) => {
         try {
             const dbRoom = await prisma.room.findUnique({
@@ -35,12 +33,10 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Registrar socket en los mapas
             socket.join(roomId);
             socketToRoom[socket.id] = roomId;
-            socketToUser[socket.id] = user.id; // <--- VINCULACIÓN SEGURA
+            socketToUser[socket.id] = user.id;
 
-            // Instanciar sala si no existe
             if (!rooms[roomId]) {
                 rooms[roomId] = new DiceRoom(
                     roomId,
@@ -58,10 +54,16 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Find current DB Entry for this user in this room
+            const myEntry = dbRoom.entries.find(e => e.userId === user.id);
+            // If entry missing (rare if just joined via API), fallback to ID or fake
+            const entryId = myEntry ? myEntry.id : `temp-${user.id}`;
+
             const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
 
             gameRoom.addPlayer(socket, {
                 id: user.id,
+                entryId: entryId, // Pass correct Entry ID
                 name: dbUser?.name || user.name || "Jugador",
                 skin: dbUser?.selectedDiceColor || "red",
                 avatar: dbUser?.avatarUrl || ""
@@ -72,11 +74,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- ROLL DICE (BLINDADO) ---
-    // Ya no pedimos userId, lo sacamos del socket.
     socket.on('roll_dice', ({ roomId }) => {
         const room = rooms[roomId];
-        const userId = socketToUser[socket.id]; // <--- IDENTIDAD VERIFICADA
+        const userId = socketToUser[socket.id];
 
         if (!userId) {
             console.log(`[Seguridad] Intento de tiro sin usuario autenticado: ${socket.id}`);
@@ -84,29 +84,19 @@ io.on('connection', (socket) => {
         }
 
         if (room) {
-            // El servidor decide si es tu turno, no el cliente.
             room.handleRoll(userId);
         }
     });
 
-    // --- DISCONNECT ---
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
-        // const userId = socketToUser[socket.id]; // Recuperamos quién era (unused but good for logging)
-
         if (roomId && rooms[roomId]) {
             const room = rooms[roomId];
-
-            // Notificar salida a la sala (limpia si está en WAITING)
             room.removePlayer(socket.id);
-
-            // Limpieza si la sala muere
             if (room.players.length === 0 && (room.status === 'CLOSED' || room.status === 'FINISHED' || room.status === 'OPEN')) {
                 delete rooms[roomId];
             }
         }
-
-        // Limpiar mapas
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
     });
