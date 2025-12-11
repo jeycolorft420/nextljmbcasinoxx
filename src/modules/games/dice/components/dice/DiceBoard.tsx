@@ -1,78 +1,57 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { io, Socket } from "socket.io-client"; // 🔌 Cliente Socket
+import { io, Socket } from "socket.io-client";
 import DiceDuel from "@/modules/games/dice/components/DiceDuel";
 import { type DiceSkin } from "./ThreeDDice";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { useAudio } from "@/context/AudioContext";
 
-// Conexión única fuera del componente para evitar reconexiones
 let socket: Socket;
 
-const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
-function toSkin(s?: string | null): DiceSkin {
-  const allowed = ["white", "green", "blue", "yellow", "red", "purple", "black"];
-  return (s && allowed.includes(s)) ? (s as DiceSkin) : "white";
-}
-
-// Update DiceBoard signature
-export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize, userSkin = "white" }: any) {
+export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize }: any) {
   const router = useRouter();
   const { play } = useAudio();
+
+  // ESTADO
   const [isConnected, setIsConnected] = useState(false);
   const [gameState, setGameState] = useState<any>(null);
   const [rolling, setRolling] = useState(false);
   const [opponentRolling, setOpponentRolling] = useState(false);
 
+  // Inicializar Socket
   useEffect(() => {
-    // 1. Inicializar Socket
-    const isProduction = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    let SOCKET_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+    // Configuración de URL flexible (Local vs Prod)
+    const SOCKET_URL = undefined; // 'undefined' intenta conectar al mismo dominio (vía Nginx proxy)
 
-    if (!SOCKET_URL) {
-      // Fallback lógica
-      SOCKET_URL = isProduction ? undefined : "http://31.187.76.102:4000";
-    }
-
-    socket = io(SOCKET_URL || window.location.origin, {
+    socket = io({
       path: "/socket.io",
-      reconnectionAttempts: 10,
-      secure: isProduction,
-      rejectUnauthorized: false
+      transports: ["websocket"],
+      reconnectionAttempts: 20
     });
 
     socket.on("connect", () => {
       setIsConnected(true);
-      console.log("🟢 Conectado al Motor de Juego");
-
-      // 2. Unirse a la sala
+      // Unirse a la sala inmediatamente
       socket.emit("join_room", {
         roomId: room.id,
         user: {
           id: userId,
-          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-          isBot: false,
-          skin: userSkin // 🎨 Enviar Skin seleccionado
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador"
         }
       });
     });
 
-    // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
     socket.on("update_game", (data) => {
-      console.log("📥 UPDATE GAME RECIBIDO:", data);
+      console.log("🎮 Estado recibido:", data);
       setGameState(data);
     });
 
     socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
       play("roll");
-
-      if (rollerId === userId) {
-        setRolling(true);
-        setTimeout(() => setRolling(false), 800);
-      } else {
+      if (rollerId !== userId) {
         setOpponentRolling(true);
         setTimeout(() => setOpponentRolling(false), 800);
       }
@@ -85,139 +64,88 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
       }
     });
 
-    socket.on("connect_error", (err) => {
-      console.error("🔴 Error de conexión:", err);
-      toast.error("Error de conexión con el servidor de juego");
-    });
+    socket.on("disconnect", () => setIsConnected(false));
 
-    // WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
-    const watchdog = setTimeout(() => {
-      if (!socket.connected) return;
-      console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
-      socket.emit("join_room", {
-        roomId: room.id,
-        user: {
-          id: userId,
-          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-          isBot: false
-        }
-      });
-    }, 2000);
-
-    return () => {
-      clearTimeout(watchdog);
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, [room.id, userId]);
 
+  // --- LÓGICA VISUAL ---
 
-  // Mapear el estado del socket (gameState) a lo que espera DiceDuel
-  // players es ahora un array [{userId: "...", name: "..."}]
-  const playersArr = Array.isArray(gameState?.players) ? gameState.players : [];
-  const rolls = gameState?.rolls || {};
+  // 1. Identificar Puestos
+  // Buscamos en el estado del socket (más fresco) o fallamos a la DB
+  const players = gameState?.players || [];
+  const meIndex = players.findIndex((p: any) => p.userId === userId);
+  // Si estoy en la lista del socket, decidir posición visual
+  // Si soy el primero (host), me veo abajo. Si soy el segundo, me veo abajo también.
+  // SIEMPRE quiero verme abajo.
 
-  // Mapeo DIRECTO del Socket (La verdad absoluta)
-  // P1 = Index 0, P2 = Index 1
-  const p1 = playersArr[0] || null;
-  const p2 = playersArr[1] || null;
+  const opponent = players.find((p: any) => p.userId !== userId);
 
-  // Determinar quién soy yo en el array del socket
-  const amP1 = p1?.userId === userId;
-  const amP2 = p2?.userId === userId;
+  // 2. Extraer Datos de Dados
+  const myRoll = gameState?.rolls?.[userId];
+  const oppRoll = opponent ? gameState?.rolls?.[opponent.userId] : null;
 
-  // Si soy P1, veo P2 arriba. Si soy P2, veo P1 arriba.
-  // Si soy espectador, veo P1 arriba normal.
-  const swapVisuals = amP1; // Si soy P1, quiero verme abajo (Bottom), así que P2 va arriba (Top)
-
-  const topPlayer = swapVisuals ? p2 : p1;
-  const botPlayer = swapVisuals ? p1 : p2;
-
-  // Obtener Dados usando los IDs del socket
-  const dTop = topPlayer ? (rolls[topPlayer.userId] || null) : null;
-  const dBot = botPlayer ? (rolls[botPlayer.userId] || null) : null;
-
-  // Nombres para mostrar
-  const labelTop = topPlayer?.name || (swapVisuals ? "J2" : "J1");
-  const labelBot = botPlayer?.name || (swapVisuals ? "Tú" : "J2");
-
-  const timer = gameState?.timer || 30;
-  // Identificar el usuario actual
-  // Nota: players es array o objeto? En el nuevo server es array.
-  // Pero aquí mantuvimos la lógica vieja de objeto {id: roll}.
-  // El nuevo server manda room.players array.
-  // Vamos a adaptar para leer turnUserId.
-
-  // VALIDACIÓN DE TURNO
-  const myTurn = gameState?.turnUserId === userId;
-  const isWinner = !!gameState?.winner;
-
-  // Status Text Inteligente
-  let statusText = "Esperando jugadores...";
-  if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
-  else if (gameState?.winner) statusText = gameState.winner === userId ? "¡GANASTE!" : (gameState.winner === "TIE" ? "EMPATE" : "Rival Ganó");
-  else if (myTurn) statusText = "¡TU TURNO! TIRA LOS DADOS";
-  else statusText = `Esperando a ${gameState?.turnUserId === "bot-juan" ? "Bot" : "Rival"}...`;
-
-  // 🚨 FIX: Construir objeto completo para evitar React Error #130
-  // Calcular nombre del ganador
-  let winnerName = gameState?.winner === "TIE" ? "EMPATE" : "Rival";
-  const wId = gameState?.winner;
-
-  if (wId === userId) winnerName = "TÚ";
-  else if (wId && wId !== "TIE") {
-    // Buscar en jugadores del socket (Array en nuevo server)
-    const p = gameState?.players?.find((p: any) => p.userId === wId);
-    if (p) winnerName = p.name;
-    else {
-      // Fallback a room entries
-      const entry = room.entries?.find((e: any) => e.user.id === wId);
-      if (entry) winnerName = entry.user.name;
-    }
+  // 3. Texto de Estado
+  let statusText = "Conectando...";
+  if (isConnected) {
+    if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
+    else if (gameState?.status === 'FINISHED') statusText = gameState.winner === userId ? "¡GANASTE!" : "Perdiste";
+    else if (gameState?.turnUserId === userId) statusText = "¡TU TURNO!";
+    else statusText = `Esperando a ${opponent?.name || 'Rival'}...`;
   }
 
-  const winnerDisplay = wId ? {
-    name: winnerName,
-    amount: fmtUSD(room.priceCents || 0),
-    isTie: wId === "TIE"
-  } : null;
-
+  // 4. Acción
   const handleRoll = () => {
     if (rolling) return;
+    setRolling(true);
     socket.emit("roll_dice", { roomId: room.id, userId });
+    setTimeout(() => setRolling(false), 500);
   };
+
+  // ¿Puedo tirar?
+  // Solo si estoy conectado, es mi turno, y NO he tirado ya en esta ronda.
+  const canRoll = isConnected && gameState?.status === 'PLAYING' && gameState?.turnUserId === userId && !myRoll;
 
   return (
     <div className="relative flex flex-col items-center">
-      {!isConnected && <div className="text-xs text-red-500 mb-2">Conectando al servidor en tiempo real...</div>}
+      {/* Indicador de conexión discreto */}
+      <div className={`absolute top-2 right-2 w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_10px_lime]' : 'bg-red-500 animate-pulse'}`} />
 
       <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
         <DiceDuel
-          topRoll={swapVisuals ? dBot : dTop}
-          bottomRoll={swapVisuals ? dTop : dBot}
+          // YO SIEMPRE ABAJO
+          topRoll={oppRoll}
+          bottomRoll={myRoll}
 
-          isRollingTop={swapVisuals ? rolling : opponentRolling}
-          isRollingBottom={swapVisuals ? opponentRolling : rolling}
+          isRollingTop={opponentRolling}
+          isRollingBottom={rolling}
 
           statusText={statusText}
-          winnerDisplay={winnerDisplay}
+          winnerDisplay={gameState?.winner ? {
+            name: gameState.winner === userId ? "TÚ" : (opponent?.name || "Rival"),
+            amount: "$100", // Placeholder, conectar con precio sala si quieres
+            isTie: gameState.winner === "TIE"
+          } : null}
 
           onRoll={handleRoll}
-          canRoll={!rolling && myTurn && !isWinner}
-          timeLeft={timer}
+          canRoll={canRoll}
+          timeLeft={30} // Simplificado por ahora
 
-          labelTop={labelTop}
-          labelBottom={labelBot}
-          diceColorTop="white"
-          diceColorBottom="white"
+          labelTop={opponent?.name || "Rival"}
+          labelBottom="Tú"
 
           onExit={onLeave}
           onRejoin={onRejoin}
           isFinished={false}
+
+          diceColorTop="white" // Puedes restaurar la lógica de skins luego
+          diceColorBottom="white"
         />
       </div>
     </div>
   );
 }
+
 // History Component
 export function DiceHistory({ room, swapVisuals, className }: { room: any, swapVisuals?: boolean, className?: string }) {
   const history = room.gameMeta?.history || [];
