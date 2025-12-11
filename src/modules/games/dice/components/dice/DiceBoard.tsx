@@ -11,6 +11,12 @@ import { useAudio } from "@/context/AudioContext";
 
 let socket: Socket;
 
+// Helper para skins
+function toSkin(s?: string | null): DiceSkin {
+  const allowed = ["white", "green", "blue", "yellow", "red", "purple", "black"];
+  return (s && allowed.includes(s)) ? (s as DiceSkin) : "white";
+}
+
 export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize, userSkin = "white" }: any) {
   const router = useRouter();
   const { play } = useAudio();
@@ -72,21 +78,37 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, whee
 
   // --- LÓGICA VISUAL ---
 
-  // 1. Identificar Puestos
-  // Buscamos en el estado del socket (más fresco) o fallamos a la DB
+  // 1. Identificar Datos
   const players = gameState?.players || [];
-  const meIndex = players.findIndex((p: any) => p.userId === userId);
-  // Si estoy en la lista del socket, decidir posición visual
-  // Si soy el primero (host), me veo abajo. Si soy el segundo, me veo abajo también.
-  // SIEMPRE quiero verme abajo.
 
+  // Buscarme a mí y a mi oponente
+  const me = players.find((p: any) => p.userId === userId);
+
+  // 2. Lógica de "Espejo" (Yo siempre abajo)
+  // Si soy Position 1 (Host) -> swapVisuals = true (para mandarme abajo)
+  // Si soy Position 2 (Retador) -> swapVisuals = false (ya estoy abajo por defecto en el diseño P2)
+  const amTopPosition = me?.position === 1;
+  const swapVisuals = amTopPosition;
+
+  const p1 = players.find((p: any) => p.position === 1);
+  const p2 = players.find((p: any) => p.position === 2);
+
+  // 3. Asignar Dados y Skins
+  // Top: Si swap es true, Top visual es P2. Si swap es false, Top visual es P1.
+  const visualTopPlayer = swapVisuals ? p2 : p1;
+  const visualBottomPlayer = swapVisuals ? p1 : p2;
+
+  const topRoll = visualTopPlayer ? gameState?.rolls?.[visualTopPlayer.userId] : null;
+  const bottomRoll = visualBottomPlayer ? gameState?.rolls?.[visualBottomPlayer.userId] : null;
+
+  // Skins
+  const topSkin = visualTopPlayer?.skin || "white";
+  const bottomSkin = visualBottomPlayer?.skin || "white";
+
+  // Identificar Oponente para Labels y Estado
   const opponent = players.find((p: any) => p.userId !== userId);
 
-  // 2. Extraer Datos de Dados
-  const myRoll = gameState?.rolls?.[userId];
-  const oppRoll = opponent ? gameState?.rolls?.[opponent.userId] : null;
-
-  // 3. Texto de Estado
+  // 4. Texto de Estado
   let statusText = "Conectando...";
   if (isConnected) {
     if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
@@ -95,7 +117,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, whee
     else statusText = `Esperando a ${opponent?.name || 'Rival'}...`;
   }
 
-  // 4. Acción
+  // 5. Acción
   const handleRoll = () => {
     if (rolling) return;
     setRolling(true);
@@ -105,6 +127,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, whee
 
   // ¿Puedo tirar?
   // Solo si estoy conectado, es mi turno, y NO he tirado ya en esta ronda.
+  const myRoll = gameState?.rolls?.[userId];
   const canRoll = isConnected && gameState?.status === 'PLAYING' && gameState?.turnUserId === userId && !myRoll;
 
   return (
@@ -114,33 +137,32 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, whee
 
       <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
         <DiceDuel
-          // YO SIEMPRE ABAJO
-          topRoll={oppRoll}
-          bottomRoll={myRoll}
+          topRoll={topRoll}
+          bottomRoll={bottomRoll}
 
           isRollingTop={opponentRolling}
           isRollingBottom={rolling}
 
+          diceColorTop={toSkin(topSkin)}
+          diceColorBottom={toSkin(bottomSkin)}
+
           statusText={statusText}
           winnerDisplay={gameState?.winner ? {
             name: gameState.winner === userId ? "TÚ" : (opponent?.name || "Rival"),
-            amount: "$100", // Placeholder, conectar con precio sala si quieres
+            amount: "$100", // Placeholder
             isTie: gameState.winner === "TIE"
           } : null}
 
           onRoll={handleRoll}
           canRoll={canRoll}
-          timeLeft={30} // Simplificado por ahora
+          timeLeft={30}
 
-          labelTop={opponent?.name || "Rival"}
-          labelBottom="Tú"
+          labelTop={visualTopPlayer?.name || "Esperando..."}
+          labelBottom={visualBottomPlayer?.name || "Tú"}
 
           onExit={onLeave}
           onRejoin={onRejoin}
           isFinished={false}
-
-          diceColorTop="white" // Puedes restaurar la lógica de skins luego
-          diceColorBottom="white"
         />
       </div>
     </div>
@@ -158,10 +180,6 @@ export function DiceHistory({ room, swapVisuals, className }: { room: any, swapV
       {list.length === 0 && <div className="text-center text-xs text-white/30 py-4">No hay historial reciente</div>}
 
       {list.map((h: any, i: number) => {
-        // h has: rolls: { userId: [1,2] }, winnerUserId, round...
-        // We need to map userId to Top/Bottom based on swapVisuals? 
-        // Or just show simplified view.
-
         // Let's just show Winner Name + Damage for now to be safe and simple
         const isTie = !h.winnerUserId;
         const winnerName = room.entries?.find((e: any) => e.user.id === h.winnerUserId)?.user.name || "Desconocido";
