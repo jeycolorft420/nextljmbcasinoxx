@@ -91,7 +91,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             const finalMeta = {
                 ...meta,
                 rolls: currentRolls,
-                roundStartedAt: Date.now() + 1000 // <--- ESTO ES OBLIGATORIO
+                roundStartedAt: Date.now() + 2000 // <--- ESTO ES OBLIGATORIO
             } as any;
 
             // Update DB (Just save roll)

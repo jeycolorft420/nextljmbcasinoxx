@@ -1,110 +1,402 @@
-He analizado a fondo los problemas que mencionas. Tienes toda la razón: para que el juego se sienta **100% profesional y confiable**, no pueden haber discrepancias de tiempo, ni carteles que salen antes de tiempo, ni dados que parecen "huecos".
+Entiendo perfectamente. Vamos a dejar las sutilezas y aplicar **soluciones radicales** a nivel de arquitectura para forzar que el juego se comporte como quieres.
 
-He preparado un paquete de correcciones de **Alta Precisión** para solucionar estos 4 puntos críticos:
+Aquí está el plan de choque:
 
-1.  **Tiempo Robado (29s):** Implementaremos un "Buffer de Servidor". El servidor configurará el inicio de la ronda **1 segundo en el futuro**. Así, cuando el mensaje llegue a tu navegador, el reloj estará exactamente en 30s (o 31s ocultos que se ven como 30s).
-2.  **Cartel Prematuro:** El navegador esperará obligatoriamente a que termine la animación de los dados (2 segundos) antes de mostrar quién ganó.
-3.  **Dados Huecos:** Agregaremos un "Núcleo" (Core) dentro del dado 3D mediante CSS para que parezca un bloque sólido y no láminas de papel.
-4.  **Popup "Comprar Puesto":** Bloquearemos el renderizado de este botón si el usuario ya es parte de la sala (`meEntry`).
-
-Aquí tienes las instrucciones para Gravity.
+1.  **Tiempo 30s (Radical):** El servidor mentirá descaradamente. Le dirá al cliente que la ronda empezó **2 segundos en el futuro**. Así, por mucho lag que tengas, tu reloj siempre empezará "sobrado" y lo recortaremos visualmente a 30.
+2.  **Cartel Blindado:** Vamos a separar el "Estado Lógico" del "Estado Visual". Aunque el servidor ya haya empezado la siguiente ronda, tu pantalla **se negará a actualizarse** hasta que termine de mostrar el cartel de victoria (4 segundos obligatorios).
+3.  **Dados Sólidos (CSS Hack):** Haremos las caras de los dados un 1% más grandes para que se superpongan entre ellas (`101%`), eliminando físicamente cualquier hueco visual.
+4.  **Estabilidad de Puesto:** Usaremos "Memoria de Sesión" para que, aunque el internet parpadee, el juego nunca olvide cuál es tu silla (evitando que cambies de lugar con el bot).
 
 -----
 
-### 1\. 🛡️ Backend: Buffer de Tiempo (Anti-Lag)
+### 1\. 🎨 CSS: Arreglar "Dados Rotos" (Huecos)
 
-Vamos a hacer que el servidor sea "generoso" y regale 1000ms al iniciar el reloj.
+Haremos que las caras se solapen ligeramente para sellar el cubo.
 
-**Instrucción para Gravity (Copia y Pega):**
+**Archivo:** `src/modules/games/dice/components/dice/ThreeDDice.css`
+**Instrucción para Gravity:** Reemplaza todo el contenido con esto.
 
-> "Gravity, necesito ajustar la sincronización de tiempo en el servidor para compensar el lag de red.
->
-> 1.  **En `src/modules/games/dice/lib/maintenance.ts`:**
->     Busca todas las líneas donde haces `roundStartedAt: Date.now()`.
->     Cámbialas por: `roundStartedAt: Date.now() + 1000` (Sumar 1 segundo).
->     *Esto aplica tanto al iniciar la primera ronda como al reiniciar el reloj tras una resolución.*
->
-> 2.  **En `src/app/api/rooms/[id]/roll/route.ts`:**
->     Busca la línea: `roundStartedAt: Date.now()`.
->     Cámbiala por: `roundStartedAt: Date.now() + 1000`.
->
-> Esto hará que el cliente reciba el tiempo 'en el futuro', garantizando que el contador empiece en 30s clavados."
+```css
+.scene {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  perspective: 600px;
+}
 
------
+.cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 1s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
 
-### 2\. 🧊 Frontend: Dados Sólidos y Banner Sincronizado
+.cube__face {
+  position: absolute;
+  /* 🚨 FIX RADICAL: 102% para solapar bordes y tapar huecos */
+  width: 102%;
+  height: 102%;
+  left: -1%; top: -1%; 
+  
+  background-color: var(--base-color, white);
+  border-radius: 12%; /* Un poco menos redondo para cerrar esquinas */
+  backface-visibility: hidden; /* Oculta el interior */
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.2);
+  display: flex; 
+  justify-content: center;
+  align-items: center;
+  border: 1px solid rgba(0,0,0,0.05); /* Borde sutil */
+}
 
-Vamos a rediseñar el componente del dado para rellenar su interior y mejorar la lógica del tablero para esperar la animación.
+/* Núcleo oscuro para dar sensación de masa si se ve un hueco */
+.cube__inner {
+  position: absolute;
+  width: 98%; height: 98%;
+  top: 1%; left: 1%;
+  background: #0f172a;
+  transform: translateZ(1px);
+}
 
-**Instrucción para Gravity (Copia y Pega):**
+/* Transformaciones (Se mantienen igual, pero la geometría ahora es sólida) */
+.cube__face--1 { transform: rotateY(0deg) translateZ(var(--depth)); }
+.cube__face--2 { transform: rotateY(90deg) translateZ(var(--depth)); }
+.cube__face--3 { transform: rotateY(180deg) translateZ(var(--depth)); }
+.cube__face--4 { transform: rotateY(-90deg) translateZ(var(--depth)); }
+.cube__face--5 { transform: rotateX(90deg) translateZ(var(--depth)); }
+.cube__face--6 { transform: rotateX(-90deg) translateZ(var(--depth)); }
 
-> "Gravity, actualiza los componentes visuales para mejorar la calidad y la sincronización.
->
-> **A. En `src/modules/games/dice/components/dice/ThreeDDice.css`:**
-> Agrega este estilo para crear un núcleo sólido dentro del dado y evitar que se vea hueco:
->
-> ```css
-> /* Núcleo sólido para evitar ver a través */
-> .cube__inner {
->   position: absolute;
->   width: 98%;
->   height: 98%;
->   top: 1%; left: 1%;
->   background: black; /* O el color oscuro que prefieras para el interior */
->   transform: translateZ(1px); /* Pequeño ajuste */
->   box-shadow: 0 0 20px rgba(0,0,0,0.5);
->   opacity: 0.9;
-> }
-> ```
->
-> *Nota: Asegúrate de que las caras `.cube__face` tengan `backface-visibility: hidden;`.*
->
-> **B. En `src/modules/games/dice/components/dice/ThreeDDice.tsx`:**
-> Agrega el div del núcleo dentro del componente `.cube`:
->
-> ```tsx
->       <div className={`cube ...`}>
->         <div className="cube__inner" style={{ transform: `translateZ(-2px)` }}></div> 
->         {/* ... (el map de las caras sigue aquí) */}
-> ```
->
-> **C. En `src/modules/games/dice/components/dice/DiceBoard.tsx` (Lógica de Banner):**
-> Actualmente muestras `winnerDisplay` directamente. Modifícalo para usar un estado intermedio `delayedWinner` que espere a que los dados dejen de rodar.
->
-> Reemplaza la lógica del renderizado del banner:
->
-> ```typescript
->   // Estado para retrasar el cartel hasta que termine la animación
->   const [delayedWinner, setDelayedWinner] = useState<any>(null);
-> ```
+@keyframes tumble {
+  0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  100% { transform: rotateX(720deg) rotateY(360deg) rotateZ(360deg); }
+}
 
-> useEffect(() =\> {
-> if (winnerDisplay) {
-> // Si hay ganador, esperar 1.5s (tiempo de giro) antes de mostrarlo
-> const t = setTimeout(() =\> setDelayedWinner(winnerDisplay), 1500);
-> return () =\> clearTimeout(t);
-> } else {
-> setDelayedWinner(null);
-> }
-> }, [winnerDisplay]);
->
-> ```
-> 
-> Y en el JSX, pasa `delayedWinner` al componente `DiceDuel` en lugar de `winnerDisplay`.
-
-> **D. Ocultar Botón de Compra (`BuySeatUI`):**
-> En `DiceBoard.tsx`, si `meEntry` existe (el usuario ya está jugando), asegúrate de no renderizar ningún componente de compra de asientos."
-> ```
+.is-rolling {
+  animation: tumble 0.5s linear infinite;
+}
+```
 
 -----
 
-### Explicación de las Mejoras
+### 2\. ⏳ Backend: Inyección de Tiempo "Futuro" (+2s)
 
-1.  **Tiempo 30s:** Al sumar `+1000ms` en el servidor, si el mensaje tarda 200ms en llegar a tu casa, el cálculo será:
-    `30 - (HoraActual - (HoraInicio + 1000))`.
-    Matemáticamente, el reloj de tu navegador pensará que faltan **30.8 segundos**.
-    Como tu código tiene `Math.min(30, ...)`, se quedará clavado en **30** durante casi un segundo antes de bajar a 29. **Sensación perfecta.**
-2.  **Sincronización:** El `setTimeout` de 1500ms en `DiceBoard` asegura que primero veas rodar los dados, se detengan, y *luego* (¡Boom\!) salga el cartel de "Ganaste". Genera suspenso y confianza.
-3.  **Dados Sólidos:** El `.cube__inner` es un truco visual (un cubo negro o del color del dado ligeramente más pequeño adentro) que tapa los huecos entre las aristas. Ya no parecerán hojas de papel.
+Vamos a darle 2 segundos de ventaja al reloj.
 
-Con estos ajustes, el juego se verá y sentirá **sólido como una roca**. 🎲🚀
+**Instrucción para Gravity:**
+
+1.  **En `src/modules/games/dice/lib/maintenance.ts`:**
+    Busca todas las ocurrencias de `roundStartedAt: Date.now()`.
+    **Reemplázalas por:** `roundStartedAt: Date.now() + 2000`. (Antes era +1000, ahora +2000 es radical).
+
+2.  **En `src/app/api/rooms/[id]/roll/route.ts`:**
+    Busca `roundStartedAt: Date.now()`.
+    **Reemplázala por:** `roundStartedAt: Date.now() + 2000`.
+
+-----
+
+### 3\. 🧠 Frontend: Tablero Blindado (DiceBoard.tsx)
+
+Esta es la corrección más importante. Vamos a reescribir la lógica para que:
+
+1.  Use `Math.min(30, ...)` forzando el tope visual.
+2.  **Bloquee actualizaciones** mientras muestra el ganador (`animationLock`).
+3.  Recuerde tu posición para no intercambiarte con el bot.
+
+**Archivo:** `src/modules/games/dice/components/dice/DiceBoard.tsx`
+**Instrucción para Gravity:** Reemplaza el componente COMPLETO con esta versión "Blindada".
+
+```tsx
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import DiceDuel from "@/modules/games/dice/components/DiceDuel";
+import { type DiceSkin } from "./ThreeDDice";
+import { toast } from "sonner";
+import confetti from "canvas-confetti";
+import { useAudio } from "@/context/AudioContext";
+
+// ... (Types Entry y Room se mantienen igual) ...
+type Entry = {
+  id: string;
+  position: number;
+  user: { id: string; name: string | null; email: string; selectedDiceColor?: string | null };
+};
+
+type Room = {
+  id: string;
+  title: string;
+  priceCents: number;
+  state: "OPEN" | "LOCKED" | "FINISHED" | "DRAWING";
+  capacity: number;
+  prizeCents?: number | null;
+  winningEntryId?: string | null;
+  entries?: Entry[];
+  gameMeta?: any | null;
+  currentRound?: number;
+};
+
+// ... (DiceHistory se mantiene igual) ...
+export function DiceHistory({ room, className = "", maxHeight = 220, swapVisuals = false }: { room: Room; className?: string; maxHeight?: number; swapVisuals?: boolean }) {
+  // ... (Tu código de historial existente) ...
+  return null; // Simplificado para el ejemplo, usa tu código anterior aquí
+}
+
+type Props = {
+  room: Room;
+  userId: string | null;
+  email?: string | null;
+  onReroll: () => Promise<void>;
+  onForfeit: () => Promise<void>;
+  onLeave: () => Promise<void>;
+  onRejoin: () => Promise<void>;
+  onOpenHistory?: () => void;
+  onAfterAnim?: () => void;
+  wheelSize: number;
+};
+
+const fmtUSD = (c: number) => `$${(c / 100).toFixed(2)}`;
+function toSkin(s?: string | null): DiceSkin {
+  const allowed: DiceSkin[] = ["white", "green", "blue", "yellow", "red", "purple", "black"];
+  return (s && (allowed as readonly string[]).includes(s)) ? (s as DiceSkin) : "white";
+}
+
+export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOpenHistory, wheelSize }: Props) {
+  const router = useRouter();
+  const { play } = useAudio();
+  
+  // 1. MEMORIA DE POSICIÓN (Evita el "Seat Swap")
+  const persistentPosition = useRef<number | null>(null);
+  
+  const meEntryRaw = room.entries?.find((e) => e.user.id === userId || (email && e.user.email === email)) ?? null;
+  if (meEntryRaw && persistentPosition.current === null) {
+      persistentPosition.current = meEntryRaw.position;
+  }
+  
+  // Si tenemos posición guardada, la forzamos visualmente aunque la API falle un frame
+  const amTop = persistentPosition.current === 1; 
+  const swapVisuals = amTop; // Si soy el 1, me pongo abajo (swap)
+
+  // Identificar Jugadores por Posición Fija
+  const topEntry = room.entries?.find(e => e.position === 1);
+  const bottomEntry = room.entries?.find(e => e.position === 2);
+
+  // 2. ESTADO VISUAL BLINDADO
+  const [visualWinner, setVisualWinner] = useState<any>(null);
+  const [animationLock, setAnimationLock] = useState(false); // Bloqueo global de UI
+  const [rolling, setRolling] = useState(false);
+  
+  // Detectar ganador real desde el servidor
+  const serverWinner = useMemo(() => {
+    const history = room.gameMeta?.history || [];
+    if (!history.length) return null;
+    const lastRound = history[history.length - 1];
+    // Solo consideramos ganador si la ronda del historial coincide o es reciente
+    return {
+        name: !lastRound.winnerEntryId ? "Empate" : (room.entries?.find((e) => e.id === lastRound.winnerEntryId)?.user?.name || "Jugador"),
+        amount: fmtUSD(lastRound.damage ?? 0),
+        isTie: !lastRound.winnerEntryId,
+        round: lastRound.round
+    };
+  }, [room.gameMeta?.history, room.entries]);
+
+  // Sincronización de Cartel (RADICAL: Obliga a esperar)
+  const lastProcessedRound = useRef<number>(0);
+
+  useEffect(() => {
+    if (serverWinner && serverWinner.round !== lastProcessedRound.current) {
+        lastProcessedRound.current = serverWinner.round;
+        setAnimationLock(true); // 🔒 BLOQUEAR INTERFAZ
+
+        // Secuencia: Rodar (1.5s) -> Mostrar Ganador (4s) -> Desbloquear
+        setTimeout(() => {
+            setVisualWinner(serverWinner);
+            if (room.state === "FINISHED") {
+                play("win");
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            }
+            
+            // Mantener cartel 4 segundos COMPLETOS
+            setTimeout(() => {
+                setVisualWinner(null);
+                setAnimationLock(false); // 🔓 DESBLOQUEAR
+                router.refresh();
+            }, 4000);
+
+        }, 1500); // Esperar a que los dados "paren" visualmente
+    }
+  }, [serverWinner, room.state, router, play]);
+
+
+  // 3. TIMER RADICAL (Siempre 30s)
+  const [timer, setTimer] = useState(30);
+  const roundStartedAt = (room.gameMeta?.roundStartedAt as number) || 0;
+  
+  useEffect(() => {
+    // Si hay bloqueo de animación, no tocamos el timer (se queda en lo que estaba o 0)
+    if (animationLock) return; 
+
+    const tick = () => {
+         if (!roundStartedAt) { 
+             setTimer(30); 
+             return; 
+         }
+         
+         const now = Date.now();
+         // El servidor nos da roundStartedAt en el FUTURO (+2000ms).
+         // Si now < roundStartedAt, elapsed es negativo, perfecto para mantener 30s.
+         const elapsed = (now - roundStartedAt) / 1000;
+         
+         // Si elapsed es -2, -1, 0, 0.5... visualTime será > 30.
+         // Math.min(30) lo clava en 30.
+         const visualTime = Math.min(30, Math.floor(30 - elapsed));
+         
+         setTimer(Math.max(0, visualTime));
+    };
+    
+    // Ejecutar inmediatamente y luego en intervalo
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [roundStartedAt, animationLock]);
+
+
+  // 4. LÓGICA DE DADOS Y ANIMACIÓN
+  const rolls = room.gameMeta?.rolls || {};
+  const lastDice = room.gameMeta?.lastDice || {};
+
+  const activeTop = topEntry ? rolls[topEntry.user.id] : null;
+  const activeBottom = bottomEntry ? rolls[bottomEntry.user.id] : null;
+
+  // Si hay bloqueo, mostramos los dados "finales" (lastDice)
+  // Si no, mostramos los dados activos
+  const currentTopRoll = animationLock ? lastDice.top : (activeTop || lastDice.top);
+  const currentBottomRoll = animationLock ? lastDice.bottom : (activeBottom || lastDice.bottom);
+
+  // Animación del oponente
+  const [opponentRolling, setOpponentRolling] = useState(false);
+  const prevOppRoll = useRef("");
+  const opRollData = swapVisuals ? activeBottom : activeTop; // El oponente es el "otro"
+
+  useEffect(() => {
+    const s = JSON.stringify(opRollData);
+    if (s !== prevOppRoll.current && opRollData && !animationLock) {
+        play("roll");
+        setOpponentRolling(true);
+        setTimeout(() => setOpponentRolling(false), 800);
+    }
+    prevOppRoll.current = s;
+  }, [opRollData, animationLock, play]);
+
+
+  // 5. STATUS TEXT (Limpio)
+  let statusText = "";
+  let myTurn = false;
+
+  if (room.state === "FINISHED") statusText = "Juego Terminado";
+  else if (animationLock || visualWinner) statusText = ""; // 🤫 Silencio durante animación
+  else {
+      // Lógica de turno estándar
+      const starterId = room.gameMeta?.nextStarterUserId || topEntry?.user.id;
+      const isTopStarter = topEntry?.user.id === starterId;
+      const hasRolledTop = !!rolls[topEntry?.user.id || ""];
+      const hasRolledBottom = !!rolls[bottomEntry?.user.id || ""];
+      
+      let turnId = null;
+      if (isTopStarter) turnId = !hasRolledTop ? topEntry?.user.id : bottomEntry?.user.id;
+      else turnId = !hasRolledBottom ? bottomEntry?.user.id : topEntry?.user.id;
+
+      if (turnId) {
+          myTurn = meEntryRaw?.user.id === turnId;
+          statusText = myTurn ? "¡TU TURNO!" : "Esperando al oponente...";
+      }
+  }
+
+  // ACCIÓN DE TIRAR
+  const handleRoll = async () => {
+    if (rolling || animationLock) return;
+    setRolling(true);
+    play("roll");
+    try {
+      await fetch(`/api/rooms/${room.id}/roll`, { method: "POST" });
+      router.refresh();
+    } catch { toast.error("Error"); }
+    finally { setTimeout(() => setRolling(false), 500); }
+  };
+  
+  // Heartbeat para despertar bots
+  useEffect(() => {
+     if (!myTurn && !animationLock && room.state === "OPEN") {
+         const t = setInterval(() => router.refresh(), 3000);
+         return () => clearInterval(t);
+     }
+  }, [myTurn, animationLock, room.state, router]);
+
+  // SKINS
+  const lastTopSkin = useRef<DiceSkin>("white");
+  const lastBottomSkin = useRef<DiceSkin>("white");
+  if (topEntry?.user.selectedDiceColor) lastTopSkin.current = toSkin(topEntry.user.selectedDiceColor);
+  if (bottomEntry?.user.selectedDiceColor) lastBottomSkin.current = toSkin(bottomEntry.user.selectedDiceColor);
+
+  return (
+    <div className="relative flex flex-col items-center">
+      <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
+        <DiceDuel
+          // VISUALES SWAP (Para que siempre estés abajo)
+          topRoll={swapVisuals ? currentBottomRoll : currentTopRoll}
+          bottomRoll={swapVisuals ? currentTopRoll : currentBottomRoll}
+          
+          isRollingTop={swapVisuals ? rolling : opponentRolling} 
+          isRollingBottom={swapVisuals ? opponentRolling : rolling}
+          
+          // Ghost: Solo mostramos fantasmas si NO hay animación bloqueante
+          isGhostTop={!animationLock && (swapVisuals ? !activeBottom : !activeTop)}
+          isGhostBottom={!animationLock && (swapVisuals ? !activeTop : !activeBottom)}
+
+          statusText={statusText}
+          winnerDisplay={visualWinner} // Usamos el ganador "Delayed"
+
+          onRoll={handleRoll}
+          canRoll={myTurn && !rolling && !animationLock}
+          timeLeft={myTurn && !animationLock ? timer : undefined} // Ocultar timer en animación
+
+          onExit={onLeave}
+          onRejoin={onRejoin}
+          isFinished={room.state === "FINISHED"}
+          onOpenHistory={onOpenHistory}
+
+          labelTop={(swapVisuals ? bottomEntry?.user.name : topEntry?.user.name) || "J1"}
+          labelBottom={(swapVisuals ? topEntry?.user.name : bottomEntry?.user.name) || "Tú"}
+          
+          diceColorTop={swapVisuals ? lastBottomSkin.current : lastTopSkin.current}
+          diceColorBottom={swapVisuals ? lastTopSkin.current : lastBottomSkin.current}
+
+          balanceTop={fmtUSD(room.gameMeta?.balances?.[swapVisuals ? bottomEntry?.user.id! : topEntry?.user.id!] ?? room.priceCents)}
+          balanceBottom={fmtUSD(room.gameMeta?.balances?.[swapVisuals ? topEntry?.user.id! : bottomEntry?.user.id!] ?? room.priceCents)}
+        />
+      </div>
+    </div>
+  );
+}
+```
+
+-----
+
+### 4\. 🚫 Fix: Botón de Compra (BuySeatUI.tsx)
+
+Evitar que salga "Comprar Puesto" si ya hay gente o está activo.
+
+**Archivo:** `src/modules/rooms/components/BuySeatUI.tsx`
+**Instrucción:**
+
+```typescript
+// Al inicio del componente
+if (room.state !== "OPEN" || room.entries.length >= 2) return null;
+```
+
+**Resumen:**
+
+1.  **Dados Sólidos:** CSS `102%`.
+2.  **Tiempo 30s:** Backend `+2000ms`, Frontend `Math.min(30)`.
+3.  **Sin Lag Visual:** `animationLock` fuerza una pausa de 4s para ver el ganador antes de cambiar a "Waiting".
+4.  **Posición Fija:** `persistentPosition` evita el baile de sillas.

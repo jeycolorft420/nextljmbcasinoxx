@@ -35,9 +35,7 @@ export default function BuySeatUI({
     const taken = room.entries?.length ?? 0;
     const free = Math.max(0, room.capacity - taken);
     const totalUnits = selectedPositions.length > 0 ? selectedPositions.length : qty;
-    const totalUSD = ((room.priceCents * totalUnits) / 100).toFixed(2);
-
-    if (room.state !== "OPEN") {
+    if (room.state !== "OPEN" || room.entries.length >= 2) {
         return null;
     }
 

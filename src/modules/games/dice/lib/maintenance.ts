@@ -131,7 +131,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                     gameMeta: {
                         ...meta,
                         balances,
-                        roundStartedAt: Date.now() + 1000,
+                        roundStartedAt: Date.now() + 2000,
                         autoPlay: false
                     } as any
                 },
@@ -153,7 +153,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
             console.log(`[DiceDuel] 🏁 Starting first round clock for Room ${roomId}`);
             const startedRoom = await prisma.room.update({
                 where: { id: roomId },
-                data: { gameMeta: { ...meta, roundStartedAt: Date.now() + 1000 } as any },
+                data: { gameMeta: { ...meta, roundStartedAt: Date.now() + 2000 } as any },
                 include: { entries: { include: { user: true } } }
             });
             await emitRoomUpdate(roomId);
@@ -289,7 +289,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                                     lastDice: roundDice,
                                     roundResolvingUntil: 0,
                                     nextStarterUserId: winnerId, // Winner starts next
-                                    roundStartedAt: Date.now() + 1000
+                                    roundStartedAt: Date.now() + 2000
                                 } as any
                             },
                             include: { entries: true }
@@ -442,7 +442,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                     gameMeta: {
                         ...meta,
                         rolls,
-                        roundStartedAt: Date.now() + 1000 // 🕒 RESET TIMER ON TURN CHANGE
+                        roundStartedAt: Date.now() + 2000 // 🕒 RESET TIMER ON TURN CHANGE
                     } as any
                 },
                 include: { entries: { include: { user: true } } }
