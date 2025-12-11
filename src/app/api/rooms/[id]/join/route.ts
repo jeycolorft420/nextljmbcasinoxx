@@ -179,16 +179,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // 🕒 TIMER START LOGIC
       // If timer is not set and we have players, set it.
       if (!newAutoLockAt && after.length > 0) {
-        if (room.gameType === "DICE_DUEL") {
-          // Use System Setting or Default 10 min
-          const settings = await tx.systemSettings.findFirst();
-          const seconds = settings?.diceTimerSeconds ?? 600;
-          newAutoLockAt = new Date(Date.now() + seconds * 1000);
-          shouldUpdateRoom = true;
-        } else if (room.gameType === "ROULETTE") {
-          // Dynamic Timer based on Room Configuration
-          const seconds = (room as any).durationSeconds ?? 40;
-          newAutoLockAt = new Date(Date.now() + seconds * 1000);
+        try {
+          if (room.gameType === "DICE_DUEL") {
+            // Use System Setting or Default 10 min
+            const settings = await tx.systemSettings.findFirst();
+            const seconds = settings?.diceTimerSeconds ?? 600;
+            newAutoLockAt = new Date(Date.now() + seconds * 1000);
+            shouldUpdateRoom = true;
+          } else if (room.gameType === "ROULETTE") {
+            // Dynamic Timer based on Room Configuration
+            const seconds = (room as any).durationSeconds ?? 40;
+            newAutoLockAt = new Date(Date.now() + seconds * 1000);
+            shouldUpdateRoom = true;
+          }
+        } catch (timerErr) {
+          console.warn("Error reading settings for timer:", timerErr);
+          // Fallback default
+          newAutoLockAt = new Date(Date.now() + 600 * 1000);
           shouldUpdateRoom = true;
         }
       }
@@ -241,25 +248,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return { positions: positionsToAssign, newState };
     });
 
-    // Emit detalle + índice tras cada join
-    await emitRoomUpdate(room.id);
-    await emitRoomsIndex();
+    // SB: Wrap emissions to prevent crashing response
+    try {
+      // Emit detalle + índice tras cada join
+      await emitRoomUpdate(room.id);
+      await emitRoomsIndex();
+    } catch (emitErr) {
+      console.error("Emit error (ignoring):", emitErr);
+    }
 
     // 🚀 AUTO-FINISH TRIGGER (Server-Side)
     // Si la sala se llenó y es Ruleta, disparamos el finish inmediatamente.
-    // Esto evita que 50 clientes intenten llamar a /finish al mismo tiempo.
     if (result.newState === RoomState.LOCKED && room.gameType === "ROULETTE") {
-      // Ejecutamos finishRoom de forma asíncrona pero "await" para asegurar que se procese
-      // antes de que el cliente reciba la respuesta (o podríamos hacerlo fire-and-forget).
-      // Dado que es VPS (Node), fire-and-forget es seguro si no queremos bloquear al usuario que hizo el último join.
-      // Pero para UX inmediata (que vea que giró), mejor await.
       try {
         const finishResult = await finishRoom(room.id);
         await processWinnerPayout(finishResult);
       } catch (err) {
         console.error("Auto-finish error in join:", err);
-        // No fallamos el join si falla el finish, el estado ya es LOCKED
-        // y un cron o admin podrá desbloquearlo.
       }
     }
 

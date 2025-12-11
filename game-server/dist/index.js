@@ -3,45 +3,80 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// game-server/src/index.ts
 const express_1 = __importDefault(require("express"));
 const http_1 = require("http");
 const socket_io_1 = require("socket.io");
 const cors_1 = __importDefault(require("cors"));
-const dotenv_1 = __importDefault(require("dotenv"));
-const RoomManager_1 = require("./RoomManager");
-dotenv_1.default.config();
-const PORT = 3001; // Running on 3001 to avoid conflict with Next.js (3000)
+const client_1 = require("@prisma/client");
+const DiceRoom_1 = require("./DiceRoom");
+const prisma = new client_1.PrismaClient();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 const httpServer = (0, http_1.createServer)(app);
 const io = new socket_io_1.Server(httpServer, {
-    cors: {
-        origin: "*", // Allow all for now, lock down in prod
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
-const roomManager = new RoomManager_1.RoomManager(io);
-io.on("connection", (socket) => {
-    const { userId, roomId, autoJoin } = socket.handshake.query;
-    console.log(`[Socket] New connection: ${socket.id} (User: ${userId}, Room: ${roomId})`);
-    if (roomId && typeof roomId === "string") {
-        socket.join(roomId);
-        // If client requests auto-join (e.g. re-connection)
-        if (userId && typeof userId === "string" && autoJoin === "true") {
-            roomManager.handleJoin(socket, roomId, userId);
+// Mapa de Salas en Memoria: roomId -> Instancia DiceRoom
+const rooms = {};
+// Mapa de Socket -> roomId (para saber de dónde desconectar)
+const socketToRoom = {};
+io.on('connection', (socket) => {
+    // --- JOIN ROOM ---
+    socket.on('join_room', async ({ roomId, user }) => {
+        try {
+            // 1. Validar que la sala exista en DB y obtener su precio
+            // Esto es importante para saber cuánto vale la apuesta inicial
+            const dbRoom = await prisma.room.findUnique({
+                where: { id: roomId },
+                include: { entries: true }
+            });
+            if (!dbRoom) {
+                socket.emit('error', { message: 'Sala no encontrada' });
+                return;
+            }
+            // 2. Unir al socket al canal de socket.io
+            socket.join(roomId);
+            socketToRoom[socket.id] = roomId;
+            // 3. Instanciar lógica de sala si no existe en memoria
+            if (!rooms[roomId]) {
+                // Ensure priceCents is a number (handle BigInt if necessary, though here assumed number/int)
+                // If your prisma schema uses BigInt for price, you might need Number(dbRoom.priceCents)
+                rooms[roomId] = new DiceRoom_1.DiceRoom(roomId, Number(dbRoom.priceCents), io);
+            }
+            const gameRoom = rooms[roomId];
+            // 4. Obtener datos reales del usuario (Skin, Avatar)
+            const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+            // 5. Añadir jugador a la lógica
+            gameRoom.addPlayer(socket, {
+                id: user.id,
+                name: dbUser?.name || user.name || "Jugador",
+                skin: dbUser?.selectedDiceColor || "red", // Skin por defecto
+                avatar: dbUser?.avatarUrl || ""
+            }, false); // isBot = false
         }
-    }
-    socket.on("join_room", async ({ roomId, userId }) => {
-        await roomManager.handleJoin(socket, roomId, userId);
+        catch (e) {
+            console.error("Error joining room:", e);
+        }
     });
-    socket.on("roll", ({ roomId, userId }) => {
-        roomManager.handleRoll(roomId, userId);
+    // --- ROLL DICE ---
+    socket.on('roll_dice', ({ roomId, userId }) => {
+        const room = rooms[roomId];
+        if (room) {
+            room.handleRoll(userId);
+        }
     });
-    socket.on("disconnect", () => {
-        console.log(`[Socket] Disconnected: ${socket.id}`);
-        // Handle cleanup if necessary, though persistent state might prefer keeping them for a bit
+    // --- DISCONNECT ---
+    socket.on('disconnect', () => {
+        const roomId = socketToRoom[socket.id];
+        if (roomId && rooms[roomId]) {
+            rooms[roomId].removePlayer(socket.id);
+            // Limpieza: Si la sala queda vacía por mucho tiempo, podrías borrarla de memoria
+            delete socketToRoom[socket.id];
+        }
     });
 });
+const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {
-    console.log(`🚀 Game Server running on port ${PORT}`);
+    console.log(`🚀 Dice Duel Server corriendo en puerto ${PORT}`);
 });

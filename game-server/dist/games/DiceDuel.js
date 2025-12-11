@@ -182,7 +182,7 @@ class DiceDuelGame {
     async endGame(p1, p2) {
         this.state.state = "FINISHED";
         const winner = p1.balance > 0 ? p1 : p2;
-        this.state.winner = winner;
+        this.state.winner = winner.id; // Store ID, not object
         this.broadcast();
         const prize = this.state.priceCents * 2;
         await this.prisma.$transaction([
