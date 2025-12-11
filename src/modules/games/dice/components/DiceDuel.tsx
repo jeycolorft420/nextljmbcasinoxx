@@ -49,7 +49,8 @@ function DiceBox({
   label,
   isWinner,
   color,
-  balance
+  balance,
+  hideGhostLabel
 }: {
   pair?: Pair | null;
   rolling?: boolean;
