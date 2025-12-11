@@ -51,7 +51,7 @@ export async function maintenanceDiceDuel(room: any, freshRoom: any) {
                         gameMeta: {
                             ...meta,
                             rolls: {}, // RESET ROLLS
-                            lastDice: meta.rolls,
+                            lastDice: meta.lastDice,
                             roundResolvingUntil: 0,
                             nextStarterUserId: nextStarter,
                             roundStartedAt: Date.now() // Reset Bot Clock
