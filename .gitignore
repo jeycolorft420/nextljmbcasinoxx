@@ -3,3 +3,4 @@ node_modules
 .next
 prisma/dev.db
 pnpm-lock.yaml
+game-server/dist

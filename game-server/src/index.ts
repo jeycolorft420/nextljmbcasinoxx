@@ -50,6 +50,11 @@ io.on('connection', (socket) => {
 
             const gameRoom = rooms[roomId];
 
+            if (!user || !user.id) {
+                socket.emit('error', { message: 'Invalid user data' });
+                return;
+            }
+
             // 4. Obtener datos reales del usuario (Skin, Avatar)
             const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
 
