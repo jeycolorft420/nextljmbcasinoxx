@@ -113,6 +113,29 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
   const timer = gameState?.timer || 30;
   const statusText = gameState?.winner ? `Ganador: ${gameState.winner === userId ? "TÚ" : "RIVAL"}` : "Jugando...";
 
+  // 🚨 FIX: Construir objeto completo para evitar React Error #130
+  // Calcular nombre del ganador
+  let winnerName = "Rival";
+  const wId = gameState?.winner;
+
+  if (wId === userId) winnerName = "TÚ";
+  else if (wId && wId !== "TIE") {
+    // Buscar en jugadores del socket
+    const p = gameState?.players?.find((p: Player) => p.id === wId);
+    if (p) winnerName = p.name;
+    else {
+      // Fallback a room entries
+      const entry = room.entries?.find((e: any) => e.user.id === wId);
+      if (entry) winnerName = entry.user.name;
+    }
+  }
+
+  const winnerDisplay = wId ? {
+    name: winnerName,
+    amount: fmtUSD(room.priceCents || 0),
+    isTie: wId === "TIE"
+  } : null;
+
   const handleRoll = () => {
     if (rolling) return;
     socket.emit("roll_dice", { roomId: room.id, userId });
@@ -131,7 +154,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
           isRollingBottom={swapVisuals ? opponentRolling : rolling}
 
           statusText={statusText}
-          winnerDisplay={gameState?.winner ? { name: gameState.winner } : null}
+          winnerDisplay={winnerDisplay}
 
           onRoll={handleRoll}
           canRoll={!rolling && !dTop /* Simplificado para test */}
