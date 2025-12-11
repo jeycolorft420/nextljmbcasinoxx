@@ -1,0 +1,398 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomState {
+  OPEN
+  LOCKED
+  DRAWING
+  FINISHED
+  ARCHIVED
+}
+
+enum TxKind {
+  DEPOSIT
+  WITHDRAW
+  JOIN_DEBIT
+  WIN_CREDIT
+  REFUND
+  REFERRAL_BONUS
+  TRANSFER_OUT
+  TRANSFER_IN
+  SHOP_PURCHASE        // 👈 NUEVO: compras de tienda (skins)
+}
+
+enum GameType {
+  ROULETTE
+  DICE_DUEL
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String?  @unique // @username
+  password  String
+  name      String?
+  avatarUrl String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  entries   Entry[]
+
+  // 💰 Wallet
+  balanceCents          Int           @default(0)
+  transactions          Transaction[]
+  referralEarningsCents Int           @default(0)
+
+  // 🤖 Bots
+  isBot Boolean @default(false)
+
+  // REFERIDOS
+  referralCode String? @unique
+  referredById String?
+  referredBy   User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("UserReferrals")
+
+  // Pagos (depósitos)
+  payments Payment[]
+
+  // Chat
+  chatMessages ChatMessage[]
+
+  // 👇 Retiros
+  withdrawals Withdrawal[]
+
+  // 👇 Transferencias
+  outgoingTransfers Transfer[] @relation("FromTransfers")
+  incomingTransfers Transfer[] @relation("ToTransfers")
+
+  // 👇 Soporte
+  supportThreads SupportThread[]
+
+  // 👇 Reset de contraseña
+  passwordResetTokens PasswordResetToken[]
+
+  // 🎲 Tienda de skins de dados
+  diceSkins          DiceSkin[]
+  selectedDiceColor  String?      // ej: "green" | "blue" | "yellow" | "red" | "purple"
+
+  rouletteSkins        RouletteSkin[]
+  selectedRouletteSkin String?    // ej: "classic" | "vip" | "cyberpunk"
+
+  // 🔐 2FA
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
+
+  // 🆔 Verificación (KYC Estricto)
+  verificationStatus String      @default("UNVERIFIED") // UNVERIFIED, PENDING, APPROVED, REJECTED
+  
+  // Datos Personales
+  fullName           String?
+  dob                DateTime?   // Fecha de nacimiento
+  documentId         String?     // Número de cédula/ID
+  issueDate          DateTime?   // Fecha de expedición
+  phoneNumber        String?
+
+  // Evidencias (Fotos tomadas con cámara)
+  profilePhotoUrl    String?     // Foto de perfil normal
+  idFrontUrl         String?     // Foto frontal del documento
+  idBackUrl          String?     // Foto trasera del documento
+  selfieUrl          String?     // Selfie sosteniendo el documento (o solo rostro)
+  
+  rejectionReason    String?
+
+  @@index([isBot])
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Room {
+  id                  String    @id @default(cuid())
+  title               String
+  priceCents          Int
+  capacity            Int       @default(12)
+  state               RoomState @default(OPEN)
+  autoLockAt          DateTime?
+  createdAt           DateTime  @default(now())
+  lockedAt            DateTime?
+  finishedAt          DateTime?
+  winningEntryId      String?
+  prizeCents          Int?
+  rolledAt            DateTime?
+  preselectedPosition Int?
+  
+  // 🔁 Reusabilidad
+  currentRound        Int       @default(1)
+
+  // 👇 tipo de juego + meta (JSON) para dados (tiradas, round, etc.)
+  gameType GameType @default(ROULETTE)
+  gameMeta Json?
+
+  // 🛡️ Provably Fair (Ronda Actual)
+  currentServerSeed String?  // Secreto (No enviar al front hasta terminar)
+  currentServerHash String?  // Hash SHA256 (Público)
+
+  // 🤖 Natural Bot Logic
+  botWaitMs     Int      @default(0) // 0 = Instant fill at end. >0 = Progressive fill interval.
+  durationSeconds Int    @default(40) // Configurable Game Duration (Seconds)
+
+  deletedAt DateTime?
+
+  entries     Entry[]
+  gameResults GameResult[] // Historial de partidas de esta sala
+  chatMessages ChatMessage[]
+}
+
+model Entry {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  position  Int
+  createdAt DateTime @default(now())
+  
+  // 🔁 Ronda a la que pertenece esta entrada
+  round     Int      @default(1)
+
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  // Un usuario solo puede tener una posición POR RONDA en una sala
+  @@unique([roomId, position, round]) 
+}
+
+model GameResult {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+  
+  winnerUserId String?
+  winnerName   String? // Snapshot del nombre
+  
+  prizeCents   Int
+  roundNumber  Int
+
+  // 🛡️ Provably Fair Snapshot
+  serverSeed     String?
+  serverHash     String?
+  nonce          Int?
+
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([roomId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  kind        TxKind
+  reason      String
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  currency    String
+  status      String // "pending" | "confirming" | "finished" | "failed" | "refunded"
+  orderId     String   @unique
+  npPaymentId String?
+  successUrl  String?
+  cancelUrl   String?
+  credited    Boolean  @default(false)
+  raw         Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status, credited])
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
+model Withdrawal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountCents Int
+  wallet      String
+  status      String   @default("pending") // pending | finished | rejected
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model Transfer {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  fromUser    User     @relation("FromTransfers", fields: [fromUserId], references: [id])
+  toUser      User     @relation("ToTransfers", fields: [toUserId], references: [id])
+  amountCents Int
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([fromUserId, createdAt])
+  @@index([toUserId, createdAt])
+}
+
+// === Soporte ===
+model SupportThread {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  guestEmail String?
+  guestName  String?
+
+  subject       String
+  status        String   @default("open") // open | closed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+
+  messages SupportMessage[]
+
+  @@index([userId, status, lastMessageAt])
+  @@index([guestEmail, status, lastMessageAt])
+}
+
+model SupportMessage {
+  id       String        @id @default(cuid())
+  threadId String
+  thread   SupportThread @relation(fields: [threadId], references: [id])
+
+  senderRole String // "user" | "admin" | "guest"
+  senderId   String?
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+// === Reset de contraseña por link (admin genera token) ===
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// === Tienda de Skins de Dados ===
+model DiceSkin {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  color     String   // "green" | "blue" | "yellow" | "red" | "purple"
+  createdAt DateTime @default(now())
+
+  @@unique([userId, color])
+  @@index([userId, color])
+}
+
+model RouletteSkin {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  definitionId String // Identificador del skin (e.g. "classic", "vip")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, definitionId])
+  @@index([userId, definitionId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+}
+
+// === Sistema de Licencias (Solo para el Dueño/Vendedor) ===
+model License {
+  id          String    @id @default(cuid())
+  key         String    @unique // Formato: XXXX-YYYY-ZZZZ-WWWW
+  clientName  String
+  
+  // Restricciones (Locking)
+  lockedDomain String?  // Ej: "cliente.com" (Si es null, vale para cualquiera o el primero que la use)
+  lockedIp     String?
+  
+  // Estado
+  isActive    Boolean   @default(true)
+  expiresAt   DateTime? // Null = De por vida
+  
+  // ⭐️ Control de Funciones (Feature Flags)
+  // Ej: ["roulette", "dice", "chat", "vip_support"]
+  features    Json?     
+
+  // Metadatos
+  lastCheckedAt DateTime?
+  lastCheckedIp String?
+  createdAt     DateTime @default(now())
+  
+  @@index([key])
+}
+
+// === Configuración del Sistema (Personalización) ===
+model SystemSettings {
+  id        String   @id @default(cuid())
+  
+  // Branding
+  siteName  String   @default("777 Galaxy")
+  logoUrl   String?
+  faviconUrl String?
+  diceCoverUrl String?
+  rouletteCoverUrl String?
+  
+  // Colors (Hex codes)
+  primaryColor   String @default("#109e28") // The Green
+  secondaryColor String @default("#121212") // The Card Grey
+  accentColor    String @default("#2a2a2a") // The Border Grey
+  backgroundColor String @default("#050505") // Deep Black
+  textColor      String @default("#f5f5f5") // Off-white
+  
+  // Typography
+  fontFamily     String @default("Inter") 
+  
+  // License
+  licenseKey     String?
+  licenseData    Json? // To cache features locally if needed
+  lastLicenseCheck DateTime? 
+  
+  // Game Config
+  diceTimerSeconds Int @default(600) // Default 10 minutes
+  
+  updatedAt DateTime @updatedAt
+}
