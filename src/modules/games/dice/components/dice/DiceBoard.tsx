@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import DiceDuel from "@/modules/games/dice/components/DiceDuel";
 import { type DiceSkin } from "./ThreeDDice";
 import { toast } from "sonner";
@@ -93,6 +94,7 @@ export function DiceHistory({
 type Props = {
   room: Room;
   userId: string | null;
+  email?: string | null;
   onReroll: () => Promise<void>;
   onForfeit: () => Promise<void>;
   onLeave: () => Promise<void>;
@@ -113,6 +115,7 @@ function toSkin(s?: string | null): DiceSkin {
 export default function DiceBoard({
   room,
   userId,
+  email,
   onReroll,
   onForfeit,
   onLeave,
@@ -121,10 +124,14 @@ export default function DiceBoard({
   onAfterAnim,
   wheelSize,
 }: Props) {
+  const router = useRouter();
   const { play } = useAudio();
   const topEntry = room.entries?.find(e => e.position === 1);
   const bottomEntry = room.entries?.find(e => e.position === 2);
-  const meEntry = room.entries?.find((e) => e.user.id === userId) ?? null;
+  // CORRECCIÓN: Identificación robusta por ID o Email
+  const meEntry = room.entries?.find((e) =>
+    e.user.id === userId || (email && e.user.email === email)
+  ) ?? null;
 
   // Turn Logic
   const rolls = room.gameMeta?.rolls || {};
@@ -378,20 +385,19 @@ export default function DiceBoard({
   const bottomLabel = (bottomEntry?.user.name || "Jugador 2") + (amBottom ? " (Tú)" : "");
 
   // Skins
-  // CORRECCIÓN VISUAL: Persistencia de Skins (Evita parpadeo blanco)
-  const topSkinRaw = topEntry?.user.selectedDiceColor;
-  const bottomSkinRaw = bottomEntry?.user.selectedDiceColor;
-
+  // Skins
+  // CORRECCIÓN: Memoria para evitar parpadeo
   const lastTopSkin = useRef<DiceSkin>("white");
   const lastBottomSkin = useRef<DiceSkin>("white");
 
-  // Solo actualizamos la memoria si llega un color válido del servidor
-  if (topSkinRaw) lastTopSkin.current = toSkin(topSkinRaw);
-  if (bottomSkinRaw) lastBottomSkin.current = toSkin(bottomSkinRaw);
+  const rawTop = topEntry?.user.selectedDiceColor;
+  const rawBottom = bottomEntry?.user.selectedDiceColor;
 
-  // Usamos el color actual, o la memoria si falla la carga momentánea
-  const topSkin = topSkinRaw ? toSkin(topSkinRaw) : lastTopSkin.current;
-  const bottomSkin = bottomSkinRaw ? toSkin(bottomSkinRaw) : lastBottomSkin.current;
+  if (rawTop) lastTopSkin.current = toSkin(rawTop);
+  if (rawBottom) lastBottomSkin.current = toSkin(rawBottom);
+
+  const topSkin = rawTop ? toSkin(rawTop) : lastTopSkin.current;
+  const bottomSkin = rawBottom ? toSkin(rawBottom) : lastBottomSkin.current;
 
   // Balances
   const topBalance = room.gameMeta?.balances?.[topEntry?.user.id || ""] ?? room.priceCents;
@@ -439,17 +445,16 @@ export default function DiceBoard({
     };
   }, [myTurn, rolledThisRound, rolling, roundStartedAt, room.state]);
 
-  // CORRECCIÓN APLICADA: Heartbeat para despertar al bot
+  // CORRECCIÓN: Heartbeat que fuerza actualización visual
   useEffect(() => {
-    // Si la sala está abierta y NO es mi turno (es turno del bot/oponente)
     if (!myTurn && room.state === "OPEN" && !room.winningEntryId) {
-      const interval = setInterval(() => {
-        // Llamada ligera para forzar el mantenimiento del servidor
-        fetch(`/api/rooms/${room.id}`, { cache: "no-store" });
-      }, 5000);
+      const interval = setInterval(async () => {
+        await fetch(`/api/rooms/${room.id}`, { cache: "no-store" });
+        router.refresh(); // <--- ESTO DESCONGELA LA PANTALLA
+      }, 4000);
       return () => clearInterval(interval);
     }
-  }, [myTurn, room.state, room.winningEntryId, room.id]);
+  }, [myTurn, room.state, room.winningEntryId, room.id, router]);
 
   // Auto-Leave Timer (30s)
   useEffect(() => {
