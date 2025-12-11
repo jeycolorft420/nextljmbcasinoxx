@@ -595,7 +595,7 @@ export default function RoomPage() {
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
             <div className="relative z-10 w-full max-w-md h-full">
-              <DiceBoard room={room} userId={userId} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} />
+              <DiceBoard room={room} userId={userId} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} userSkin={currentDiceSkin} />
             </div>
           ) : (
             <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>

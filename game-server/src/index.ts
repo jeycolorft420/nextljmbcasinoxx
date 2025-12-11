@@ -108,6 +108,12 @@ io.on('connection', (socket) => {
         // Notificar tiro
         io.to(roomId).emit('dice_rolled', { userId, roll });
 
+        // Resetear timer para el próximo turno
+        room.timer = 30;
+
+        // Resetear timer para el próximo turno
+        room.timer = 30;
+
         // PASAR TURNO O TERMINAR
         const otherPlayer = room.players.find(p => p.userId !== userId);
 
@@ -134,6 +140,52 @@ io.on('connection', (socket) => {
         leaveRoom(socket.id);
     });
 });
+
+// --- GAME LOOP (INTERVALO GLOBAL) ---
+setInterval(() => {
+    Object.keys(rooms).forEach(roomId => {
+        const room = rooms[roomId];
+        if (room.status === 'PLAYING' && room.turnUserId && !room.winner) {
+
+            // Decrementar timer
+            if (room.timer > 0) {
+                room.timer--;
+            }
+
+            // Si el tiempo se acaba (0), forzar acción
+            if (room.timer === 0) {
+                console.log(`⏰ Tiempo agotado en ${roomId} para ${room.turnUserId}. Forzando tiro.`);
+
+                // Forzar tiro aleatorio
+                const roll = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
+                room.rolls[room.turnUserId] = roll;
+                io.to(roomId).emit('dice_rolled', { userId: room.turnUserId, roll });
+
+                // Pasar turno (lógica duplicada de roll_dice, idealmente refactorizar)
+                // PASAR TURNO O TERMINAR
+                const otherPlayer = room.players.find(p => p.userId !== room.turnUserId);
+
+                // Verificar si ambos tiraron
+                const p1 = room.players[0];
+                const p2 = room.players[1];
+                if (p1 && room.rolls[p1.userId] && p2 && room.rolls[p2.userId]) {
+                    room.turnUserId = null;
+                    io.to(roomId).emit('update_game', room);
+                    setTimeout(() => calculateWinner(roomId), 1000);
+                } else if (otherPlayer) {
+                    // Pasar al siguiente
+                    room.turnUserId = otherPlayer.userId;
+                    room.timer = 15; // Reset timer para el siguiente (tiempo reducido por fluidez)
+                    io.to(roomId).emit('update_game', room);
+
+                    if (otherPlayer.isBot) {
+                        triggerBotTurn(roomId, otherPlayer.userId);
+                    }
+                }
+            }
+        }
+    });
+}, 1000);
 
 // --- LÓGICA DE JUEGO ---
 
