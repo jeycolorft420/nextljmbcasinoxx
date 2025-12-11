@@ -81,6 +81,7 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
 
     // 3. Escuchar actualizaciones (ESTADO OPTIMISTA)
     socket.on("update_game", (data) => {
+      console.log("📥 UPDATE GAME RECIBIDO:", data);
       setGameState(data);
     });
 
@@ -108,7 +109,22 @@ export default function DiceBoard({ room, userId, email, onLeave, onRejoin, onOp
       toast.error("Error de conexión con el servidor de juego");
     });
 
+    // WATCHDOG: Si en 2s no recibimos estado, pedir unir de nuevo
+    const watchdog = setTimeout(() => {
+      if (!socket.connected) return;
+      console.warn("🐶 Watchdog: No se recibió estado, reintentando unir...");
+      socket.emit("join_room", {
+        roomId: room.id,
+        user: {
+          id: userId,
+          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
+          isBot: false
+        }
+      });
+    }, 2000);
+
     return () => {
+      clearTimeout(watchdog);
       socket.disconnect();
     };
   }, [room.id, userId]);
