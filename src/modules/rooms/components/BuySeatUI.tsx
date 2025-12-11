@@ -38,11 +38,7 @@ export default function BuySeatUI({
     const totalUSD = ((room.priceCents * totalUnits) / 100).toFixed(2);
 
     if (room.state !== "OPEN") {
-        return (
-            <div className={`mt-4 p-3 bg-white/5 rounded text-center text-xs opacity-70 ${className}`}>
-                {room.state === "LOCKED" ? "🔒 Sala cerrada - Jugando..." : "🏁 Sala finalizada"}
-            </div>
-        );
+        return null;
     }
 
     return (

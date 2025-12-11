@@ -1,0 +1,246 @@
+Entendido. Vamos a elevar la calidad de tu juego de dados a un nivel profesional y corregir la lógica de los bots para que se comporten como usuarios reales (sin clonarse y sin jugar solos).
+
+Aquí tienes las instrucciones técnicas precisas para **Gravity**.
+
+-----
+
+### 1\. 🤖 Lógica de Bots: "Cerebro Único" y "Anti-Soledad"
+
+**Problema:** El sistema elegía el primer bot que encontraba, permitiendo que el mismo "JuanBot" jugara en 5 salas a la vez. Además, se quedaban solos si el humano se iba.
+**Solución:** Modificar la consulta a la base de datos para buscar solo bots **desocupados** y agregar una limpieza automática.
+
+**Archivo:** `src/modules/games/dice/lib/maintenance.ts`
+
+**Instrucción para Gravity:**
+
+> "Reemplaza completamente el bloque `/* SCENARIO A: ADD BOT */` en `maintenanceDiceDuel` con esta lógica mejorada.
+>
+> **Cambios clave:**
+>
+> 1.  El `findFirst` ahora excluye bots que ya están jugando en salas activas (`entries: { none: ... }`).
+> 2.  Se agrega una validación al inicio: Si hay un jugador y es un Bot (y está solo), se elimina de la sala para que no juegue solo."
+
+**Código para `maintenance.ts`:**
+
+```typescript
+    /* -------------------------------------------------------------------------- */
+    /* SCENARIO A: BOT MANAGEMENT (Uniqueness & Cleanup)                     */
+    /* -------------------------------------------------------------------------- */
+    
+    // 1. ANTI-LONELINESS: Si solo hay 1 jugador y es un BOT, sacarlo.
+    if (p1 && !p2) {
+        const userP1 = await prisma.user.findUnique({ where: { id: p1.userId } });
+        if (userP1?.isBot) {
+            console.log(`[DiceDuel] 🧹 Removing lonely bot ${userP1.name} from room ${roomId}`);
+            await prisma.entry.delete({ where: { id: p1.id } });
+            // Devolvemos la sala a estado OPEN limpio
+            const cleaned = await prisma.room.update({
+                where: { id: roomId },
+                data: { state: "OPEN", autoLockAt: null, gameMeta: {} as any },
+                include: { entries: { include: { user: true } } }
+            });
+            await emitRoomUpdate(roomId);
+            return cleaned;
+        }
+    }
+
+    // 2. ADD BOT (Smart Selection)
+    if (!p2 && freshRoom.autoLockAt && new Date() > freshRoom.autoLockAt) {
+        console.log(`[DiceMaintenance] Timer Expired. Looking for available bot...`);
+
+        // Buscamos un bot que NO esté jugando actualmente
+        let botUser = await prisma.user.findFirst({
+            where: { 
+                isBot: true,
+                // CRÍTICO: Asegurar que no esté en otra sala activa
+                entries: {
+                    none: {
+                        room: {
+                            state: { in: ["OPEN", "LOCKED"] }
+                        }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' } // O 'updatedAt' para rotación
+        });
+
+        if (botUser) {
+            console.log(`[DiceDuel] 🤖 Adding Bot: ${botUser.name} to Room ${roomId}`);
+            await prisma.entry.create({
+                data: {
+                    roomId,
+                    userId: botUser.id,
+                    position: 2,
+                    round: freshRoom.currentRound ?? 1
+                }
+            });
+
+            balances[botUser.id] = freshRoom.priceCents;
+
+            const updated = await prisma.room.update({
+                where: { id: roomId },
+                data: {
+                    autoLockAt: null,
+                    gameMeta: {
+                        ...meta,
+                        balances,
+                        roundStartedAt: Date.now(),
+                        autoPlay: false
+                    } as any
+                },
+                include: { entries: { include: { user: true } } }
+            });
+            await emitRoomUpdate(roomId);
+            return updated;
+        } else {
+            console.log("[DiceDuel] ⚠️ No available bots found (all busy).");
+        }
+    }
+```
+
+-----
+
+### 2\. 🎨 Animaciones: De "Básico" a "Casino 3D Real"
+
+**Problema:** La animación actual es rígida.
+**Solución:** Implementar keyframes CSS complejos que simulen una física de "tumbling" (giro en 3 ejes) y desenfoque de movimiento (motion blur).
+
+**Paso A: Actualizar el CSS**
+**Archivo:** `src/modules/games/dice/components/dice/ThreeDDice.css`
+
+**Instrucción para Gravity:**
+
+> "Reemplaza todo el contenido de `ThreeDDice.css` con este estilo avanzado. Incluye desenfoque y rotación en 3 ejes."
+
+```css
+.scene {
+  width: 100%;
+  height: 100%;
+  perspective: 600px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cube {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.1, 0.9, 0.2, 1); /* Suavizado "landing" */
+}
+
+.cube__face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 14%; /* Bordes más realistas */
+  border: 1px solid rgba(0,0,0,0.1);
+  background: white; /* Fallback */
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.15); /* Profundidad interna */
+  backface-visibility: hidden; /* Optimización */
+}
+
+/* Posiciones de las caras */
+.cube__face--1 { transform: rotateY(0deg) translateZ(var(--depth)); }
+.cube__face--2 { transform: rotateY(90deg) translateZ(var(--depth)); }
+.cube__face--3 { transform: rotateY(180deg) translateZ(var(--depth)); }
+.cube__face--4 { transform: rotateY(-90deg) translateZ(var(--depth)); }
+.cube__face--5 { transform: rotateX(90deg) translateZ(var(--depth)); }
+.cube__face--6 { transform: rotateX(-90deg) translateZ(var(--depth)); }
+
+/* ANIMACIÓN ULTRA-REALISTA */
+@keyframes tumble {
+  0% { transform: rotateX(0) rotateY(0) rotateZ(0); }
+  25% { transform: rotateX(180deg) rotateY(90deg) rotateZ(45deg); }
+  50% { transform: rotateX(360deg) rotateY(180deg) rotateZ(90deg); }
+  75% { transform: rotateX(540deg) rotateY(270deg) rotateZ(135deg); }
+  100% { transform: rotateX(720deg) rotateY(360deg) rotateZ(360deg); }
+}
+
+.is-rolling {
+  animation: tumble 0.6s linear infinite;
+  filter: blur(1px); /* Motion Blur */
+}
+```
+
+**Paso B: Actualizar el Componente (Para conectar el CSS)**
+**Archivo:** `src/modules/games/dice/components/dice/ThreeDDice.tsx`
+
+**Instrucción para Gravity:**
+
+> "Actualiza el componente `ThreeDDice` para usar variables CSS dinámicas para el tamaño (`--depth`). Esto asegura que el cubo se vea perfecto en móviles y escritorio."
+
+```tsx
+// Dentro de ThreeDDice.tsx
+
+// ... imports ...
+
+export const ThreeDDice = ({ face, rolling, skin, size = 100, variant = 1 }: Props) => {
+  // Calcular la profundidad (mitad del tamaño) para el CSS
+  const style = { 
+    width: size, 
+    height: size, 
+    "--depth": `${size / 2}px` 
+  } as React.CSSProperties;
+
+  // Mapa de rotaciones para que el resultado siempre mire al frente
+  const getTransform = (val: number) => {
+    switch(val) {
+      case 1: return 'rotateY(0deg)';
+      case 2: return 'rotateY(-90deg)';
+      case 3: return 'rotateY(180deg)';
+      case 4: return 'rotateY(90deg)';
+      case 5: return 'rotateX(-90deg)';
+      case 6: return 'rotateX(90deg)';
+      default: return 'rotateY(0deg)';
+    }
+  };
+
+  // Si está rodando, quitamos la transformación fija para que el CSS tome el control
+  const transform = rolling ? undefined : getTransform(face || 1);
+
+  return (
+    <div className="scene" style={{ width: size, height: size }}>
+      <div 
+        className={`cube ${rolling ? "is-rolling" : ""}`} 
+        style={{ ...style, transform }}
+      >
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+           // Renderiza las imágenes de las caras (tu código existente de imágenes va aquí)
+           <div key={n} className={`cube__face cube__face--${n}`}>
+              {/* <Image ... tu lógica de skins actual ... /> */}
+              {/* Asegúrate de mantener tu lógica de selección de imagen aquí */}
+              <img src={`/dice/${skin}/${n}.png`} alt={`Face ${n}`} className="w-full h-full object-cover rounded-[14%]" />
+           </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+*(Nota: Asegúrate de adaptar la etiqueta `<img>` o `<Image>` a como la tenías en tu código original para que cargue tus texturas, pero mantén las clases `cube__face`).*
+
+-----
+
+### 3\. 🚫 Fix "Popup Molesto" (Comprar Puestos)
+
+**Problema:** El popup sale durante la partida porque el frontend a veces pierde el estado del usuario.
+**Solución:** Ocultar estrictamente el botón/popup si la partida ya comenzó (`state !== OPEN`), independientemente de si el usuario está logueado o no.
+
+**Archivo:** `src/modules/rooms/components/BuySeatUI.tsx` (o donde esté el botón, posiblemente `DiceBoard.tsx` si está integrado allí, pero revisando tus archivos, parece que la lógica está en `DiceDuel.tsx` o `BuySeatUI`).
+
+**Instrucción para Gravity:**
+
+> "En el componente que muestra el botón de 'Comprar Puesto' (probablemente `BuySeatUI` o la sección de entrada en `page.tsx`), agrega esta condición de seguridad:
+>
+> ```tsx
+> if (room.state !== "OPEN") return null;
+> ```
+>
+> Esto evitará que el popup aparezca cuando la ronda ya está girando o resolviéndose, incluso si hay un error momentáneo de carga de datos."
+
+**Y para `DiceBoard.tsx` (Lógica de estado):**
+
+> "En `DiceBoard.tsx`, asegúrate de que `isResolving` o `rolling` bloqueen cualquier intento de mostrar modales de compra."
