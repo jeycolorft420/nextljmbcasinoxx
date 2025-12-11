@@ -8,9 +8,7 @@ app.use(cors());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-    cors: { origin: "*", methods: ["GET", "POST"] },
-    pingTimeout: 10000,
-    pingInterval: 5000
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 // --- TIPOS ---
@@ -19,7 +17,7 @@ interface Player {
     userId: string;
     name: string;
     isBot: boolean;
-    joinedAt: number;
+    skin: string;
 }
 
 interface Room {
@@ -29,20 +27,24 @@ interface Room {
     turnUserId: string | null;
     winner: string | null;
     status: 'WAITING' | 'PLAYING' | 'FINISHED';
-    lastActionAt: number; // Para timeouts
-    round: number;
+    botTimeout?: NodeJS.Timeout; // Guardamos el timer para cancelarlo si entra humano
 }
 
 const rooms: { [id: string]: Room } = {};
+const socketToRoom: { [id: string]: string } = {}; // Mapa rápido para desconexión
 
-// --- SOCKET LOGIC ---
 io.on('connection', (socket) => {
     console.log(`🔌 Conectado: ${socket.id}`);
 
+    // 1. UNIRSE
     socket.on('join_room', ({ roomId, user }) => {
-        socket.join(roomId);
+        // Si el usuario ya estaba en otra sala (por refresh), sacarlo
+        if (socketToRoom[socket.id]) leaveRoom(socket.id);
 
-        // 1. Crear Sala si no existe
+        socket.join(roomId);
+        socketToRoom[socket.id] = roomId;
+
+        // Crear sala limpia si no existe
         if (!rooms[roomId]) {
             rooms[roomId] = {
                 id: roomId,
@@ -50,139 +52,129 @@ io.on('connection', (socket) => {
                 rolls: {},
                 turnUserId: null,
                 winner: null,
-                status: 'WAITING',
-                lastActionAt: Date.now(),
-                round: 1
+                status: 'WAITING'
             };
         }
-
         const room = rooms[roomId];
 
-        // 2. Añadir Jugador (Evitar duplicados de ID)
-        const existing = room.players.find(p => p.userId === user.id);
-        if (existing) {
-            existing.socketId = socket.id; // Reconexión
-        } else if (room.players.length < 2) {
+        // Verificar si ya está (evitar duplicados visuales)
+        const exists = room.players.find(p => p.userId === user.id);
+        if (!exists) {
             room.players.push({
                 socketId: socket.id,
                 userId: user.id,
                 name: user.name,
                 isBot: false,
-                joinedAt: Date.now()
+                skin: user.selectedDiceColor || "white"
             });
+        } else {
+            exists.socketId = socket.id; // Actualizar socket ID tras reconexión
         }
 
-        // Notificar actualización
-        io.to(roomId).emit('update_game', publicRoomState(room));
+        // SI HAY 2 JUGADORES (Humano vs Humano o Humano vs Bot) -> INICIAR
+        if (room.players.length === 2) {
+            // Cancelar cualquier bot que fuera a entrar
+            if (room.botTimeout) clearTimeout(room.botTimeout);
+            startGame(room);
+        }
+        // SI ESTÁ SOLO -> Programar Bot en 3 segundos
+        else if (room.players.length === 1) {
+            if (room.botTimeout) clearTimeout(room.botTimeout);
+            room.botTimeout = setTimeout(() => addBot(room), 3000);
+        }
+
+        io.to(roomId).emit('update_game', sanitize(room));
     });
 
+    // 2. TIRAR DADOS
     socket.on('roll_dice', ({ roomId, userId }) => {
         const room = rooms[roomId];
         if (!room || room.status !== 'PLAYING') return;
+        if (room.turnUserId !== userId) return; // No es tu turno
+        if (room.rolls[userId]) return; // Ya tiraste
 
-        // Validación suave: Si ya tiró, no dejar tirar de nuevo en esta ronda
-        if (room.rolls[userId]) return;
-
-        // Lógica del Tiro
+        // Ejecutar tiro
         const roll = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
         room.rolls[userId] = roll;
-        room.lastActionAt = Date.now();
-
-        // Emitir tiro
         io.to(roomId).emit('dice_rolled', { userId, roll });
 
-        // Cambiar turno o finalizar
-        checkRoundState(room);
+        // Verificar estado
+        checkTurn(room);
     });
 
+    // 3. DESCONEXIÓN
     socket.on('disconnect', () => {
-        // Buscar en qué sala estaba y quitarlo
-        Object.values(rooms).forEach(room => {
-            const pIndex = room.players.findIndex(p => p.socketId === socket.id);
-            if (pIndex !== -1) {
-                const player = room.players[pIndex];
-                // Si es humano, lo sacamos
-                if (!player.isBot) {
-                    room.players.splice(pIndex, 1);
-                    // Si la sala se vacía de humanos, resetear
-                    const humans = room.players.filter(p => !p.isBot).length;
-                    if (humans === 0) delete rooms[room.id];
-                    else io.to(room.id).emit('update_game', publicRoomState(room));
-                }
-            }
-        });
+        leaveRoom(socket.id);
     });
 });
 
-// --- GAME LOOP (EL CEREBRO) ---
-// Se ejecuta cada 1 segundo para mantener todo fluyendo
-setInterval(() => {
-    Object.values(rooms).forEach(room => {
-        const now = Date.now();
+// --- FUNCIONES LÓGICAS ---
 
-        // A. GESTIÓN DE BOTS (Si hay 1 humano esperando > 3s)
-        if (room.players.length === 1 && !room.players[0].isBot && room.status === 'WAITING') {
-            if (now - room.players[0].joinedAt > 3000) {
-                addBot(room);
-            }
-        }
+function leaveRoom(socketId: string) {
+    const roomId = socketToRoom[socketId];
+    if (!roomId || !rooms[roomId]) return;
 
-        // B. INICIO DE JUEGO
-        if (room.players.length === 2 && room.status === 'WAITING') {
-            startGame(room);
-        }
+    const room = rooms[roomId];
+    // Quitar jugador
+    room.players = room.players.filter(p => p.socketId !== socketId);
+    delete socketToRoom[socketId];
 
-        // C. JUGADA DEL BOT
-        if (room.status === 'PLAYING' && room.turnUserId) {
-            const playerTurn = room.players.find(p => p.userId === room.turnUserId);
-            if (playerTurn?.isBot && !room.rolls[playerTurn.userId]) {
-                // El bot tira si lleva esperando > 2s en su turno
-                if (now - room.lastActionAt > 2000) {
-                    botRoll(room, playerTurn.userId);
-                }
-            }
-        }
-    });
-}, 1000);
+    // REGLA DE ORO: Si no quedan humanos, BORRAR LA SALA.
+    // Esto evita que Juan Bot se quede viviendo ahí.
+    const humans = room.players.filter(p => !p.isBot).length;
+    if (humans === 0) {
+        if (room.botTimeout) clearTimeout(room.botTimeout);
+        delete rooms[roomId];
+        console.log(`🧹 Sala ${roomId} eliminada (vacía)`);
+        return;
+    }
 
-// --- FUNCIONES AUXILIARES ---
+    // Si queda un humano solo (el otro se fue), reiniciar estado
+    room.status = 'WAITING';
+    room.rolls = {};
+    room.winner = null;
+    room.turnUserId = null;
+    // Programar nuevo bot si se queda solo mucho tiempo
+    if (room.botTimeout) clearTimeout(room.botTimeout);
+    room.botTimeout = setTimeout(() => addBot(room), 3000);
+
+    io.to(roomId).emit('update_game', sanitize(room));
+}
 
 function addBot(room: Room) {
-    const botId = `bot-${Date.now()}`;
+    // Seguridad: No meter bot si ya hay 2 jugadores
+    if (room.players.length >= 2) return;
+
+    const botId = "bot-juan";
     room.players.push({
-        socketId: 'bot-internal',
+        socketId: "bot-socket",
         userId: botId,
-        name: 'Juan Bot 🤖',
+        name: "Juan Bot 🤖",
         isBot: true,
-        joinedAt: Date.now()
+        skin: "red"
     });
-    io.to(room.id).emit('update_game', publicRoomState(room));
+
+    io.to(room.id).emit('update_game', sanitize(room));
+    startGame(room);
 }
 
 function startGame(room: Room) {
     room.status = 'PLAYING';
     room.rolls = {};
     room.winner = null;
-    // Asignar turno inicial (P1 siempre empieza en ronda 1)
+    // Siempre empieza el primer jugador de la lista (el anfitrión)
     room.turnUserId = room.players[0].userId;
-    room.lastActionAt = Date.now();
 
-    io.to(room.id).emit('update_game', publicRoomState(room));
+    console.log(`🎮 Juego iniciado en ${room.id} - Turno: ${room.turnUserId}`);
+    io.to(room.id).emit('update_game', sanitize(room));
 }
 
-function botRoll(room: Room, botId: string) {
-    const roll = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
-    room.rolls[botId] = roll;
-    room.lastActionAt = Date.now();
-    io.to(room.id).emit('dice_rolled', { userId: botId, roll });
-    checkRoundState(room);
-}
-
-function checkRoundState(room: Room) {
+function checkTurn(room: Room) {
     const p1 = room.players[0];
     const p2 = room.players[1];
+    if (!p1 || !p2) return;
 
-    // Si ambos tiraron, calcular ganador
+    // A. Si ambos tiraron -> Calcular Ganador
     if (room.rolls[p1.userId] && room.rolls[p2.userId]) {
         const sum1 = room.rolls[p1.userId].reduce((a, b) => a + b, 0);
         const sum2 = room.rolls[p2.userId].reduce((a, b) => a + b, 0);
@@ -193,41 +185,55 @@ function checkRoundState(room: Room) {
 
         room.winner = winner;
         room.status = 'FINISHED';
-        room.turnUserId = null;
-
-        io.to(room.id).emit('update_game', publicRoomState(room));
+        io.to(room.id).emit('update_game', sanitize(room));
         io.to(room.id).emit('game_over', { winnerId: winner });
 
-        // Reiniciar ronda automáticamente en 5s
+        // Reiniciar en 4s
         setTimeout(() => {
             if (rooms[room.id]) {
-                room.round++;
                 room.rolls = {};
                 room.winner = null;
                 room.status = 'PLAYING';
-                // Alternar turno
-                const starterIdx = (room.round % 2 === 0) ? 1 : 0;
-                room.turnUserId = room.players[starterIdx].userId;
-                room.lastActionAt = Date.now();
-                io.to(room.id).emit('update_game', publicRoomState(room));
-            }
-        }, 5000);
+                // Alternar turno simple: El ganador empieza (o random)
+                room.turnUserId = winner !== "TIE" ? winner : p1.userId;
+                io.to(room.id).emit('update_game', sanitize(room));
 
-    } else {
-        // Si falta alguien, pasar turno
-        const nextPlayer = room.players.find(p => !room.rolls[p.userId]);
-        if (nextPlayer) {
-            room.turnUserId = nextPlayer.userId;
-            room.lastActionAt = Date.now();
-            io.to(room.id).emit('update_game', publicRoomState(room));
-        }
+                // Si le toca al bot, que tire
+                if (room.turnUserId === "bot-juan") botPlay(room);
+            }
+        }, 4000);
+        return;
+    }
+
+    // B. Si falta alguien -> Pasar turno
+    const nextUserId = !room.rolls[p1.userId] ? p1.userId : p2.userId;
+    room.turnUserId = nextUserId;
+    io.to(room.id).emit('update_game', sanitize(room));
+
+    // Si le toca al Bot, ejecutar su IA
+    if (nextUserId === "bot-juan") {
+        botPlay(room);
     }
 }
 
-function publicRoomState(room: Room) {
-    return room; // Puedes filtrar datos sensibles aquí si fuera necesario
+function botPlay(room: Room) {
+    // El bot espera 2.5 segundos y tira
+    setTimeout(() => {
+        if (rooms[room.id] && room.turnUserId === "bot-juan") {
+            const roll = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
+            room.rolls["bot-juan"] = roll;
+            io.to(room.id).emit('dice_rolled', { userId: "bot-juan", roll });
+            checkTurn(room);
+        }
+    }, 2500);
+}
+
+// Limpiar datos internos antes de enviar al cliente
+function sanitize(room: Room) {
+    const { botTimeout, ...rest } = room;
+    return rest;
 }
 
 httpServer.listen(4000, () => {
-    console.log('🚀 Game Server (Logic Loop) running on 4000');
+    console.log('🚀 Game Server SIMPLE running on 4000');
 });
