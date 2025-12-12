@@ -12,7 +12,6 @@ import ChatBubble from "@/modules/rooms/components/chat/ChatBubble";
 import ChatWindow from "@/modules/rooms/components/chat/ChatWindow";
 import { useWallet } from "@/hooks/use-wallet";
 import { toast } from "sonner";
-import confetti from "canvas-confetti";
 import BuySeatUI from "@/modules/rooms/components/BuySeatUI";
 import ConfirmationModal from "@/modules/ui/components/ConfirmationModal";
 import { useLicense } from "@/context/LicenseContext";
@@ -61,13 +60,12 @@ export default function RoomPage() {
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
   const [reloadHistoryKey, setReloadHistoryKey] = useState(0);
-  const pendingRef = useRef(false);
 
   // compra múltiple
   const [qty, setQty] = useState(1);
   const [joining, setJoining] = useState(false);
 
-  // Confirmation Modal State
+  // Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -87,7 +85,7 @@ export default function RoomPage() {
   // selección manual
   const [selectedPositions, setSelectedPositions] = useState<number[]>([]);
 
-  // Cuenta regresiva visual
+  // Cuenta regresiva
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
 
   // THEME STATE
@@ -105,7 +103,6 @@ export default function RoomPage() {
   // Extract skins
   const ownedSkins: string[] = useMemo(() => {
     const u = session?.user as any;
-    console.log("🎨 SKINS DEBUG (Session):", u);
     const skins = u?.rouletteSkins || [];
     const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.definitionId || s.skinId || s.name || s.id);
     return Array.from(new Set(["default", ...cleanNames]));
@@ -114,7 +111,6 @@ export default function RoomPage() {
   const ownedDiceSkins: string[] = useMemo(() => {
     const u = session?.user as any;
     const skins = u?.diceSkins || [];
-    // Ensure "white" (default) is always "owned" if logic requires, but usually default is owned
     const cleanNames = skins.map((s: any) => typeof s === 'string' ? s : s.color);
     return Array.from(new Set(["white", ...cleanNames]));
   }, [session]);
@@ -149,13 +145,8 @@ export default function RoomPage() {
   };
 
   const handleDiceSkinChange = async (skin: string) => {
-    // Optimistic update
     setCurrentDiceSkin(skin);
-
-    // Check ownership locally just in case, but selector should handle it
-    // API call
     try {
-      // Use shop PUT for selection as it verifies ownership strictly
       const res = await fetch("/api/shop/buy-skin", {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ color: skin })
@@ -172,7 +163,7 @@ export default function RoomPage() {
     }
   };
 
-  // tamaño ruleta/dados
+  // tamaño
   const [wheelSize, setWheelSize] = useState(320);
   useEffect(() => {
     const compute = () => {
@@ -184,22 +175,20 @@ export default function RoomPage() {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
-  // métricas de ocupación
-  // FIX: Filter entries client-side as a safety net against history entries in payload
+  // métricas
   const currentEntries = useMemo(() => {
     return room?.entries?.filter((e: any) => (e.round ?? 1) === (room.currentRound ?? 1)) ?? [];
   }, [room?.entries, room?.currentRound]);
 
   const taken = currentEntries.length;
   const free = room ? Math.max(0, room.capacity - taken) : 0;
-  const pct = room ? Math.max(0, Math.min(100, (taken / room.capacity) * 100)) : 0;
 
   // Mobile Menu State
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showMobileBuy, setShowMobileBuy] = useState(true);
 
-  // Carga inicial/fallback
+  // Carga inicial
   const load = async (): Promise<Room | null> => {
     if (!id) return null;
     setLoading((v) => (!room ? true : v));
@@ -224,7 +213,6 @@ export default function RoomPage() {
     }
   };
 
-  // 🛡️ Logic centralizada
   const handleRoomUpdate = (payload: Room) => {
     setRoom((prev) => {
       if (prev) {
@@ -244,13 +232,8 @@ export default function RoomPage() {
     setSelectedPositions((prev) => prev.filter((p) => !occupied.has(p)));
   };
 
-  // --- WINNER REVEAL CONTROL (FIX: SPOILER) ---
   const [showResults, setShowResults] = useState(false);
 
-  // Reset showResults when round changes or room opens. 
-  // If we load a finished room, it will stay false until animation ends (handled by RouletteBoard)
-  // OR if RouletteBoard decides not to animate (old winner), it should fire onSpinEnd immediately?
-  // Let's ensure it resets correctly.
   useEffect(() => {
     if (room?.state !== "FINISHED") {
       setShowResults(false);
@@ -259,44 +242,14 @@ export default function RoomPage() {
 
   const handleSpinEnd = () => {
     setShowResults(true);
-    setReloadHistoryKey(n => n + 1); // Refresh history now that visual is done
+    setReloadHistoryKey(n => n + 1);
   };
 
-  // Polling DISABLED - Now handling updates via WebSocket (Strict Arbiter)
-  /*
+  useEffect(() => { load(); }, [id]);
+
   useEffect(() => {
-    load().then(d => { if (d) handleRoomUpdate(d); });
-    // Polling Speed: 1.5s for High Paced Dice Duel, 5s for Roulette
-    const pollTime = room?.gameType === "DICE_DUEL" ? 1500 : 5000;
-
-    const interval = setInterval(() => {
-      if (document.visibilityState === "hidden") return;
-      if (pendingRef.current) return; // Skip if busy
-
-      pendingRef.current = true;
-      fetch(`/api/rooms/${id}`, { cache: "no-store" })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) handleRoomUpdate(data); })
-        .catch(e => console.error("Polling error", e))
-        .finally(() => { pendingRef.current = false; });
-    }, pollTime);
-    return () => clearInterval(interval);
-  }, [id, room?.gameType]);
-  */
-  // Load once
-  useEffect(() => {
-    load();
-  }, [id]);
-
-  // Watchdog reset time & Start Timer
-  useEffect(() => {
-    if (!room) {
-      setCountdownSeconds(null);
-      return;
-    }
-
+    if (!room) { setCountdownSeconds(null); return; }
     const updateCountdown = () => {
-      // 1. Reset Countdown (FINISHED state)
       if (room.state === "FINISHED" && room.finishedAt && room.gameType === "ROULETTE") {
         const finishTime = new Date(room.finishedAt).getTime();
         const diff = Date.now() - finishTime;
@@ -308,8 +261,6 @@ export default function RoomPage() {
         }
         return;
       }
-
-      // 2. Start Countdown (OPEN state with lockedAt)
       if (room.state === "OPEN" && room.lockedAt) {
         const lockTime = new Date(room.lockedAt).getTime();
         const diff = lockTime - Date.now();
@@ -317,10 +268,8 @@ export default function RoomPage() {
         setCountdownSeconds(remaining);
         return;
       }
-
       setCountdownSeconds(null);
     };
-
     updateCountdown();
     const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
@@ -359,9 +308,6 @@ export default function RoomPage() {
     if (selectedPositions.length > 0 && qty < selectedPositions.length) setQty(selectedPositions.length);
   }, [selectedPositions.length, qty]);
 
-  // --- JOIN ---
-
-
   const join = async () => {
     if (!id) return;
     const costCents = room ? room.priceCents * ((selectedPositions.length > 0 ? selectedPositions.length : qty)) : 0;
@@ -375,22 +321,19 @@ export default function RoomPage() {
     setJoining(true);
     optimisticUpdate(-costCents);
 
-    // ⚡ OPTIMISTIC UPDATE
     const oldSelection = [...selectedPositions];
     let revertRoom: Room | null = null;
 
-    // Only optimistic placement for manual selection
     if (room && session?.user && selectedPositions.length > 0) {
       revertRoom = { ...room };
       const newEntries = selectedPositions.map((pos) => ({
         id: `temp-${pos}-${Date.now()}`,
         position: pos,
-        round: room.currentRound ?? 1, // 👈 Added round
+        round: room.currentRound ?? 1,
         user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
       }));
       setRoom((prev) => {
         if (!prev) return prev;
-        // Filter duplicates just in case
         const others = (prev.entries || []).filter(e => !selectedPositions.includes(e.position));
         return { ...prev, entries: [...others, ...newEntries] };
       });
@@ -405,19 +348,15 @@ export default function RoomPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        // FAIL - Revert
         rollbackUpdate(costCents);
         if (revertRoom) setRoom(revertRoom);
         if (oldSelection.length > 0) setSelectedPositions(oldSelection);
         toast.error(data.error || "No se pudo unir");
       } else {
-        // SUCCESS
         const takenList = Array.isArray(data.positions) ? data.positions : [];
-
-        // If random purchase, adds seats now
         if (oldSelection.length === 0 && takenList.length > 0 && room && session?.user) {
           const newEntries = takenList.map((pos: number) => ({
-            id: `temp-${pos}-${Date.now()}`, position: pos, round: room.currentRound ?? 1, // 👈 Added round
+            id: `temp-${pos}-${Date.now()}`, position: pos, round: room.currentRound ?? 1,
             user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
           }));
           setRoom((prev) => {
@@ -426,10 +365,7 @@ export default function RoomPage() {
             return { ...prev, entries: [...others, ...newEntries] };
           });
         }
-
         toast.success("¡Unido!");
-
-        // Safety reload
         setTimeout(() => { load().then(d => { if (d) handleRoomUpdate(d); }); }, 500);
       }
     } catch {
@@ -442,7 +378,6 @@ export default function RoomPage() {
     }
   };
 
-  const handleReroll = async () => { if (id && !room?.gameMeta?.ended) await fetch(`/api/rooms/${id}/reroll`, { method: "POST" }); };
   const handleForfeit = async (skipConfirm = false) => {
     if (!id || room?.gameMeta?.ended) return;
     const fn = async () => { await fetch(`/api/rooms/${id}/forfeit`, { method: "POST", headers: { "Content-Type": "application/json" } }); };
@@ -470,25 +405,17 @@ export default function RoomPage() {
   };
   const handleRejoin = async () => {
     if (!id) return;
-
-    // If room is finished, we must reset it first
     if (room?.state === "FINISHED") {
       try {
         await fetch(`/api/rooms/${id}/reset`, { method: "POST" });
-        // Wait a bit for reset to propagate? handled by optimistic join?
       } catch (e) {
         toast.error("Error al reiniciar la sala");
         return;
       }
     }
-
     await fetch(`/api/rooms/${id}/leave`, { method: "POST" }).catch(() => { });
-
-    // Join with quantity 1 (assume 1v1 or user preference? usually 1v1 implies 1 seat)
     await fetch(`/api/rooms/${id}/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantity: 1 }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: 1 }),
     }).catch(() => {
       toast.error("Error al entrar");
     });
@@ -496,6 +423,14 @@ export default function RoomPage() {
 
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
   if (!room) return <div className="text-center mt-10">Sala no encontrada</div>;
+
+  // --- SAFE USER OBJECT FOR DICE BOARD ---
+  const safeUser = session?.user ? {
+    id: userId || "guest",
+    name: session.user.name || "Jugador",
+    image: session.user.image || "",
+    selectedDiceColor: currentDiceSkin
+  } : { id: "guest", name: "Invitado", image: "", selectedDiceColor: "white" };
 
   const renderSeats = () => (
     <div className="grid grid-cols-4 gap-2">
@@ -505,7 +440,6 @@ export default function RoomPage() {
         const occupied = !!entry;
         const isMine = entry?.user.email === email;
         const isSelected = selectedPositions.includes(pos);
-        // GATE WINNER VISUALS
         const isWinner = showResults && !!room.winningEntryId && entry?.id === room.winningEntryId;
         const canToggle = room.state === "OPEN" && !occupied;
 
@@ -536,7 +470,6 @@ export default function RoomPage() {
 
   return (
     <main className="fixed inset-0 z-[200] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-[#050505] to-black text-white overflow-hidden flex flex-col sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
-
       {/* MOBILE TOP BAR */}
       <div className="sm:hidden h-16 px-4 flex items-center justify-between z-[210] bg-gradient-to-b from-black/90 to-transparent shrink-0">
         <div className="flex items-center gap-2">
@@ -549,31 +482,23 @@ export default function RoomPage() {
             </div>
           )}
         </div>
-
         <div className="flex items-center gap-3">
-          {/* Balance Pill */}
           {walletBalance !== null && (
             <div className="flex flex-col items-end leading-none">
               <span className="text-[10px] opacity-50 uppercase font-bold tracking-wider">Saldo</span>
               <span className="text-sm font-bold text-emerald-400">${(walletBalance / 100).toFixed(2)}</span>
             </div>
           )}
-
-          {/* Theme Toggle (Roulette) */}
           {room.gameType === "ROULETTE" && (
             <button onClick={() => setThemeSelectorOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>
             </button>
           )}
-
-          {/* Theme Toggle (Dice) */}
           {room.gameType === "DICE_DUEL" && (
             <button onClick={() => setDiceSelectorOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 8h.01" /><path d="M12 12h.01" /><path d="M16 16h.01" /></svg>
             </button>
           )}
-
-          {/* Menu */}
           <button onClick={() => setMobileMenuOpen(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/80">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
           </button>
@@ -582,7 +507,6 @@ export default function RoomPage() {
 
       {/* MOBILE CENTER STAGE */}
       <div className="flex-1 flex flex-col sm:hidden relative overflow-hidden">
-        {/* Info Bar */}
         <div className="flex justify-between px-6 py-2 text-xs font-mono opacity-60">
           <span>R#{room.currentRound ?? 1}</span>
           <div className="flex items-center gap-1">
@@ -591,11 +515,14 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Board Container - Centered */}
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
             <div className="relative z-10 w-full max-w-md h-full">
-              <DiceBoard room={room} userId={userId} email={email} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={wheelSize} userSkin={currentDiceSkin} />
+              {/* ✅ CORRECCIÓN: Pasamos roomId y el objeto user COMPLETO */}
+              <DiceBoard
+                roomId={room.id}
+                user={safeUser}
+              />
             </div>
           ) : (
             <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
@@ -603,7 +530,6 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* Floating History Trigger */}
           <button
             onClick={() => setHistoryOpen(true)}
             className="absolute left-6 bottom-4 p-3 z-20 bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded-full backdrop-blur-md shadow-lg active:scale-95 flex items-center justify-center"
@@ -612,7 +538,6 @@ export default function RoomPage() {
           </button>
         </div>
 
-        {/* Winner Toast (if finished) GATED */}
         {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
           <div className="absolute bottom-24 left-4 right-4 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-4 text-center animate-in slide-in-from-bottom duration-300 z-30">
             <h3 className="text-primary font-bold">¡Ronda Finalizada!</h3>
@@ -622,32 +547,12 @@ export default function RoomPage() {
             <p className="text-xs opacity-50 font-mono mt-2">{countdownSeconds ? `Reiniciando… ${countdownSeconds}s` : "Reiniciando..."}</p>
           </div>
         )}
-
-        {/* Bottom Spacer for Popup Handle */}
         <div className="h-16 shrink-0" />
       </div>
 
-      {/* ----------------- MODALS & OVERLAYS ----------------- */}
+      <ThemeSelector isOpen={themeSelectorOpen} onClose={() => setThemeSelectorOpen(false)} currentTheme={currentTheme} ownedSkins={ownedSkins} balanceCents={userBalanceCents} onSelect={handleThemeChange} />
+      <DiceSkinSelector isOpen={diceSelectorOpen} onClose={() => setDiceSelectorOpen(false)} currentSkin={currentDiceSkin} ownedSkins={ownedDiceSkins} balanceCents={userBalanceCents} onSelect={handleDiceSkinChange} />
 
-      <ThemeSelector
-        isOpen={themeSelectorOpen}
-        onClose={() => setThemeSelectorOpen(false)}
-        currentTheme={currentTheme}
-        ownedSkins={ownedSkins}
-        balanceCents={userBalanceCents}
-        onSelect={handleThemeChange}
-      />
-
-      <DiceSkinSelector
-        isOpen={diceSelectorOpen}
-        onClose={() => setDiceSelectorOpen(false)}
-        currentSkin={currentDiceSkin}
-        ownedSkins={ownedDiceSkins}
-        balanceCents={userBalanceCents}
-        onSelect={handleDiceSkinChange}
-      />
-
-      {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
           <div className="flex justify-between items-center mb-8">
@@ -658,57 +563,29 @@ export default function RoomPage() {
             {room.gameType === "ROULETTE" && (
               <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
-                <div>
-                  <span className="block font-bold text-white">Cambiar Apariencia</span>
-                  <span className="text-xs opacity-60">Personaliza tu ruleta</span>
-                </div>
+                <div><span className="block font-bold text-white">Cambiar Apariencia</span><span className="text-xs opacity-60">Personaliza tu ruleta</span></div>
               </button>
             )}
-
             {room.gameType === "DICE_DUEL" && (
               <button onClick={() => { setMobileMenuOpen(false); setDiceSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-emerald-900/40 to-green-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-green-500 shadow-lg" />
-                <div>
-                  <span className="block font-bold text-white">Color de Dados</span>
-                  <span className="text-xs opacity-60">Personaliza tus dados</span>
-                </div>
+                <div><span className="block font-bold text-white">Color de Dados</span><span className="text-xs opacity-60">Personaliza tus dados</span></div>
               </button>
             )}
-
             <div className="h-px bg-white/10 my-2" />
-
             <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider">Navegación</h3>
-            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-              <span>Salas de Juego</span>
-            </Link>
-            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
-              <span>Dashboard</span>
-            </Link>
-            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
-              <span>Tienda</span>
-            </Link>
-            <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-              <span>Verificación</span>
-            </Link>
-            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-              <span>Mi Perfil</span>
-            </Link>
+            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span>Salas de Juego</span></Link>
+            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg><span>Dashboard</span></Link>
+            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg><span>Tienda</span></Link>
+            <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg><span>Verificación</span></Link>
+            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg><span>Mi Perfil</span></Link>
           </div>
           <div className="mt-auto pt-4 border-t border-white/10">
-            {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-              Cerrar Sesión
-            </button>}
+            {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>Cerrar Sesión</button>}
           </div>
         </div>
       )}
 
-      {/* Mobile History */}
       {historyOpen && (
         <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in slide-in-from-bottom duration-300 p-6 flex flex-col sm:hidden">
           <div className="flex justify-between items-center mb-6">
@@ -719,7 +596,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="mb-4">
                 <h3 className="text-xs font-bold uppercase opacity-50 mb-2">Tiradas</h3>
-                <DiceHistory room={room} swapVisuals={room?.entries?.find(e => e.position === 1)?.user.email === email} className="bg-white/5" />
+                <DiceHistory room={room} />
               </div>
             )}
             <div>
@@ -730,7 +607,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* Mobile Seat Popup */}
       <div className="lg:hidden">
         {!joining && room.state === "OPEN" &&
           (Math.max(0, room.capacity - (room.entries?.length ?? 0)) > 0) &&
@@ -740,37 +616,25 @@ export default function RoomPage() {
                 <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
                   <div className="bg-[#111] border border-white/10 rounded-3xl p-5 shadow-2xl relative max-h-[60vh] overflow-hidden flex flex-col">
                     <div className="flex justify-between items-center mb-4 shrink-0">
-                      <div>
-                        <h3 className="font-bold text-white">Selecciona Puesto</h3>
-                        <p className="text-xs opacity-50">${(room.priceCents / 100).toFixed(2)} por puesto</p>
-                      </div>
+                      <div><h3 className="font-bold text-white">Selecciona Puesto</h3><p className="text-xs opacity-50">${(room.priceCents / 100).toFixed(2)} por puesto</p></div>
                       <button onClick={() => setShowMobileBuy(false)} className="p-2 bg-white/5 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
                     </div>
-                    <div className="overflow-y-auto mb-4 custom-scrollbar">
-                      {renderSeats()}
-                    </div>
-                    <div className="shrink-0">
-                      <BuySeatUI room={room} qty={qty} setQty={setQty} selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions} joining={joining} onJoin={join} className="border-0 p-0 mt-0" />
-                    </div>
+                    <div className="overflow-y-auto mb-4 custom-scrollbar">{renderSeats()}</div>
+                    <div className="shrink-0"><BuySeatUI room={room} qty={qty} setQty={setQty} selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions} joining={joining} onJoin={join} className="border-0 p-0 mt-0" /></div>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setShowMobileBuy(true)} className="fixed bottom-6 right-6 z-[190] h-14 w-14 bg-emerald-500 text-black rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center animate-in zoom-in duration-300 active:scale-95 font-bold">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-                </button>
+                <button onClick={() => setShowMobileBuy(true)} className="fixed bottom-6 right-6 z-[190] h-14 w-14 bg-emerald-500 text-black rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center animate-in zoom-in duration-300 active:scale-95 font-bold"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14" /><path d="M5 12h14" /></svg></button>
               )}
             </>
           )}
       </div>
 
-
-      {/* ----------------- DESKTOP LAYOUT (PRESERVED) ----------------- */}
-      {/* ----------------- DESKTOP LAYOUT ----------------- */}
+      {/* DESKTOP LAYOUT */}
       <div className="hidden sm:flex items-center justify-between w-full mt-4 mb-6 px-4">
         <div className="flex items-center gap-4">
           <button onClick={handleBackToLobby} className="btn btn-ghost text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg>
-            Volver
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg> Volver
           </button>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-3">
@@ -779,24 +643,17 @@ export default function RoomPage() {
             </h1>
           </div>
         </div>
-
-        {/* Right Actions */}
         <div className="flex items-center gap-4">
-          {/* Balance */}
-          {/* Balance */}
           <div className="bg-black/40 border border-white/5 px-4 py-2 rounded-xl flex flex-col items-end min-w-[120px]">
             <span className="text-[10px] opacity-50 uppercase font-bold tracking-wider">Tu Saldo</span>
             <span className="text-lg font-bold text-emerald-400 font-mono">${(userBalanceCents / 100).toFixed(2)}</span>
           </div>
-
-          {/* Theme/Skin Toggles */}
           {room.gameType === "ROULETTE" && (
             <button onClick={() => setThemeSelectorOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl hover:scale-105 transition-transform active:scale-95">
               <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
               <span className="font-bold text-sm">Personalizar</span>
             </button>
           )}
-
           {room.gameType === "DICE_DUEL" && (
             <button onClick={() => setDiceSelectorOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-900/40 to-green-900/40 border border-white/10 rounded-xl hover:scale-105 transition-transform active:scale-95">
               <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-500 to-green-500 shadow-lg" />
@@ -814,13 +671,15 @@ export default function RoomPage() {
           <div className="card bg-base-100 shadow-xl border border-white/5 p-8 flex flex-col items-center justify-center min-h-[500px]">
             <div style={{ maxWidth: 450 }}>
               {room.gameType === "DICE_DUEL" ? (
-                // Reduced size for Desktop
-                <DiceBoard room={room} userId={userId} onReroll={handleReroll} onForfeit={handleForfeit} onLeave={handleLeave} onRejoin={handleRejoin} onOpenHistory={() => setHistoryOpen(true)} onAfterAnim={() => { }} wheelSize={300} />
+                // ✅ CORRECCIÓN DESKTOP: Pasamos roomId y user COMPLETO
+                <DiceBoard
+                  roomId={room.id}
+                  user={safeUser}
+                />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
               )}
             </div>
-            {/* Desktop Winner Toast (GATED) */}
             {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
               <div className="mt-8 p-4 bg-black/40 rounded-xl text-center">
                 <h2 className="text-xl font-bold text-emerald-400">¡GANADOR!</h2>
@@ -843,7 +702,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="card bg-[#050505] border border-white/10 p-4">
                 <div className="mb-2 text-xs font-bold uppercase opacity-50">Historial de Tiradas</div>
-                <DiceHistory room={room} swapVisuals={room?.entries?.find(e => e.position === 1)?.user.email === email} maxHeight={300} />
+                <DiceHistory room={room} />
               </div>
             )}
             <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
