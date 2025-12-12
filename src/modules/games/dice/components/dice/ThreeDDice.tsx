@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-// ❌ BORRA ESTO: import "./ThreeDDice.css"; <--- ¡ESTA LÍNEA MATA TU APP!
+// ❌ CSS ELIMINADO AQUÍ PARA EVITAR ERROR #130
 
 export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 

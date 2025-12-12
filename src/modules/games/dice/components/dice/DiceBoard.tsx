@@ -5,8 +5,6 @@ import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import DiceDuel from "../DiceDuel";
 
-const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://localhost:4000";
-
 interface Player {
   userId: string;
   name: string;
@@ -32,11 +30,26 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
   const [animRolls, setAnimRolls] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
-    // 1. Conexión
-    const socket = io(GAME_SERVER_URL, {
-      transports: ["websocket"],
-      reconnectionAttempts: 5,
+    // LÓGICA INTELIGENTE DE CONEXIÓN:
+    // 1. Si hay una variable de entorno, úsala.
+    // 2. Si estamos en producción (no localhost), usa la ruta relativa (para que Nginx maneje el proxy).
+    // 3. Si estamos en local, usa localhost:4000.
+    let connectionUrl: string | undefined = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+
+    if (!connectionUrl) {
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+        connectionUrl = undefined; // Esto fuerza a usar el dominio actual (ej: misitio.com/socket.io)
+      } else {
+        connectionUrl = "http://localhost:4000";
+      }
+    }
+
+    const socket = io(connectionUrl || undefined, {
+      path: "/socket.io", // Importante para que Nginx lo capture
+      transports: ["websocket", "polling"], // Habilitar ambos para mayor compatibilidad
+      reconnectionAttempts: 10,
     });
+
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -50,6 +63,10 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
           selectedDiceColor: user.selectedDiceColor
         }
       });
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("Error de conexión Socket:", err.message);
     });
 
     socket.on("update_game", (state: GameState) => {
@@ -76,12 +93,14 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
       }
     });
 
+    socket.on("error", (err: any) => toast.error(err.message));
+
     return () => {
       socket.disconnect();
     };
   }, [roomId, user]);
 
-  if (!gameState) return <div className="text-white text-center mt-20">Cargando sala...</div>;
+  if (!gameState) return <div className="text-white/50 text-center mt-20 animate-pulse">Conectando al servidor...</div>;
 
   const me = gameState.players.find(p => p.userId === user.id);
   const opponent = gameState.players.find(p => p.userId !== user.id);
@@ -125,7 +144,6 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
   );
 }
 
-// 👇 ESTO ES LO QUE FALTABA PARA QUE EL BUILD FUNCIONE
 export const DiceHistory = ({ room }: { room: any;[key: string]: any }) => {
   return (
     <div className="p-4 text-center opacity-50 text-xs">
