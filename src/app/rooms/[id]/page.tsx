@@ -410,6 +410,22 @@ export default function RoomPage() {
           });
         }
         toast.success("¡Unido!");
+
+        // ✅ SOLUCIÓN REAL-TIME: Avisar al socket inmediatamente
+        await load(); // 1. Recargar datos de la sala
+        if (socketRef.current && userId) {
+          console.log("💰 Compra detectada, actualizando socket...");
+          socketRef.current.emit("join_room", {
+            roomId: id,
+            user: {
+              id: userId,
+              name: session?.user?.name,
+              avatar: session?.user?.image,
+              selectedDiceColor: (session?.user as any)?.selectedDiceColor
+            }
+          });
+        }
+
         setTimeout(() => { load().then(d => { if (d) handleRoomUpdate(d); }); }, 500);
       }
     } catch {
