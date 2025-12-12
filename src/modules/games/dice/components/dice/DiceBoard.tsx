@@ -1,200 +1,161 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import DiceDuel from "@/modules/games/dice/components/DiceDuel";
-import { type DiceSkin } from "./ThreeDDice";
 import { toast } from "sonner";
-import confetti from "canvas-confetti";
-import { useAudio } from "@/context/AudioContext";
+import DiceDuel from "../DiceDuel"; // Asegúrate de que la ruta sea correcta
+import { useSession } from "next-auth/react";
 
-let socket: Socket;
+// URL de tu Game Server (Ajusta si es diferente en producción)
+const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://localhost:4000";
 
-// Helper para skins
-function toSkin(s?: string | null): DiceSkin {
-  const allowed = ["white", "green", "blue", "yellow", "red", "purple", "black"];
-  return (s && allowed.includes(s)) ? (s as DiceSkin) : "white";
+interface Player {
+  userId: string;
+  name: string;
+  avatar: string;
+  balance: number;
+  position: 1 | 2;
+  isBot: boolean;
+  skin: string;
 }
 
-export default function DiceBoard({ room, userId, email, onLeave, onRejoin, wheelSize, userSkin = "white" }: any) {
-  const router = useRouter();
-  const { play } = useAudio();
+interface GameState {
+  status: "WAITING" | "PLAYING" | "FINISHED";
+  round: number;
+  turnUserId: string | null;
+  rolls: { [key: string]: [number, number] };
+  players: Player[];
+  winnerId?: string;
+}
 
-  // ESTADO
-  const [isConnected, setIsConnected] = useState(false);
-  const [gameState, setGameState] = useState<any>(null);
-  const [rolling, setRolling] = useState(false);
-  const [opponentRolling, setOpponentRolling] = useState(false);
+export default function DiceBoard({ roomId, user }: { roomId: string; user: any }) {
+  const socketRef = useRef<Socket | null>(null);
+  const [gameState, setGameState] = useState<GameState | null>(null);
 
-  // Inicializar Socket
+  // Estados visuales locales
+  const [isRolling, setIsRolling] = useState(false);
+  const [animRolls, setAnimRolls] = useState<{ [key: string]: boolean }>({});
+
   useEffect(() => {
-    // Configuración de URL flexible (Local vs Prod)
-    const SOCKET_URL = undefined; // 'undefined' intenta conectar al mismo dominio (vía Nginx proxy)
-
-    socket = io({
-      path: "/socket.io",
+    // 1. Conexión
+    const socket = io(GAME_SERVER_URL, {
       transports: ["websocket"],
-      reconnectionAttempts: 20
+      reconnectionAttempts: 5,
     });
+    socketRef.current = socket;
 
     socket.on("connect", () => {
-      setIsConnected(true);
-      // Unirse a la sala inmediatamente
+      console.log("🔌 Conectado al Game Server");
+      // Unirse a la sala con datos del usuario
       socket.emit("join_room", {
-        roomId: room.id,
+        roomId,
         user: {
-          id: userId,
-          name: room.entries.find((e: any) => e.user.id === userId)?.user.name || "Jugador",
-          selectedDiceColor: userSkin
+          id: user.id,
+          name: user.name,
+          avatar: user.image,
+          selectedDiceColor: user.selectedDiceColor // Si tienes esto en sesión
         }
       });
     });
 
-    socket.on("update_game", (data) => {
-      console.log("🎮 Estado recibido:", data);
-      setGameState(data);
-    });
+    // 2. Escuchar Actualizaciones de Estado
+    socket.on("update_game", (state: GameState) => {
+      console.log("🎮 Update:", state);
+      setGameState(state);
 
-    socket.on("dice_rolled", ({ userId: rollerId, roll }: any) => {
-      play("roll");
-      if (rollerId !== userId) {
-        setOpponentRolling(true);
-        setTimeout(() => setOpponentRolling(false), 800);
+      // Limpiar animaciones si cambió el turno
+      if (state.turnUserId) {
+        setAnimRolls(prev => ({ ...prev, [state.turnUserId!]: false }));
       }
     });
 
-    socket.on("game_over", ({ winnerId }: any) => {
-      if (winnerId === userId) {
-        play("win");
-        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    // 3. Animación de Tiro (Evento específico)
+    socket.on("dice_anim", ({ userId, result }: { userId: string, result: [number, number] }) => {
+      // Activar flag de rodando para ese usuario
+      setAnimRolls(prev => ({ ...prev, [userId]: true }));
+
+      // Sonido
+      const audio = new Audio("/sfx/dice-roll.mp3");
+      audio.play().catch(() => { });
+
+      // Desactivar animación tras 1s (y el estado update_game traerá el resultado final)
+      setTimeout(() => {
+        setAnimRolls(prev => ({ ...prev, [userId]: false }));
+      }, 1000);
+    });
+
+    socket.on("game_over", ({ winnerId, prize }) => {
+      if (winnerId === user.id) {
+        toast.success(`¡Ganaste $${(prize / 100).toFixed(2)}!`);
+        new Audio("/sfx/win.mp3").play().catch(() => { });
+      } else {
+        toast.error("Has perdido esta vez.");
       }
     });
 
-    socket.on("disconnect", () => setIsConnected(false));
+    socket.on("error", (err) => toast.error(err.message));
 
-    return () => { socket.disconnect(); };
-  }, [room.id, userId]);
+    return () => {
+      socket.disconnect();
+    };
+  }, [roomId, user]);
 
-  // --- LÓGICA VISUAL ---
+  // --- LÓGICA DE RENDERIZADO ---
 
-  // 1. Identificar Datos
-  const players = gameState?.players || [];
+  if (!gameState) return <div className="text-white text-center mt-20">Cargando sala...</div>;
 
-  // Buscarme a mí y a mi oponente
-  const me = players.find((p: any) => p.userId === userId);
+  const myPos = gameState.players.find(p => p.userId === user.id)?.position || 2;
+  // Ordenamos para que "Yo" (bottom) sea siempre mi usuario, y "Oponente" (top) el otro
+  const me = gameState.players.find(p => p.userId === user.id);
+  const opponent = gameState.players.find(p => p.userId !== user.id);
 
-  // 2. Lógica de "Espejo" (Yo siempre abajo)
-  // Si soy Position 1 (Host) -> swapVisuals = true (para mandarme abajo)
-  // Si soy Position 2 (Retador) -> swapVisuals = false (ya estoy abajo por defecto en el diseño P2)
-  const amTopPosition = me?.position === 1;
-  const swapVisuals = amTopPosition;
+  // Mapeo para DiceDuel.tsx
+  // Si no hay oponente (esperando), pasamos null/ghost
 
-  const p1 = players.find((p: any) => p.position === 1);
-  const p2 = players.find((p: any) => p.position === 2);
+  const isMyTurn = gameState.status === 'PLAYING' && gameState.turnUserId === user.id;
 
-  // 3. Asignar Dados y Skins
-  // Top: Si swap es true, Top visual es P2. Si swap es false, Top visual es P1.
-  const visualTopPlayer = swapVisuals ? p2 : p1;
-  const visualBottomPlayer = swapVisuals ? p1 : p2;
-
-  const topRoll = visualTopPlayer ? gameState?.rolls?.[visualTopPlayer.userId] : null;
-  const bottomRoll = visualBottomPlayer ? gameState?.rolls?.[visualBottomPlayer.userId] : null;
-
-  // Skins
-  const topSkin = visualTopPlayer?.skin || "white";
-  const bottomSkin = visualBottomPlayer?.skin || "white";
-
-  // Identificar Oponente para Labels y Estado
-  const opponent = players.find((p: any) => p.userId !== userId);
-
-  // 4. Texto de Estado
-  let statusText = "Conectando...";
-  if (isConnected) {
-    if (gameState?.status === 'WAITING') statusText = "Esperando oponente...";
-    else if (gameState?.status === 'FINISHED') statusText = gameState.winner === userId ? "¡GANASTE!" : "Perdiste";
-    else if (gameState?.turnUserId === userId) statusText = "¡TU TURNO!";
-    else statusText = `Esperando a ${opponent?.name || 'Rival'}...`;
-  }
-
-  // 5. Acción
-  const handleRoll = () => {
-    if (rolling) return;
-    setRolling(true);
-    socket.emit("roll_dice", { roomId: room.id, userId });
-    setTimeout(() => setRolling(false), 500);
-  };
-
-  // ¿Puedo tirar?
-  // Solo si estoy conectado, es mi turno, y NO he tirado ya en esta ronda.
-  const myRoll = gameState?.rolls?.[userId];
-  const canRoll = isConnected && gameState?.status === 'PLAYING' && gameState?.turnUserId === userId && !myRoll;
+  // Calcular props para componente visual
+  const topRoll = opponent ? gameState.rolls[opponent.userId] : null;
+  const bottomRoll = me ? gameState.rolls[me.userId] : null;
 
   return (
-    <div className="relative flex flex-col items-center">
-      {/* Indicador de conexión discreto */}
-      <div className={`absolute top-2 right-2 w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_10px_lime]' : 'bg-red-500 animate-pulse'}`} />
+    <div className="w-full h-full bg-[#050505] flex flex-col items-center justify-center">
+      <DiceDuel
+        // Datos Oponente (Top)
+        labelTop={opponent?.name || "Esperando..."}
+        balanceTop={opponent ? `$${(opponent.balance / 100).toFixed(2)}` : "---"}
+        diceColorTop={opponent?.skin as any || "white"}
+        topRoll={topRoll}
+        isRollingTop={opponent ? animRolls[opponent.userId] : false}
+        isGhostTop={!opponent} // Mostrar fantasma si no hay nadie
 
-      <div className="w-full mx-auto relative" style={{ maxWidth: wheelSize }}>
-        <DiceDuel
-          topRoll={topRoll}
-          bottomRoll={bottomRoll}
+        // Datos Míos (Bottom)
+        labelBottom={me?.name || "Tú"}
+        balanceBottom={me ? `$${(me.balance / 100).toFixed(2)}` : "---"}
+        diceColorBottom={me?.skin as any || "white"}
+        bottomRoll={bottomRoll}
+        isRollingBottom={me ? animRolls[me.userId] : false}
+        isGhostBottom={false}
 
-          isRollingTop={opponentRolling}
-          isRollingBottom={rolling}
+        // Estado Global
+        statusText={
+          gameState.status === 'WAITING' ? "Esperando Oponente..." :
+            gameState.status === 'FINISHED' ? "Partida Terminada" :
+              isMyTurn ? "¡Tu Turno!" : `Turno de ${opponent?.name || "Rival"}`
+        }
 
-          diceColorTop={toSkin(topSkin)}
-          diceColorBottom={toSkin(bottomSkin)}
+        // Controles
+        canRoll={isMyTurn && !animRolls[user.id]} // Solo puedo tirar si es mi turno y no estoy ya rodando
+        onRoll={() => {
+          if (socketRef.current && isMyTurn) {
+            socketRef.current.emit("roll_dice", { roomId });
+          }
+        }}
 
-          statusText={statusText}
-          winnerDisplay={gameState?.winner ? {
-            name: gameState.winner === userId ? "TÚ" : (opponent?.name || "Rival"),
-            amount: "$100", // Placeholder
-            isTie: gameState.winner === "TIE"
-          } : null}
-
-          onRoll={handleRoll}
-          canRoll={canRoll}
-          timeLeft={30}
-
-          labelTop={visualTopPlayer?.name || "Esperando..."}
-          labelBottom={visualBottomPlayer?.name || "Tú"}
-
-          onExit={onLeave}
-          onRejoin={onRejoin}
-          isFinished={false}
-        />
-      </div>
-    </div>
-  );
-}
-
-// History Component
-export function DiceHistory({ room, swapVisuals, className }: { room: any, swapVisuals?: boolean, className?: string }) {
-  const history = room.gameMeta?.history || [];
-  // Reverse to show newest first
-  const list = [...history].reverse();
-
-  return (
-    <div className={`space-y-2 ${className}`}>
-      {list.length === 0 && <div className="text-center text-xs text-white/30 py-4">No hay historial reciente</div>}
-
-      {list.map((h: any, i: number) => {
-        // Let's just show Winner Name + Damage for now to be safe and simple
-        const isTie = !h.winnerUserId;
-        const winnerName = room.entries?.find((e: any) => e.user.id === h.winnerUserId)?.user.name || "Desconocido";
-
-        return (
-          <div key={i} className="bg-black/20 p-2 rounded flex justify-between items-center text-xs">
-            <span className="opacity-50">Ronda {h.round}</span>
-            {isTie ? (
-              <span className="text-white/50 font-bold">Empate</span>
-            ) : (
-              <span className="text-emerald-400 font-bold">Ganó {winnerName}</span>
-            )}
-          </div>
-        );
-      })}
+        // Timer (Opcional, si quieres mostrar cuenta atrás)
+        timeLeft={isMyTurn ? 12 : undefined}
+        onExit={() => window.location.href = '/rooms'}
+      />
     </div>
   );
 }
