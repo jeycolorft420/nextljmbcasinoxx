@@ -1,72 +1,106 @@
 "use client";
 
 import React from "react";
-// ❌ CSS ELIMINADO AQUÍ PARA EVITAR ERROR #130
+// CSS removed
+import { Canvas } from "@react-three/fiber";
+import { useGLTF, Float, Stage, PresentationControls } from "@react-three/drei";
+import { useEffect, useState, useRef } from "react";
+import * as THREE from "three";
 
-export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
+// Preload de modelos para que no haya flash blanco
+useGLTF.preload("/models/dice-white.glb");
+useGLTF.preload("/models/dice-red.glb");
+useGLTF.preload("/models/dice-black.glb");
+useGLTF.preload("/models/dice-gold.glb");
+useGLTF.preload("/models/dice-blue.glb");
 
-interface Props {
-    face: number | null;
+type Props = {
+    face: number;
     rolling: boolean;
-    skin?: DiceSkin;
-    size?: number;
-    variant?: number;
-}
-
-const SKIN_COLORS: Record<string, string> = {
-    white: "#f8fafc", red: "#ef4444", blue: "#3b82f6", green: "#10b981",
-    yellow: "#f59e0b", purple: "#8b5cf6", black: "#1e293b",
+    skin?: string;    // "white" | "red" | "black" | "gold" | "blue"
+    size?: number;    // Para ajustar el tamaño del canvas
 };
 
-const DOTS_MAP: Record<number, number[]> = {
-    1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
+// Mapa de rotaciones para cada cara (ajustar según el modelo 3D exacto)
+const FACE_ROTATIONS: Record<number, [number, number, number]> = {
+    1: [0, 0, 0],            // Cara 1
+    2: [0, 0, -Math.PI / 2], // Cara 2
+    3: [0, -Math.PI / 2, 0], // Cara 3
+    4: [0, Math.PI / 2, 0],  // Cara 4
+    5: [0, 0, Math.PI / 2],  // Cara 5
+    6: [Math.PI, 0, 0],      // Cara 6 (o [0, Math.PI, 0])
+};
+
+// Mapa de modelos
+const SKIN_MODELS: Record<string, string> = {
+    white: "/models/dice-white.glb",
+    red: "/models/dice-red.glb",
+    black: "/models/dice-black.glb",
+    gold: "/models/dice-gold.glb",
+    blue: "/models/dice-blue.glb",
 };
 
 export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props) => {
-    const depth = size / 2;
-    const baseColor = SKIN_COLORS[skin] || SKIN_COLORS.white;
-    const isDark = ["black", "blue", "purple", "red"].includes(skin);
-    const dotColor = isDark ? "white" : "black";
-
-    const getTransform = (val: number) => {
-        switch (val) {
-            case 1: return 'rotateY(0deg)';
-            case 2: return 'rotateY(-90deg)';
-            case 3: return 'rotateY(180deg)';
-            case 4: return 'rotateY(90deg)';
-            case 5: return 'rotateX(-90deg)';
-            case 6: return 'rotateX(90deg)';
-            default: return 'rotateY(0deg)';
-        }
-    };
-
     return (
-        <div className="scene" style={{ width: size, height: size }}>
-            <div
-                className={`cube ${rolling ? "is-rolling" : ""}`}
-                style={{
-                    // @ts-ignore
-                    '--depth': `${depth}px`,
-                    '--base-color': baseColor,
-                    transform: rolling ? undefined : getTransform(face || 1)
-                }}
-            >
-                <div className="cube__inner" style={{ transform: `translateZ(-2px)` }}></div>
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                    <div key={n} className={`cube__face cube__face--${n}`}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', width: '60%', height: '60%' }}>
-                            {[...Array(9)].map((_, i) => (
-                                <div key={i} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                                    {DOTS_MAP[n]?.includes(i) && (
-                                        <div style={{ width: '80%', height: '80%', borderRadius: '50%', backgroundColor: dotColor }} />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
+        <div style={{ width: size, height: size }} className="relative">
+            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 0, 4], fov: 45 }}>
+                <PresentationControls
+                    speed={1.5}
+                    global
+                    zoom={0.7}
+                    polar={[-0.1, Math.PI / 4]}
+                >
+                    <Stage environment="city" intensity={0.6} contactShadow={false}>
+                        <DiceModel face={face} rolling={rolling} skin={skin} />
+                    </Stage>
+                </PresentationControls>
+            </Canvas>
         </div>
     );
+};
+
+const DiceModel = ({ face, rolling, skin }: { face: number; rolling: boolean; skin: string }) => {
+    const modelPath = SKIN_MODELS[skin] || SKIN_MODELS["white"];
+    const { scene } = useGLTF(modelPath);
+    const meshRef = useRef<THREE.Group>(null);
+    const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
+
+    // Clonar la escena para evitar que se comparta si hay múltiples dados
+    const clonedScene = React.useMemo(() => scene.clone(), [scene]);
+
+    useEffect(() => {
+        if (rolling) {
+            // Rotación loca
+            const interval = setInterval(() => {
+                setRotation([
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2,
+                ]);
+            }, 50);
+            return () => clearInterval(interval);
+        } else {
+            // Ir a la cara final
+            const target = FACE_ROTATIONS[face] || [0, 0, 0];
+            setRotation(target);
+        }
+    }, [rolling, face]);
+
+    // Interpolar rotación suave
+    useEffect(() => {
+        if (meshRef.current) {
+            // En un frame real usaríamos useFrame con lerp, pero aquí simplificamos
+            meshRef.current.rotation.set(rotation[0], rotation[1], rotation[2]);
+        }
+    }, [rotation]);
+
+    // Animar "bamboleo" si está rodando
+    // useFrame((state) => {
+    //   if (rolling && meshRef.current) {
+    //      meshRef.current.rotation.x += 0.2;
+    //      meshRef.current.rotation.y += 0.3;
+    //   }
+    // });
+
+    return <primitive object={clonedScene} ref={meshRef} />;
 };

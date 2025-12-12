@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const PERCENTAGE_PER_ROUND = 0.20;
-const TURN_TIMEOUT = 12000;
+const TURN_TIMEOUT = 15000; // 15 Segundos para tirar o pierdes
 
 interface Player {
     socketId: string;
@@ -34,7 +34,7 @@ export class DiceRoom {
     public round: number = 1;
     public turnUserId: string | null = null;
     public rolls: { [userId: string]: [number, number] } = {};
-    public history: RoundHistory[] = []; // IMPORTANTE: Inicializar vacío
+    public history: RoundHistory[] = [];
 
     private io: Server;
     private timer: NodeJS.Timeout | null = null;
@@ -80,6 +80,11 @@ export class DiceRoom {
         }
     }
 
+    // Método seguro para espectadores
+    public emitStateToSocket(socket: Socket) {
+        socket.emit('update_game', this.buildStatePayload());
+    }
+
     public removePlayer(socketId: string) {
         const p = this.players.find(p => p.socketId === socketId);
         if (!p) return;
@@ -92,14 +97,10 @@ export class DiceRoom {
         this.broadcastState();
     }
 
-    public emitStateToSocket(socket: Socket) {
-        socket.emit('update_game', this.buildStatePayload());
-    }
-
     private startGame() {
         this.status = 'PLAYING';
         this.round = 1;
-        this.history = []; // Limpiar historial
+        this.history = [];
         this.rolls = {};
         this.turnUserId = this.players[0]?.userId || null;
         this.broadcastState();
@@ -111,6 +112,7 @@ export class DiceRoom {
         const roll: [number, number] = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
         this.rolls[userId] = roll;
         this.io.to(this.id).emit('dice_anim', { userId, result: roll });
+
         if (this.timer) clearTimeout(this.timer);
         setTimeout(() => {
             const opponent = this.players.find(p => p.userId !== userId);
@@ -137,10 +139,10 @@ export class DiceRoom {
         if (p1.balance < 0) p1.balance = 0;
         if (p2.balance < 0) p2.balance = 0;
 
-        // Guardar historial COMPLETO
+        // Guardar Historial
         this.history.push({
             round: this.round,
-            rolls: JSON.parse(JSON.stringify(this.rolls)), // Clonar objeto
+            rolls: JSON.parse(JSON.stringify(this.rolls)),
             winnerId
         });
 
@@ -148,8 +150,12 @@ export class DiceRoom {
         this.io.to(this.id).emit('round_result', { winnerId, rolls: this.rolls });
 
         const loser = this.players.find(p => p.balance <= 0);
-        if (loser) setTimeout(() => this.finishGame(this.players.find(p => p.userId !== loser.userId)!), 5000);
-        else setTimeout(() => this.nextRound(), 5000);
+        if (loser) {
+            const winner = this.players.find(p => p.userId !== loser.userId)!;
+            setTimeout(() => this.finishGame(winner, "SCORE"), 5000);
+        } else {
+            setTimeout(() => this.nextRound(), 5000);
+        }
     }
 
     private nextRound() {
@@ -161,7 +167,7 @@ export class DiceRoom {
         this.processTurn();
     }
 
-    private async finishGame(winner: Player, reason: string = "NORMAL") {
+    private async finishGame(winner: Player, reason: string = "SCORE") {
         this.status = 'FINISHED';
         const total = this.players.reduce((a, b) => a + this.priceCents, 0);
         this.io.to(this.id).emit('game_over', { winnerId: winner.userId, prize: total, reason });
@@ -179,9 +185,19 @@ export class DiceRoom {
         if (this.timer) clearTimeout(this.timer);
         const p = this.players.find(pl => pl.userId === this.turnUserId);
         if (!p) return;
-        const delay = p.isBot ? Math.random() * 1000 + 1000 : TURN_TIMEOUT;
-        this.timer = setTimeout(() => this.handleRoll(p.userId), delay);
+
+        if (p.isBot) {
+            // Bot tira rápido
+            this.timer = setTimeout(() => this.handleRoll(p.userId), Math.random() * 1000 + 1000);
+        } else {
+            // Humano: Si se acaba el tiempo, PIERDE (Forfeit)
+            this.timer = setTimeout(() => {
+                const winner = this.players.find(pl => pl.userId !== p.userId);
+                if (winner) this.finishGame(winner, "TIMEOUT");
+            }, TURN_TIMEOUT);
+        }
     }
+
     private scheduleBot() {
         if (this.botTimer) clearTimeout(this.botTimer);
         if (this.botWaitMs > 0) this.botTimer = setTimeout(() => this.injectBot(), this.botWaitMs);

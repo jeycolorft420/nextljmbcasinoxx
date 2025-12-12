@@ -17,6 +17,9 @@ import ConfirmationModal from "@/modules/ui/components/ConfirmationModal";
 import { useLicense } from "@/context/LicenseContext";
 import ThemeSelector from "@/modules/games/roulette/components/ThemeSelector";
 import DiceSkinSelector from "@/modules/games/dice/components/DiceSkinSelector";
+import { io, Socket } from "socket.io-client";
+
+const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://localhost:4000";
 
 type Entry = {
   id: string;
@@ -65,8 +68,9 @@ export default function RoomPage() {
   const [qty, setQty] = useState(1);
   const [joining, setJoining] = useState(false);
 
-  // NUEVO ESTADO PARA EL HISTORIAL
-  const [liveHistory, setLiveHistory] = useState<any[]>([]);
+  // ESTADO DEL JUEGO (Centralizado)
+  const [gameState, setGameState] = useState<any>(null); // Estado en vivo del Socket
+  const socketRef = useRef<Socket | null>(null);
 
   // Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -296,6 +300,43 @@ export default function RoomPage() {
     return () => { channel.unbind("room:update", onUpdate); pusherClient.unsubscribe(channelName); };
   }, [id]);
 
+  // SOCKET CENTRALIZADO
+  useEffect(() => {
+    if (!userId || !room || room.gameType !== 'DICE_DUEL') return;
+
+    let url: string | undefined = GAME_SERVER_URL;
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      url = undefined; // Usar path relativo en producción
+    }
+
+    const socket = io(url, {
+      path: "/socket.io",
+      transports: ["websocket", "polling"]
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      socket.emit("join_room", { roomId: id, user: { id: userId, name: session?.user?.name, avatar: session?.user?.image, selectedDiceColor: (session?.user as any)?.selectedDiceColor } });
+    });
+
+    socket.on("update_game", (data) => setGameState(data));
+
+    socket.on("dice_anim", (data) => {
+      setGameState((prev: any) => ({ ...prev, lastRoll: data }));
+    });
+
+    socket.on("game_over", (data: any) => {
+      if (data.winnerId === userId) toast.success(data.reason === 'TIMEOUT' ? "¡Ganaste por tiempo!" : "¡Ganaste!");
+      else toast.error(data.reason === 'TIMEOUT' ? "Tiempo agotado" : "Perdiste");
+    });
+
+    return () => { socket.disconnect(); };
+  }, [id, userId, room?.gameType]);
+
+  const handleRoll = () => {
+    socketRef.current?.emit("roll_dice", { roomId: id });
+  };
+
   const togglePosition = (pos: number) => {
     if (!room || room.state !== "OPEN") return;
     const occupied = new Set((room.entries ?? []).map((e) => e.position));
@@ -522,9 +563,9 @@ export default function RoomPage() {
           {room.gameType === "DICE_DUEL" ? (
             <div className="relative z-10 w-full max-w-md h-full">
               <DiceBoard
-                roomId={room.id}
-                user={safeUser}
-                onHistoryUpdate={setLiveHistory}
+                gameState={gameState}
+                userId={safeUser.id}
+                onRoll={handleRoll}
               />
             </div>
           ) : (
@@ -599,7 +640,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="mb-4">
                 <h3 className="text-xs font-bold uppercase opacity-50 mb-2">Tiradas</h3>
-                <DiceHistory history={liveHistory} myId={userId} />
+                <DiceHistory room={gameState} />
               </div>
             )}
             <div>
@@ -676,9 +717,9 @@ export default function RoomPage() {
               {room.gameType === "DICE_DUEL" ? (
                 // ✅ CORRECCIÓN DESKTOP: Pasamos roomId y user COMPLETO
                 <DiceBoard
-                  roomId={room.id}
-                  user={safeUser}
-                  onHistoryUpdate={setLiveHistory}
+                  gameState={gameState}
+                  userId={safeUser.id}
+                  onRoll={handleRoll}
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
@@ -706,7 +747,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="card bg-[#050505] border border-white/10 p-4">
                 <div className="mb-2 text-xs font-bold uppercase opacity-50">Historial de Tiradas</div>
-                <DiceHistory history={liveHistory} myId={userId} />
+                <DiceHistory room={gameState} />
               </div>
             )}
             <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
