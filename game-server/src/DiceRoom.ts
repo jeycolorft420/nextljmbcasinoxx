@@ -2,8 +2,10 @@ import { Server, Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+// Configuración
 const PERCENTAGE_PER_ROUND = 0.20;
-const TURN_TIMEOUT = 15000;
+const TURN_TIMEOUT = 12000;
 
 interface Player {
     socketId: string;
@@ -17,17 +19,26 @@ interface Player {
     connected: boolean;
 }
 
+interface RoundHistory {
+    round: number;
+    rolls: { [userId: string]: [number, number] };
+    winnerId: string | null;
+}
+
 export class DiceRoom {
     public id: string;
     public priceCents: number;
     public stepValue: number;
     public botWaitMs: number;
     public autoLockAt: Date | null;
+
     public players: Player[] = [];
-    public status: 'WAITING' | 'PLAYING' | 'FINISHED' = 'WAITING';
+    public status: 'WAITING' | 'PLAYING' | 'ROUND_END' | 'FINISHED' = 'WAITING';
+
     public round: number = 1;
     public turnUserId: string | null = null;
     public rolls: { [userId: string]: [number, number] } = {};
+    public history: RoundHistory[] = []; // <--- Historial en memoria
 
     private io: Server;
     private timer: NodeJS.Timeout | null = null;
@@ -90,8 +101,11 @@ export class DiceRoom {
     private startGame() {
         this.status = 'PLAYING';
         this.round = 1;
+        this.history = []; // Reset historial
         this.rolls = {};
+        // REGLA: Siempre empieza el Jugador 1
         this.turnUserId = this.players[0]?.userId || null;
+
         this.emitState();
         this.processTurn();
     }
@@ -101,46 +115,72 @@ export class DiceRoom {
 
         const roll: [number, number] = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
         this.rolls[userId] = roll;
+
+        // Animación inmediata
         this.io.to(this.id).emit('dice_anim', { userId, result: roll });
 
         if (this.timer) clearTimeout(this.timer);
 
+        // Pequeña pausa para ver caer los dados
         setTimeout(() => {
             const opponent = this.players.find(p => p.userId !== userId);
             if (opponent && !this.rolls[opponent.userId]) {
+                // Siguiente turno
                 this.turnUserId = opponent.userId;
                 this.emitState();
                 this.processTurn();
             } else {
+                // Fin de ronda
                 this.resolveRound();
             }
-        }, 1200);
+        }, 1500);
     }
 
     private resolveRound() {
+        // Pausa de estado para mostrar ganador
+        this.status = 'ROUND_END';
+        this.turnUserId = null;
+
         const [p1, p2] = this.players;
         const s1 = this.rolls[p1.userId].reduce((a, b) => a + b, 0);
         const s2 = this.rolls[p2.userId].reduce((a, b) => a + b, 0);
 
-        let winnerId = null;
+        let winnerId: string | null = null;
         if (s1 > s2) { winnerId = p1.userId; p1.balance += this.stepValue; p2.balance -= this.stepValue; }
         else if (s2 > s1) { winnerId = p2.userId; p2.balance += this.stepValue; p1.balance -= this.stepValue; }
 
         if (p1.balance < 0) p1.balance = 0;
         if (p2.balance < 0) p2.balance = 0;
 
-        this.io.to(this.id).emit('round_result', { winnerId, rolls: this.rolls });
-        this.emitState(); // Update balances
+        // Guardar en historial
+        this.history.push({
+            round: this.round,
+            rolls: { ...this.rolls },
+            winnerId
+        });
 
+        // Emitir resultado y historial actualizado
+        this.emitState();
+        this.io.to(this.id).emit('round_result', { winnerId, rolls: this.rolls });
+
+        // Verificar Bancarrota
         const loser = this.players.find(p => p.balance <= 0);
-        if (loser) setTimeout(() => this.finishGame(this.players.find(p => p.userId !== loser.userId)!), 2000);
-        else setTimeout(() => this.nextRound(), 3000);
+
+        if (loser) {
+            setTimeout(() => this.finishGame(this.players.find(p => p.userId !== loser.userId)!), 5000);
+        } else {
+            // Esperar 5 SEGUNDOS para ver el cartel
+            setTimeout(() => this.nextRound(), 5000);
+        }
     }
 
     private nextRound() {
         this.round++;
         this.rolls = {};
-        this.turnUserId = this.players[0].userId; // P1 always starts round (simple rule)
+        this.status = 'PLAYING';
+        // REGLA: Siempre empieza P1
+        this.turnUserId = this.players[0].userId;
+
         this.emitState();
         this.processTurn();
     }
@@ -182,8 +222,15 @@ export class DiceRoom {
 
     private emitState() {
         this.io.to(this.id).emit('update_game', {
-            status: this.status, round: this.round, turnUserId: this.turnUserId, rolls: this.rolls,
-            players: this.players.map(p => ({ userId: p.userId, name: p.username, avatar: p.avatarUrl, balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin }))
+            status: this.status,
+            round: this.round,
+            turnUserId: this.turnUserId,
+            rolls: this.rolls,
+            history: this.history, // <--- Enviamos historial al front
+            players: this.players.map(p => ({
+                userId: p.userId, name: p.username, avatar: p.avatarUrl,
+                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
+            }))
         });
     }
 }
