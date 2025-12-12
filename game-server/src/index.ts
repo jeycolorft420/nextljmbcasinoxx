@@ -22,19 +22,22 @@ io.on('connection', (socket) => {
 
     socket.on('join_room', async ({ roomId, user }) => {
         try {
-            // Validar existencia
-            const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
+            // 1. Obtener sala y sus entradas
+            const dbRoom = await prisma.room.findUnique({
+                where: { id: roomId },
+                include: { entries: true } // Importante: traer las entradas
+            });
+
             if (!dbRoom) {
                 socket.emit('error', { message: 'Sala no existe' });
                 return;
             }
 
-            // Mapeos
             socket.join(roomId);
             socketToRoom[socket.id] = roomId;
             socketToUser[socket.id] = user.id;
 
-            // Instanciar
+            // 2. Instanciar lógica si no existe
             if (!rooms[roomId]) {
                 rooms[roomId] = new DiceRoom(
                     roomId,
@@ -45,13 +48,24 @@ io.on('connection', (socket) => {
                 );
             }
 
-            // Añadir jugador
-            const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-            rooms[roomId].addPlayer(socket, {
-                ...user,
-                // Usamos skin de DB o el que manda el front, preferencia DB
-                selectedDiceColor: dbUser?.selectedDiceColor || user.selectedDiceColor
-            });
+            const gameRoom = rooms[roomId];
+
+            // 3. VERIFICAR SI EL USUARIO PAGÓ (Está en la DB)
+            const isParticipant = dbRoom.entries.some(e => e.userId === user.id);
+
+            if (isParticipant) {
+                // Es jugador -> Sentarlo
+                const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+                gameRoom.addPlayer(socket, {
+                    ...user,
+                    selectedDiceColor: dbUser?.selectedDiceColor || user.selectedDiceColor
+                });
+                console.log(`[Sala ${roomId}] Jugador ${user.name} conectado.`);
+            } else {
+                // Es mirón -> Solo enviar estado
+                gameRoom.emitStateToSocket(socket);
+                console.log(`[Sala ${roomId}] Espectador ${user.name} conectado.`);
+            }
 
         } catch (e) {
             console.error(e);
@@ -70,7 +84,6 @@ io.on('connection', (socket) => {
         const roomId = socketToRoom[socket.id];
         if (roomId && rooms[roomId]) {
             rooms[roomId].removePlayer(socket.id);
-            // Limpiar si vacía
             if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') {
                 delete rooms[roomId];
             }

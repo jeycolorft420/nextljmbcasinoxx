@@ -5,27 +5,20 @@ import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import DiceDuel from "../DiceDuel";
 
-interface Player {
-  userId: string;
-  name: string;
-  avatar: string;
-  balance: number;
-  position: 1 | 2;
-  isBot: boolean;
-  skin: string;
-}
+const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://localhost:4000";
 
 interface GameState {
   status: "WAITING" | "PLAYING" | "ROUND_END" | "FINISHED";
   round: number;
   turnUserId: string | null;
   rolls: { [key: string]: [number, number] };
-  history: { round: number; winnerId: string | null; rolls: any }[]; // Nuevo campo
-  players: Player[];
+  history: any[];
+  players: any[];
   winnerId?: string;
 }
 
-export default function DiceBoard({ roomId, user }: { roomId: string; user: any;[key: string]: any }) {
+// Props aceptan ahora onHistoryUpdate
+export default function DiceBoard({ roomId, user, onHistoryUpdate }: { roomId: string; user: any; onHistoryUpdate?: (h: any[]) => void }) {
   const socketRef = useRef<Socket | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [animRolls, setAnimRolls] = useState<{ [key: string]: boolean }>({});
@@ -33,12 +26,8 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
 
   useEffect(() => {
     let connectionUrl: string | undefined = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-    if (!connectionUrl) {
-      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-        connectionUrl = undefined;
-      } else {
-        connectionUrl = "http://localhost:4000";
-      }
+    if (!connectionUrl && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      connectionUrl = "http://localhost:4000";
     }
 
     const socket = io(connectionUrl || undefined, {
@@ -49,7 +38,6 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("🔌 Conectado");
       socket.emit("join_room", {
         roomId,
         user: { id: user.id, name: user.name, avatar: user.image, selectedDiceColor: user.selectedDiceColor }
@@ -58,7 +46,12 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
 
     socket.on("update_game", (state: GameState) => {
       setGameState(state);
-      // Limpiar animación y cartel al cambiar de ronda a jugando
+
+      // ENVIAR HISTORIAL HACIA ARRIBA
+      if (state.history && onHistoryUpdate) {
+        onHistoryUpdate(state.history);
+      }
+
       if (state.status === 'PLAYING') {
         setRoundWinner(null);
         setAnimRolls({});
@@ -102,16 +95,15 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
   return (
     <div className="w-full h-full bg-[#050505] flex flex-col items-center justify-center relative">
 
-      {/* CARTEL DE GANADOR DE RONDA (5 SEGUNDOS) */}
+      {/* CARTEL DE GANADOR */}
       {gameState.status === 'ROUND_END' && roundWinner && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-gradient-to-br from-emerald-600 to-emerald-900 p-1 rounded-2xl shadow-2xl border border-white/20">
-            <div className="bg-black/90 rounded-xl px-10 py-6 text-center">
-              <h2 className="text-emerald-400 font-bold text-sm uppercase tracking-widest mb-2">Resultado Ronda {gameState.round}</h2>
-              <div className="text-4xl font-black text-white drop-shadow-lg scale-110">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-gradient-to-br from-emerald-600 to-emerald-900 p-1 rounded-2xl shadow-2xl border border-white/20 transform scale-110">
+            <div className="bg-black/90 rounded-xl px-12 py-8 text-center">
+              <h2 className="text-emerald-400 font-bold text-xs uppercase tracking-[0.2em] mb-3">Ganador Ronda {gameState.round}</h2>
+              <div className="text-4xl font-black text-white drop-shadow-2xl mb-2">
                 {roundWinner === "Empate" ? "🤝 EMPATE" : `🏆 ${roundWinner}`}
               </div>
-              <div className="mt-4 text-xs text-white/50 animate-pulse">Siguiente ronda en breve...</div>
             </div>
           </div>
         </div>
@@ -132,10 +124,11 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
         isRollingBottom={me ? animRolls[me.userId] : false}
         isGhostBottom={false}
 
+        // LIMPIAMOS EL TEXTO SI HAY GANADOR VISIBLE
         statusText={
-          gameState.status === 'WAITING' ? "Esperando Oponente..." :
-            gameState.status === 'FINISHED' ? "Partida Terminada" :
-              gameState.status === 'ROUND_END' ? "Calculando..." :
+          gameState.status === 'ROUND_END' ? "" : // Ocultar texto si hay cartel
+            gameState.status === 'WAITING' ? "Esperando Oponente..." :
+              gameState.status === 'FINISHED' ? "Partida Terminada" :
                 isMyTurn ? "¡Tu Turno!" : `Turno de ${opponent?.name || "Rival"}`
         }
 
@@ -148,26 +141,31 @@ export default function DiceBoard({ roomId, user }: { roomId: string; user: any;
         timeLeft={isMyTurn ? 12 : undefined}
         onExit={() => window.location.href = '/rooms'}
       />
-
-      {/* HISTORIAL EN VIVO */}
-      {gameState.history && gameState.history.length > 0 && (
-        <div className="absolute top-4 left-4 z-40 bg-black/40 backdrop-blur-md border border-white/5 rounded-lg p-2 max-h-40 overflow-y-auto w-48 text-[10px]">
-          <h4 className="font-bold text-white/70 mb-2 border-b border-white/5 pb-1">Historial</h4>
-          <div className="space-y-1">
-            {gameState.history.slice().reverse().map((h, i) => (
-              <div key={i} className="flex justify-between items-center text-white/60">
-                <span>R{h.round}</span>
-                <span className={h.winnerId ? (h.winnerId === user.id ? "text-green-400" : "text-red-400") : "text-yellow-400"}>
-                  {h.winnerId ? (h.winnerId === user.id ? "Ganaste" : "Perdiste") : "Empate"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// Mantenemos el export para evitar errores en page.tsx
-export const DiceHistory = ({ room }: { room: any }) => null; 
+// Componente visual para la card de historial
+export const DiceHistory = ({ history, myId }: { history?: any[]; myId?: string }) => {
+  if (!history || history.length === 0) return <div className="p-4 text-center opacity-30 text-xs">Sin historial aún</div>;
+
+  return (
+    <div className="max-h-60 overflow-y-auto custom-scrollbar p-2 space-y-1">
+      {history.slice().reverse().map((h, i) => {
+        const isWin = h.winnerId === myId;
+        const isTie = !h.winnerId;
+        return (
+          <div key={i} className={`flex justify-between items-center text-xs p-2 rounded ${isWin ? 'bg-green-900/20' : isTie ? 'bg-white/5' : 'bg-red-900/10'}`}>
+            <span className="font-bold opacity-50">Ronda {h.round}</span>
+            <div className="flex gap-2 font-mono">
+              {/* Aquí podrías mostrar los dados si quisieras, h.rolls tiene los datos */}
+              <span className={isWin ? "text-green-400 font-bold" : isTie ? "text-white/50" : "text-red-400"}>
+                {isWin ? "+20%" : isTie ? "=" : "-20%"}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  );
+};

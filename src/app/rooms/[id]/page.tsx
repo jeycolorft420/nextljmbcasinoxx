@@ -65,6 +65,9 @@ export default function RoomPage() {
   const [qty, setQty] = useState(1);
   const [joining, setJoining] = useState(false);
 
+  // NUEVO ESTADO PARA EL HISTORIAL
+  const [liveHistory, setLiveHistory] = useState<any[]>([]);
+
   // Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -518,10 +521,10 @@ export default function RoomPage() {
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
             <div className="relative z-10 w-full max-w-md h-full">
-              {/* ✅ CORRECCIÓN: Pasamos roomId y el objeto user COMPLETO */}
               <DiceBoard
                 roomId={room.id}
                 user={safeUser}
+                onHistoryUpdate={setLiveHistory}
               />
             </div>
           ) : (
@@ -596,7 +599,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="mb-4">
                 <h3 className="text-xs font-bold uppercase opacity-50 mb-2">Tiradas</h3>
-                <DiceHistory room={room} />
+                <DiceHistory history={liveHistory} myId={userId} />
               </div>
             )}
             <div>
@@ -675,6 +678,7 @@ export default function RoomPage() {
                 <DiceBoard
                   roomId={room.id}
                   user={safeUser}
+                  onHistoryUpdate={setLiveHistory}
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
@@ -702,7 +706,7 @@ export default function RoomPage() {
             {room.gameType === "DICE_DUEL" && (
               <div className="card bg-[#050505] border border-white/10 p-4">
                 <div className="mb-2 text-xs font-bold uppercase opacity-50">Historial de Tiradas</div>
-                <DiceHistory room={room} />
+                <DiceHistory history={liveHistory} myId={userId} />
               </div>
             )}
             <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />

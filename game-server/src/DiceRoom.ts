@@ -2,8 +2,6 @@ import { Server, Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-
-// Configuración
 const PERCENTAGE_PER_ROUND = 0.20;
 const TURN_TIMEOUT = 12000;
 
@@ -38,7 +36,7 @@ export class DiceRoom {
     public round: number = 1;
     public turnUserId: string | null = null;
     public rolls: { [userId: string]: [number, number] } = {};
-    public history: RoundHistory[] = []; // <--- Historial en memoria
+    public history: RoundHistory[] = [];
 
     private io: Server;
     private timer: NodeJS.Timeout | null = null;
@@ -54,16 +52,19 @@ export class DiceRoom {
     }
 
     public addPlayer(socket: Socket, user: any, isBot: boolean = false) {
+        // 1. Reconexión
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
             if (!isBot) existing.socketId = socket.id;
             existing.connected = true;
-            this.emitState();
+            this.broadcastState();
             return;
         }
 
+        // 2. Validación de cupo
         if (this.players.length >= 2 || (this.status !== 'WAITING' && !isBot)) return;
 
+        // 3. Nuevo Jugador
         this.players.push({
             socketId: isBot ? 'bot' : socket.id,
             userId: user.id,
@@ -77,13 +78,18 @@ export class DiceRoom {
         });
 
         this.players.sort((a, b) => a.position - b.position);
-        this.emitState();
+        this.broadcastState();
 
         if (this.players.length === 1) this.scheduleBot();
         else if (this.players.length === 2) {
             this.cancelBot();
             setTimeout(() => this.startGame(), 1000);
         }
+    }
+
+    // Método para espectadores (NO añade jugador, solo envía datos)
+    public emitStateToSocket(socket: Socket) {
+        socket.emit('update_game', this.buildStatePayload());
     }
 
     public removePlayer(socketId: string) {
@@ -95,18 +101,16 @@ export class DiceRoom {
         } else {
             p.connected = false;
         }
-        this.emitState();
+        this.broadcastState();
     }
 
     private startGame() {
         this.status = 'PLAYING';
         this.round = 1;
-        this.history = []; // Reset historial
+        this.history = [];
         this.rolls = {};
-        // REGLA: Siempre empieza el Jugador 1
         this.turnUserId = this.players[0]?.userId || null;
-
-        this.emitState();
+        this.broadcastState();
         this.processTurn();
     }
 
@@ -116,28 +120,23 @@ export class DiceRoom {
         const roll: [number, number] = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
         this.rolls[userId] = roll;
 
-        // Animación inmediata
         this.io.to(this.id).emit('dice_anim', { userId, result: roll });
 
         if (this.timer) clearTimeout(this.timer);
 
-        // Pequeña pausa para ver caer los dados
         setTimeout(() => {
             const opponent = this.players.find(p => p.userId !== userId);
             if (opponent && !this.rolls[opponent.userId]) {
-                // Siguiente turno
                 this.turnUserId = opponent.userId;
-                this.emitState();
+                this.broadcastState();
                 this.processTurn();
             } else {
-                // Fin de ronda
                 this.resolveRound();
             }
         }, 1500);
     }
 
     private resolveRound() {
-        // Pausa de estado para mostrar ganador
         this.status = 'ROUND_END';
         this.turnUserId = null;
 
@@ -152,36 +151,22 @@ export class DiceRoom {
         if (p1.balance < 0) p1.balance = 0;
         if (p2.balance < 0) p2.balance = 0;
 
-        // Guardar en historial
-        this.history.push({
-            round: this.round,
-            rolls: { ...this.rolls },
-            winnerId
-        });
+        this.history.push({ round: this.round, rolls: { ...this.rolls }, winnerId });
 
-        // Emitir resultado y historial actualizado
-        this.emitState();
+        this.broadcastState();
         this.io.to(this.id).emit('round_result', { winnerId, rolls: this.rolls });
 
-        // Verificar Bancarrota
         const loser = this.players.find(p => p.balance <= 0);
-
-        if (loser) {
-            setTimeout(() => this.finishGame(this.players.find(p => p.userId !== loser.userId)!), 5000);
-        } else {
-            // Esperar 5 SEGUNDOS para ver el cartel
-            setTimeout(() => this.nextRound(), 5000);
-        }
+        if (loser) setTimeout(() => this.finishGame(this.players.find(p => p.userId !== loser.userId)!), 5000);
+        else setTimeout(() => this.nextRound(), 5000);
     }
 
     private nextRound() {
         this.round++;
         this.rolls = {};
         this.status = 'PLAYING';
-        // REGLA: Siempre empieza P1
         this.turnUserId = this.players[0].userId;
-
-        this.emitState();
+        this.broadcastState();
         this.processTurn();
     }
 
@@ -220,17 +205,21 @@ export class DiceRoom {
         if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
     }
 
-    private emitState() {
-        this.io.to(this.id).emit('update_game', {
+    private buildStatePayload() {
+        return {
             status: this.status,
             round: this.round,
             turnUserId: this.turnUserId,
             rolls: this.rolls,
-            history: this.history, // <--- Enviamos historial al front
+            history: this.history,
             players: this.players.map(p => ({
                 userId: p.userId, name: p.username, avatar: p.avatarUrl,
                 balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
             }))
-        });
+        };
+    }
+
+    private broadcastState() {
+        this.io.to(this.id).emit('update_game', this.buildStatePayload());
     }
 }
