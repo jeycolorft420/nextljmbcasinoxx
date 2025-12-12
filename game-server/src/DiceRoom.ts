@@ -199,10 +199,11 @@ export class DiceRoom {
 
         if (loser) {
             const winner = this.players.find(p => p.userId !== loser.userId)!;
-            setTimeout(() => this.finishGame(winner, "SCORE"), 5000);
+            // 6 SEGUNDOS para ver quién ganó la partida final
+            setTimeout(() => this.finishGame(winner, "SCORE"), 6000);
         } else {
-            // Siguiente ronda: Pasamos quién ganó para que empiece él
-            setTimeout(() => this.nextRound(winnerId), 5000);
+            // 6 SEGUNDOS para ver quién ganó la ronda
+            setTimeout(() => this.nextRound(winnerId), 6000);
         }
     }
 
