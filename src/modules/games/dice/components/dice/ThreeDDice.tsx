@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-// ❌ IMPORTANTE: La línea de import css YA NO ESTÁ AQUÍ.
+// ❌ BORRA ESTO: import "./ThreeDDice.css"; <--- ¡ESTA LÍNEA MATA TU APP!
 
 export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 
@@ -10,6 +10,7 @@ interface Props {
     rolling: boolean;
     skin?: DiceSkin;
     size?: number;
+    variant?: number;
 }
 
 const SKIN_COLORS: Record<string, string> = {
