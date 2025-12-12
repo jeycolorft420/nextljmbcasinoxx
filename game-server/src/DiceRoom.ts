@@ -311,6 +311,7 @@ export class DiceRoom {
                 userId: p.userId, name: p.username, avatar: p.avatarUrl,
                 balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
             })),
+            stepValue: this.stepValue,
             timeLeft: this.status === 'PLAYING' ? 30 : 0
         };
     }
