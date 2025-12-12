@@ -1,106 +1,122 @@
 "use client";
 
 import React from "react";
-// CSS removed
-import { Canvas } from "@react-three/fiber";
-import { useGLTF, Float, Stage, PresentationControls } from "@react-three/drei";
-import { useEffect, useState, useRef } from "react";
-import * as THREE from "three";
 
-// Preload de modelos para que no haya flash blanco
-useGLTF.preload("/models/dice-white.glb");
-useGLTF.preload("/models/dice-red.glb");
-useGLTF.preload("/models/dice-black.glb");
-useGLTF.preload("/models/dice-gold.glb");
-useGLTF.preload("/models/dice-blue.glb");
+// Eliminamos dependencias de Three.js que causan el crash
+export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 
-type Props = {
-    face: number;
+interface Props {
+    face: number | null;
     rolling: boolean;
-    skin?: string;    // "white" | "red" | "black" | "gold" | "blue"
-    size?: number;    // Para ajustar el tamaño del canvas
+    skin?: DiceSkin;
+    size?: number;
+}
+
+const SKIN_COLORS: Record<string, string> = {
+    white: "#f8fafc",
+    red: "#ef4444",
+    blue: "#3b82f6",
+    green: "#10b981",
+    yellow: "#f59e0b",
+    purple: "#8b5cf6",
+    black: "#1e293b",
 };
 
-// Mapa de rotaciones para cada cara (ajustar según el modelo 3D exacto)
-const FACE_ROTATIONS: Record<number, [number, number, number]> = {
-    1: [0, 0, 0],            // Cara 1
-    2: [0, 0, -Math.PI / 2], // Cara 2
-    3: [0, -Math.PI / 2, 0], // Cara 3
-    4: [0, Math.PI / 2, 0],  // Cara 4
-    5: [0, 0, Math.PI / 2],  // Cara 5
-    6: [Math.PI, 0, 0],      // Cara 6 (o [0, Math.PI, 0])
-};
-
-// Mapa de modelos
-const SKIN_MODELS: Record<string, string> = {
-    white: "/models/dice-white.glb",
-    red: "/models/dice-red.glb",
-    black: "/models/dice-black.glb",
-    gold: "/models/dice-gold.glb",
-    blue: "/models/dice-blue.glb",
+// Mapa de puntos para dibujar las caras del dado
+const DOTS_MAP: Record<number, number[]> = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
 };
 
 export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props) => {
+    const depth = size / 2;
+    const baseColor = SKIN_COLORS[skin] || SKIN_COLORS.white;
+    const isDark = ["black", "blue", "purple", "red"].includes(skin);
+    const dotColor = isDark ? "white" : "black";
+    const borderColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)";
+
+    // Transformaciones CSS para mostrar la cara correcta
+    const getTransform = (val: number) => {
+        switch (val) {
+            case 1: return 'rotateY(0deg) rotateX(0deg)';
+            case 2: return 'rotateY(-90deg) rotateX(0deg)';
+            case 3: return 'rotateY(0deg) rotateX(-90deg)'; // Ajustado para estandar
+            case 4: return 'rotateY(90deg) rotateX(0deg)';
+            case 5: return 'rotateY(0deg) rotateX(90deg)';
+            case 6: return 'rotateY(180deg) rotateX(0deg)';
+            default: return 'rotateY(0deg)';
+        }
+    };
+
     return (
-        <div style={{ width: size, height: size }} className="relative">
-            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 0, 4], fov: 45 }}>
-                <PresentationControls
-                    speed={1.5}
-                    global
-                    zoom={0.7}
-                    polar={[-0.1, Math.PI / 4]}
-                >
-                    <Stage environment="city" intensity={0.6} contactShadow={false}>
-                        <DiceModel face={face} rolling={rolling} skin={skin} />
-                    </Stage>
-                </PresentationControls>
-            </Canvas>
+        <div className="dice-scene" style={{ width: size, height: size }}>
+            <div
+                className={`dice-cube ${rolling ? "is-rolling" : ""}`}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    position: 'relative',
+                    transformStyle: 'preserve-3d',
+                    transition: 'transform 0.5s ease-out',
+                    transform: rolling
+                        ? `rotateX(${Math.random() * 720}deg) rotateY(${Math.random() * 720}deg)`
+                        : getTransform(face || 1)
+                }}
+            >
+                {/* Caras del dado */}
+                {[
+                    { n: 1, tf: `rotateY(0deg) translateZ(${depth}px)` },
+                    { n: 6, tf: `rotateY(180deg) translateZ(${depth}px)` },
+                    { n: 2, tf: `rotateY(90deg) translateZ(${depth}px)` },
+                    { n: 4, tf: `rotateY(-90deg) translateZ(${depth}px)` },
+                    { n: 3, tf: `rotateX(90deg) translateZ(${depth}px)` },
+                    { n: 5, tf: `rotateX(-90deg) translateZ(${depth}px)` }
+                ].map((side) => (
+                    <div
+                        key={side.n}
+                        style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '100%',
+                            background: baseColor,
+                            border: `1px solid ${borderColor}`,
+                            borderRadius: '12%',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            boxShadow: `inset 0 0 10px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                            transform: side.tf,
+                            backfaceVisibility: 'hidden'
+                        }}
+                    >
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gridTemplateRows: 'repeat(3, 1fr)',
+                            width: '60%',
+                            height: '60%'
+                        }}>
+                            {[...Array(9)].map((_, i) => (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                    {DOTS_MAP[side.n]?.includes(i) && (
+                                        <div style={{
+                                            width: '70%',
+                                            height: '70%',
+                                            borderRadius: '50%',
+                                            backgroundColor: dotColor,
+                                            boxShadow: 'inset 0 0 2px rgba(0,0,0,0.5)'
+                                        }} />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
-};
-
-const DiceModel = ({ face, rolling, skin }: { face: number; rolling: boolean; skin: string }) => {
-    const modelPath = SKIN_MODELS[skin] || SKIN_MODELS["white"];
-    const { scene } = useGLTF(modelPath);
-    const meshRef = useRef<THREE.Group>(null);
-    const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
-
-    // Clonar la escena para evitar que se comparta si hay múltiples dados
-    const clonedScene = React.useMemo(() => scene.clone(), [scene]);
-
-    useEffect(() => {
-        if (rolling) {
-            // Rotación loca
-            const interval = setInterval(() => {
-                setRotation([
-                    Math.random() * Math.PI * 2,
-                    Math.random() * Math.PI * 2,
-                    Math.random() * Math.PI * 2,
-                ]);
-            }, 50);
-            return () => clearInterval(interval);
-        } else {
-            // Ir a la cara final
-            const target = FACE_ROTATIONS[face] || [0, 0, 0];
-            setRotation(target);
-        }
-    }, [rolling, face]);
-
-    // Interpolar rotación suave
-    useEffect(() => {
-        if (meshRef.current) {
-            // En un frame real usaríamos useFrame con lerp, pero aquí simplificamos
-            meshRef.current.rotation.set(rotation[0], rotation[1], rotation[2]);
-        }
-    }, [rotation]);
-
-    // Animar "bamboleo" si está rodando
-    // useFrame((state) => {
-    //   if (rolling && meshRef.current) {
-    //      meshRef.current.rotation.x += 0.2;
-    //      meshRef.current.rotation.y += 0.3;
-    //   }
-    // });
-
-    return <primitive object={clonedScene} ref={meshRef} />;
 };
