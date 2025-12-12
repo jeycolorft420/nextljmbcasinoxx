@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-// import "./ThreeDDice.css"; <--- removed per instructions
+// ❌ BORRA ESTA LÍNEA: import "./ThreeDDice.css"; 
 
 export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 
@@ -23,15 +23,11 @@ const DOTS_MAP: Record<number, number[]> = {
 };
 
 export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props) => {
-    // 1. Calcular profundidad (Radio del cubo)
     const depth = size / 2;
-
-    // 2. Colores
     const baseColor = SKIN_COLORS[skin] || SKIN_COLORS.white;
     const isDark = ["black", "blue", "purple", "red"].includes(skin);
     const dotColor = isDark ? "white" : "black";
 
-    // 3. Rotación Estática (Cuando para)
     const getTransform = (val: number) => {
         switch (val) {
             case 1: return 'rotateY(0deg)';
@@ -49,17 +45,15 @@ export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props)
             <div
                 className={`cube ${rolling ? "is-rolling" : ""}`}
                 style={{
-                    // Variables CSS para el tamaño
-                    ['--depth' as any]: `${depth}px`,
-                    ['--base-color' as any]: baseColor,
-                    // Si rueda, CSS manda. Si para, React manda.
+                    // @ts-ignore
+                    '--depth': `${depth}px`,
+                    '--base-color': baseColor,
                     transform: rolling ? undefined : getTransform(face || 1)
                 }}
             >
                 <div className="cube__inner" style={{ transform: `translateZ(-2px)` }}></div>
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                     <div key={n} className={`cube__face cube__face--${n}`}>
-                        {/* Grid 3x3 para los puntos */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', width: '60%', height: '60%' }}>
                             {[...Array(9)].map((_, i) => (
                                 <div key={i} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
