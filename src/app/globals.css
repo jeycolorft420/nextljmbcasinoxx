@@ -174,4 +174,83 @@ body {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}.scene {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  perspective: 600px;
+}
+
+.cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 1s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.cube__face {
+  position: absolute;
+  /* 🚨 FIX: 102% tapa las líneas blancas de las aristas */
+  width: 102%;
+  height: 102%;
+  left: -1%;
+  top: -1%;
+  background-color: var(--base-color, white);
+  border-radius: 12%;
+  backface-visibility: hidden;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Núcleo oscuro para dar sensación de masa */
+.cube__inner {
+  position: absolute;
+  width: 98%;
+  height: 98%;
+  top: 1%;
+  left: 1%;
+  background: #0f172a;
+  transform: translateZ(1px);
+}
+
+.cube__face--1 {
+  transform: rotateY(0deg) translateZ(var(--depth));
+}
+
+.cube__face--2 {
+  transform: rotateY(90deg) translateZ(var(--depth));
+}
+
+.cube__face--3 {
+  transform: rotateY(180deg) translateZ(var(--depth));
+}
+
+.cube__face--4 {
+  transform: rotateY(-90deg) translateZ(var(--depth));
+}
+
+.cube__face--5 {
+  transform: rotateX(90deg) translateZ(var(--depth));
+}
+
+.cube__face--6 {
+  transform: rotateX(-90deg) translateZ(var(--depth));
+}
+
+@keyframes tumble {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+  }
+
+  100% {
+    transform: rotateX(720deg) rotateY(360deg) rotateZ(360deg);
+  }
+}
+
+.is-rolling {
+  animation: tumble 0.5s linear infinite;
 }

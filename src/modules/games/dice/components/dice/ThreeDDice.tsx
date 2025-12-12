@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import "./ThreeDDice.css";
+// import "./ThreeDDice.css"; <--- removed per instructions
 
 export type DiceSkin = "white" | "red" | "blue" | "green" | "yellow" | "purple" | "black";
 

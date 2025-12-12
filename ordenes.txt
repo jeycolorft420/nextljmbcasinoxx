@@ -1,617 +1,74 @@
-Es evidente que al intentar migrar o mezclar lógicas, se rompió la comunicación entre lo que el servidor "piensa" y lo que el cliente "ve". El código actual del servidor (`DiceRoom.ts` que subiste) tiene una lógica híbrida extraña ("LOCKED", "ready", tiros simultáneos) que choca con la idea de un juego por turnos fluido.
+El error **"Minified React error \#130"** es muy específico: significa que React intentó renderizar un componente, pero recibió `undefined`.
 
-Para arreglar esto **definitivamente** en tu entorno Antigravity, vamos a alinear los dos mundos. Te voy a dar el código "limpio" y simplificado del Backend (para que gestione turnos reales) y, muy importante, el código del Frontend (`DiceBoard.tsx`) para que entienda esa nueva lógica.
+En tu caso, la cadena de errores indica que **`DiceDuel.tsx` está intentando renderizar `<ThreeDDice />`, pero `ThreeDDice` no se está importando correctamente**, probablemente debido a cómo Next.js maneja los archivos CSS en la carpeta `app`.
 
-Copia y pega estos archivos en orden.
+Tienes un problema de **Importación de CSS Global en un Componente**. En Next.js (App Router), **no puedes** importar archivos `.css` normales (como `import "./ThreeDDice.css"`) dentro de un componente. Eso rompe el módulo y hace que el componente sea `undefined` en producción.
 
-### 1\. El Cerebro del Juego (Backend)
+Aquí tienes la solución paso a paso para arreglarlo definitivamente:
 
-Este archivo define las reglas: turnos secuenciales, bots automáticos y robo de saldo. Elimina toda la complejidad innecesaria de "slots" y "ready".
+### PASO 1: Arreglar el CSS de los Dados
 
-**Archivo:** `game-server/src/DiceRoom.ts`
+El archivo `ThreeDDice.css` está causando el conflicto. Vamos a mover sus estilos a un lugar seguro o convertirlo en módulo. La forma más rápida y segura ahora mismo es:
+
+1.  Abre `src/modules/games/dice/components/dice/ThreeDDice.tsx`.
+2.  **BORRA** la línea: `import "./ThreeDDice.css";`
+3.  Guarda el archivo.
+
+Ahora, necesitamos que esos estilos existan. Tienes dos opciones (elige la **Opción A** que es la más rápida):
+
+**Opción A (Rápida):**
+Copia todo el contenido de `src/modules/games/dice/components/dice/ThreeDDice.css` y pégalo al final de tu archivo `src/app/globals.css`.
+
+**Opción B (Limpia - Recomendada si sabes usar CSS Modules):**
+
+1.  Renombra `ThreeDDice.css` a `ThreeDDice.module.css`.
+2.  En `ThreeDDice.tsx`, cambia el import a: `import styles from "./ThreeDDice.module.css";`
+3.  Tendrías que cambiar todos los `className="cube"` por `className={styles.cube}`. **(Si no quieres refactorizar todo el HTML, usa la Opción A)**.
+
+### PASO 2: Verificar Exportaciones
+
+Asegúrate de que no haya una mezcla de versiones antiguas.
+En `src/modules/games/dice/components/dice/ThreeDDice.tsx`, asegúrate de que empieza así:
 
 ```typescript
-import { Server, Socket } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
-// --- CONFIGURACIÓN ---
-const PERCENTAGE_PER_ROUND = 0.20; // 20% de la apuesta total inicial
-const TURN_TIMEOUT = 12000;        // 12 segundos para tirar (humanos)
-
-interface Player {
-    socketId: string;
-    userId: string;
-    username: string;
-    avatarUrl: string;
-    position: 1 | 2;
-    balance: number;     // Saldo en juego (centavos)
-    skin: string;
-    isBot: boolean;
-    connected: boolean;
-}
-
-export class DiceRoom {
-    public id: string;
-    public priceCents: number;
-    public stepValue: number;
-    
-    // Configuración de tiempos
-    public botWaitMs: number;
-    public autoLockAt: Date | null;
-
-    public players: Player[] = [];
-    public status: 'WAITING' | 'PLAYING' | 'FINISHED' = 'WAITING';
-    
-    // Estado de la ronda
-    public round: number = 1;
-    public turnUserId: string | null = null;
-    public rolls: { [userId: string]: [number, number] } = {}; // { "user1": [4, 2] }
-    
-    private io: Server;
-    private timer: NodeJS.Timeout | null = null;
-    private botTimer: NodeJS.Timeout | null = null;
-
-    constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, io: Server) {
-        this.id = roomId;
-        this.priceCents = priceCents;
-        // Calculamos cuánto se roba por ronda (20% de la apuesta de UN jugador)
-        this.stepValue = Math.floor(this.priceCents * PERCENTAGE_PER_ROUND); 
-        this.botWaitMs = botWaitMs;
-        this.autoLockAt = autoLockAt;
-        this.io = io;
-
-        this.initAutoClose();
-    }
-
-    // --- GESTIÓN DE JUGADORES ---
-
-    public addPlayer(socket: Socket, user: any, isBot: boolean = false) {
-        // 1. Reconexión
-        const existing = this.players.find(p => p.userId === user.id);
-        if (existing) {
-            if (!isBot) existing.socketId = socket.id;
-            existing.connected = true;
-            this.emitState();
-            return;
-        }
-
-        if (this.players.length >= 2 || (this.status !== 'WAITING' && !isBot)) return;
-
-        // 2. Nuevo Jugador
-        const position = this.players.some(p => p.position === 1) ? 2 : 1;
-        
-        this.players.push({
-            socketId: isBot ? 'bot' : socket.id,
-            userId: user.id,
-            username: user.name || "Jugador",
-            avatarUrl: user.avatar || "",
-            position,
-            balance: this.priceCents, // Empiezan con su apuesta
-            skin: user.selectedDiceColor || 'white',
-            isBot,
-            connected: true
-        });
-
-        // Ordenar para consistencia visual (P1 siempre izquierda/arriba)
-        this.players.sort((a, b) => a.position - b.position);
-
-        this.emitState();
-
-        // 3. Lógica de Inicio
-        if (this.players.length === 1) {
-            this.scheduleBot();
-        } else if (this.players.length === 2) {
-            this.cancelBot();
-            setTimeout(() => this.startGame(), 1000); // 1s delay para ver al oponente entrar
-        }
-    }
-
-    public removePlayer(socketId: string) {
-        const p = this.players.find(p => p.socketId === socketId);
-        if (!p) return;
-
-        if (this.status === 'WAITING') {
-            // Si no ha empezado, se va del todo
-            this.players = this.players.filter(pl => pl.socketId !== socketId);
-            this.scheduleBot(); // Reiniciar timer de bot si queda solo 1
-        } else {
-            // Si ya empezó, solo desconectado
-            p.connected = false;
-        }
-        this.emitState();
-    }
-
-    // --- LÓGICA DE JUEGO ---
-
-    private startGame() {
-        this.status = 'PLAYING';
-        this.round = 1;
-        this.rolls = {};
-        // Empieza el Jugador 1 (Host)
-        const p1 = this.players.find(p => p.position === 1);
-        this.turnUserId = p1 ? p1.userId : this.players[0].userId;
-        
-        this.emitState();
-        this.processTurn();
-    }
-
-    public handleRoll(userId: string) {
-        if (this.status !== 'PLAYING') return;
-        if (this.turnUserId !== userId) return;
-        if (this.rolls[userId]) return; // Ya tiró
-
-        // Generar Dados
-        const d1 = Math.ceil(Math.random() * 6);
-        const d2 = Math.ceil(Math.random() * 6);
-        this.rolls[userId] = [d1, d2];
-
-        // Emitir Evento de Tiro (Animación)
-        this.io.to(this.id).emit('dice_anim', { userId, result: [d1, d2] });
-        
-        // Siguiente paso
-        this.nextTurnOrResult(userId);
-    }
-
-    private nextTurnOrResult(justRolledId: string) {
-        // Pausa dramática para ver los dados (1.5s)
-        if (this.timer) clearTimeout(this.timer);
-
-        setTimeout(() => {
-            const opponent = this.players.find(p => p.userId !== justRolledId);
-            
-            if (opponent && !this.rolls[opponent.userId]) {
-                // Falta el oponente -> Cambio de Turno
-                this.turnUserId = opponent.userId;
-                this.emitState();
-                this.processTurn();
-            } else {
-                // Ambos tiraron -> Resultado
-                this.resolveRound();
-            }
-        }, 1200); 
-    }
-
-    private resolveRound() {
-        const p1 = this.players[0];
-        const p2 = this.players[1];
-        
-        const sum1 = this.rolls[p1.userId][0] + this.rolls[p1.userId][1];
-        const sum2 = this.rolls[p2.userId][0] + this.rolls[p2.userId][1];
-
-        let winnerId: string | null = null;
-
-        if (sum1 > sum2) {
-            winnerId = p1.userId;
-            p1.balance += this.stepValue;
-            p2.balance -= this.stepValue;
-        } else if (sum2 > sum1) {
-            winnerId = p2.userId;
-            p2.balance += this.stepValue;
-            p1.balance -= this.stepValue;
-        } 
-        // Empate = nadie gana nada
-
-        // Clamp balances
-        if (p1.balance < 0) p1.balance = 0;
-        if (p2.balance < 0) p2.balance = 0;
-
-        // Emitir Resultado
-        this.io.to(this.id).emit('round_result', {
-            winnerId,
-            rolls: this.rolls,
-            balances: { [p1.userId]: p1.balance, [p2.userId]: p2.balance }
-        });
-
-        // Check Game Over
-        const loser = this.players.find(p => p.balance <= 0);
-        if (loser) {
-            const winner = this.players.find(p => p.userId !== loser.userId);
-            setTimeout(() => this.finishGame(winner!), 2000);
-        } else {
-            setTimeout(() => this.startNextRound(), 3000);
-        }
-    }
-
-    private startNextRound() {
-        this.round++;
-        this.rolls = {};
-        // Alternar turno inicial o mantener en P1 (Simplifiquemos: P1 empieza)
-        const p1 = this.players.find(p => p.position === 1);
-        this.turnUserId = p1?.userId || null;
-        
-        this.emitState();
-        this.processTurn();
-    }
-
-    private async finishGame(winner: Player) {
-        this.status = 'FINISHED';
-        this.turnUserId = null;
-        const totalPot = this.players.reduce((a, b) => a + this.priceCents, 0); // Suma de entradas iniciales
-
-        this.io.to(this.id).emit('game_over', { 
-            winnerId: winner.userId,
-            prize: totalPot 
-        });
-        
-        this.emitState();
-
-        // Persistencia
-        try {
-            // 1. Guardar resultado
-            await prisma.gameResult.create({
-                data: {
-                    roomId: this.id,
-                    winnerUserId: winner.userId,
-                    winnerName: winner.username,
-                    prizeCents: totalPot,
-                    roundNumber: this.round
-                }
-            });
-            // 2. Dar dinero
-            await prisma.user.update({
-                where: { id: winner.userId },
-                data: { balanceCents: { increment: totalPot } }
-            });
-            // 3. Cerrar sala
-            await prisma.room.update({
-                where: { id: this.id },
-                data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId }
-            });
-        } catch(e) { console.error("DB Error", e); }
-    }
-
-    // --- UTILIDADES ---
-
-    private processTurn() {
-        if (this.timer) clearTimeout(this.timer);
-        
-        const currentPlayer = this.players.find(p => p.userId === this.turnUserId);
-        if (!currentPlayer) return;
-
-        if (currentPlayer.isBot) {
-            // Bot tira rápido (1-2s)
-            this.timer = setTimeout(() => {
-                this.handleRoll(currentPlayer.userId);
-            }, Math.random() * 1000 + 1000);
-        } else {
-            // Humano tiene tiempo límite
-            this.timer = setTimeout(() => {
-                // Auto-roll si se duerme
-                this.handleRoll(currentPlayer.userId);
-            }, TURN_TIMEOUT);
-        }
-    }
-
-    private scheduleBot() {
-        if (this.botTimer) clearTimeout(this.botTimer);
-        if (this.botWaitMs > 0 && this.players.length === 1) {
-            this.botTimer = setTimeout(() => {
-                this.injectBot();
-            }, this.botWaitMs);
-        }
-    }
-
-    private cancelBot() {
-        if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
-    }
-
-    private async injectBot() {
-        try {
-            const bot = await prisma.user.findFirst({ where: { isBot: true } });
-            if (bot) {
-                this.addPlayer({ id: 'bot-sock' } as any, { // Mock socket
-                    id: bot.id,
-                    name: bot.name || 'Bot',
-                    avatar: bot.avatarUrl,
-                    selectedDiceColor: bot.selectedDiceColor
-                }, true);
-            }
-        } catch(e) {}
-    }
-
-    private initAutoClose() {
-        // Lógica opcional para cerrar sala vacía
-        if (this.autoLockAt) {
-            const diff = this.autoLockAt.getTime() - Date.now();
-            setTimeout(() => {
-                if (this.status === 'WAITING' && this.players.length < 2) {
-                    this.io.to(this.id).emit('room_closed');
-                    // update db...
-                }
-            }, diff);
-        }
-    }
-
-    private emitState() {
-        this.io.to(this.id).emit('update_game', {
-            status: this.status,
-            round: this.round,
-            turnUserId: this.turnUserId,
-            rolls: this.rolls,
-            players: this.players.map(p => ({
-                userId: p.userId,
-                name: p.username,
-                avatar: p.avatarUrl,
-                balance: p.balance,
-                position: p.position,
-                isBot: p.isBot,
-                skin: p.skin,
-                connected: p.connected
-            }))
-        });
-    }
-}
-```
-
-### 2\. El Conector Visual (Frontend)
-
-Este es el archivo que recibe la lógica del servidor y le dice al componente visual (`DiceDuel.tsx`) qué pintar. Reemplaza el contenido de `DiceBoard.tsx` (o donde tengas la lógica de conexión del cliente).
-
-**Archivo:** `src/modules/games/dice/components/dice/DiceBoard.tsx`
-
-```tsx
 "use client";
+import React from "react";
+// import "./ThreeDDice.css"; <--- ¡ESTA LINEA DEBE ESTAR BORRADA!
 
-import { useEffect, useState, useRef } from "react";
-import { io, Socket } from "socket.io-client";
-import { toast } from "sonner";
-import DiceDuel from "../DiceDuel"; // Asegúrate de que la ruta sea correcta
-import { useSession } from "next-auth/react";
-
-// URL de tu Game Server (Ajusta si es diferente en producción)
-const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://localhost:4000";
-
-interface Player {
-  userId: string;
-  name: string;
-  avatar: string;
-  balance: number;
-  position: 1 | 2;
-  isBot: boolean;
-  skin: string;
-}
-
-interface GameState {
-  status: "WAITING" | "PLAYING" | "FINISHED";
-  round: number;
-  turnUserId: string | null;
-  rolls: { [key: string]: [number, number] };
-  players: Player[];
-  winnerId?: string;
-}
-
-export default function DiceBoard({ roomId, user }: { roomId: string; user: any }) {
-  const socketRef = useRef<Socket | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  
-  // Estados visuales locales
-  const [isRolling, setIsRolling] = useState(false);
-  const [animRolls, setAnimRolls] = useState<{ [key: string]: boolean }>({});
-
-  useEffect(() => {
-    // 1. Conexión
-    const socket = io(GAME_SERVER_URL, {
-      transports: ["websocket"],
-      reconnectionAttempts: 5,
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("🔌 Conectado al Game Server");
-      // Unirse a la sala con datos del usuario
-      socket.emit("join_room", { 
-        roomId, 
-        user: { 
-            id: user.id, 
-            name: user.name, 
-            avatar: user.image,
-            selectedDiceColor: user.selectedDiceColor // Si tienes esto en sesión
-        } 
-      });
-    });
-
-    // 2. Escuchar Actualizaciones de Estado
-    socket.on("update_game", (state: GameState) => {
-      console.log("🎮 Update:", state);
-      setGameState(state);
-      
-      // Limpiar animaciones si cambió el turno
-      if (state.turnUserId) {
-         setAnimRolls(prev => ({ ...prev, [state.turnUserId!]: false }));
-      }
-    });
-
-    // 3. Animación de Tiro (Evento específico)
-    socket.on("dice_anim", ({ userId, result }: { userId: string, result: [number, number] }) => {
-      // Activar flag de rodando para ese usuario
-      setAnimRolls(prev => ({ ...prev, [userId]: true }));
-      
-      // Sonido
-      const audio = new Audio("/sfx/dice-roll.mp3");
-      audio.play().catch(() => {});
-
-      // Desactivar animación tras 1s (y el estado update_game traerá el resultado final)
-      setTimeout(() => {
-          setAnimRolls(prev => ({ ...prev, [userId]: false }));
-      }, 1000);
-    });
-
-    socket.on("game_over", ({ winnerId, prize }) => {
-       if (winnerId === user.id) {
-           toast.success(`¡Ganaste $${(prize/100).toFixed(2)}!`);
-           new Audio("/sfx/win.mp3").play().catch(()=>{});
-       } else {
-           toast.error("Has perdido esta vez.");
-       }
-    });
-
-    socket.on("error", (err) => toast.error(err.message));
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [roomId, user]);
-
-  // --- LÓGICA DE RENDERIZADO ---
-
-  if (!gameState) return <div className="text-white text-center mt-20">Cargando sala...</div>;
-
-  const myPos = gameState.players.find(p => p.userId === user.id)?.position || 2;
-  // Ordenamos para que "Yo" (bottom) sea siempre mi usuario, y "Oponente" (top) el otro
-  const me = gameState.players.find(p => p.userId === user.id);
-  const opponent = gameState.players.find(p => p.userId !== user.id);
-
-  // Mapeo para DiceDuel.tsx
-  // Si no hay oponente (esperando), pasamos null/ghost
-  
-  const isMyTurn = gameState.status === 'PLAYING' && gameState.turnUserId === user.id;
-  
-  // Calcular props para componente visual
-  const topRoll = opponent ? gameState.rolls[opponent.userId] : null;
-  const bottomRoll = me ? gameState.rolls[me.userId] : null;
-
-  return (
-    <div className="w-full h-full bg-[#050505] flex flex-col items-center justify-center">
-      <DiceDuel
-        // Datos Oponente (Top)
-        labelTop={opponent?.name || "Esperando..."}
-        balanceTop={opponent ? `$${(opponent.balance / 100).toFixed(2)}` : "---"}
-        diceColorTop={opponent?.skin as any || "white"}
-        topRoll={topRoll}
-        isRollingTop={opponent ? animRolls[opponent.userId] : false}
-        isGhostTop={!opponent} // Mostrar fantasma si no hay nadie
-
-        // Datos Míos (Bottom)
-        labelBottom={me?.name || "Tú"}
-        balanceBottom={me ? `$${(me.balance / 100).toFixed(2)}` : "---"}
-        diceColorBottom={me?.skin as any || "white"}
-        bottomRoll={bottomRoll}
-        isRollingBottom={me ? animRolls[me.userId] : false}
-        isGhostBottom={false}
-
-        // Estado Global
-        statusText={
-            gameState.status === 'WAITING' ? "Esperando Oponente..." :
-            gameState.status === 'FINISHED' ? "Partida Terminada" :
-            isMyTurn ? "¡Tu Turno!" : `Turno de ${opponent?.name || "Rival"}`
-        }
-        
-        // Controles
-        canRoll={isMyTurn && !animRolls[user.id]} // Solo puedo tirar si es mi turno y no estoy ya rodando
-        onRoll={() => {
-            if (socketRef.current && isMyTurn) {
-                socketRef.current.emit("roll_dice", { roomId });
-            }
-        }}
-        
-        // Timer (Opcional, si quieres mostrar cuenta atrás)
-        timeLeft={isMyTurn ? 12 : undefined} 
-        onExit={() => window.location.href = '/rooms'}
-      />
-    </div>
-  );
-}
+// ... resto del código ...
+export const ThreeDDice = ({ face, rolling, skin = "white", size = 100 }: Props) => {
+   // ...
 ```
 
-### 3\. El Router del Servidor (Backend `index.ts`)
+### PASO 3: Limpieza Profunda y Reconstrucción (Obligatorio)
 
-Asegúrate que tu servidor usa el nuevo mapa de seguridad que discutimos para que nadie pueda hackear los turnos.
+Este error se queda "pegado" en la caché de Next.js. Debes ejecutar estos comandos en tu servidor (la terminal negra de Antigravity o SSH):
 
-**Archivo:** `game-server/src/index.ts`
+```bash
+# 1. Detener el servidor actual (Ctrl+C si está corriendo manual, o pm2 stop)
+pm2 stop all
 
-```typescript
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
-import { DiceRoom } from './DiceRoom';
+# 2. Ir a la carpeta del proyecto
+cd /var/www/nextljmbcasinoxx
 
-const prisma = new PrismaClient();
-const app = express();
-app.use(cors());
+# 3. ¡IMPORTANTE! Borrar la caché corrupta
+rm -rf .next
+rm -rf node_modules/.cache
 
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
+# 4. Reconstruir el proyecto limpio
+npm run build
 
-const rooms: { [key: string]: DiceRoom } = {};
-const socketToRoom: { [key: string]: string } = {};
-const socketToUser: { [key: string]: string } = {};
+# 5. Reiniciar el backend de juegos también (por si acaso)
+cd game-server
+npm run build
+cd ..
 
-io.on('connection', (socket) => {
-    
-    socket.on('join_room', async ({ roomId, user }) => {
-        try {
-            // Validar existencia
-            const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
-            if (!dbRoom) {
-                socket.emit('error', { message: 'Sala no existe' });
-                return;
-            }
-
-            // Mapeos
-            socket.join(roomId);
-            socketToRoom[socket.id] = roomId;
-            socketToUser[socket.id] = user.id;
-
-            // Instanciar
-            if (!rooms[roomId]) {
-                rooms[roomId] = new DiceRoom(
-                    roomId, 
-                    Number(dbRoom.priceCents), 
-                    dbRoom.botWaitMs || 0,
-                    dbRoom.autoLockAt || null, 
-                    io
-                );
-            }
-            
-            // Añadir jugador
-            const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-            rooms[roomId].addPlayer(socket, {
-                ...user,
-                // Usamos skin de DB o el que manda el front, preferencia DB
-                selectedDiceColor: dbUser?.selectedDiceColor || user.selectedDiceColor
-            });
-
-        } catch (e) {
-            console.error(e);
-        }
-    });
-
-    socket.on('roll_dice', ({ roomId }) => {
-        const room = rooms[roomId];
-        const userId = socketToUser[socket.id];
-        if (room && userId) {
-            room.handleRoll(userId);
-        }
-    });
-
-    socket.on('disconnect', () => {
-        const roomId = socketToRoom[socket.id];
-        if (roomId && rooms[roomId]) {
-            rooms[roomId].removePlayer(socket.id);
-            // Limpiar si vacía
-            if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') {
-                delete rooms[roomId];
-            }
-        }
-        delete socketToRoom[socket.id];
-        delete socketToUser[socket.id];
-    });
-});
-
-const PORT = process.env.PORT || 4000;
-httpServer.listen(PORT, () => {
-    console.log(`🚀 Game Server Ready on ${PORT}`);
-});
+# 6. Arrancar todo de nuevo
+pm2 restart all
 ```
 
-### ¿Qué soluciona esto?
+### ¿Por qué pasó esto?
 
-1.  **Lógica Clara:** Ahora tienes `WAITING` -\> entra jugador -\> `WAITING` -\> entra bot/jugador -\> `PLAYING`. Sin estados intermedios confusos.
-2.  **Turnos:** `DiceRoom` controla `turnUserId`. Si no es tu turno, `handleRoll` te ignora.
-3.  **Visualización:** El frontend ahora reacciona a `dice_anim` para rodar los dados visualmente, y luego a `update_game` para mostrar el resultado real. Esto recupera la fluidez que sentías perdida.
+Al hacer `git pull` y `npm run build`, Next.js intentó compilar el archivo `ThreeDDice.tsx`. Al encontrar un `import "./ThreeDDice.css"`, el compilador de producción falló silenciosamente o creó un módulo vacío para `ThreeDDice` porque los archivos CSS globales solo se permiten en `layout.tsx`. Cuando `DiceDuel` intenta usar `ThreeDDice`, este es `undefined`, y React explota con el error \#130.
+
+Haciendo el **PASO 1 (Quitar el import CSS)** y el **PASO 3 (Borrar .next)**, tu juego volverá a la vida.
