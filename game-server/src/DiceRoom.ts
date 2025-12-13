@@ -25,7 +25,7 @@ interface RoundHistory {
     rolls: { [userId: string]: [number, number] };
     winnerId: string | null;
     starterId: string | null;
-    isTimeout?: boolean; // Nuevo: Para saber si fue por tiempo
+    isTimeout?: boolean;
 }
 
 export class DiceRoom {
@@ -67,6 +67,7 @@ export class DiceRoom {
             return;
         }
 
+        // Si ya está en memoria, solo reconectar socket
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
             if (!isBot) existing.socketId = socket.id;
@@ -77,22 +78,26 @@ export class DiceRoom {
 
         if (this.status !== 'WAITING' && !isBot) return;
 
-        // Calculamos la posición antes de la transacción para usarla en ambos lados
-        const pos = this.players.some(p => p.position === 1) ? 2 : 1;
+        // Determinar posición (1 o 2) basada en huecos libres en memoria
+        // Si el jugador 1 está ocupado, asignamos el 2, si no el 1.
+        let pos: 1 | 2 = this.players.some(p => p.position === 1) ? 2 : 1;
 
-        // 2. SI ES COMPRA EXPLÍCITA: VERIFICAR Y DESCONTAR SALDO (Atomicidad)
-        if (isBuyAttempt && !isBot) {
+        // 2. LOGICA DE COMPRA / RECUPERACIÓN
+        if (!isBot) {
             try {
-                // Safeguard: Check if already has entry in DB to avoid double charge
+                // Verificar si ya tiene entrada en DB (recuperación tras reinicio)
                 const activeEntry = await prisma.entry.findFirst({
                     where: { roomId: this.id, userId: user.id }
                 });
 
                 if (activeEntry) {
-                    console.log(`[DiceRoom] Usuario ${user.username} ya tenía entrada. Recuperando...`);
-                    // Proceed to add to memory without charging (Recover)
-                } else {
-                    console.log(`[DiceRoom] 💳 Iniciando Transacción Atómica para ${user.username}...`);
+                    console.log(`[DiceRoom] Usuario ${user.username} recuperado (ya pagó).`);
+                    // Usar la posición que dice la DB para evitar conflictos
+                    pos = activeEntry.position as 1 | 2;
+                } else if (isBuyAttempt) {
+                    // COMPRA NUEVA: TRANSACCIÓN ATÓMICA
+                    // Si falla create (por ocupado), falla el cobro.
+                    console.log(`[DiceRoom] 💳 Cobrando a ${user.username} por puesto ${pos}...`);
 
                     const userDb = await prisma.user.findUnique({ where: { id: user.id } });
                     if (!userDb || userDb.balanceCents < this.priceCents) {
@@ -100,8 +105,6 @@ export class DiceRoom {
                         return;
                     }
 
-                    // TRANSACCIÓN: Cobrar y Crear Ticket
-                    // CORRECCIÓN: Eliminado 'status' porque no existe en el schema de Entry
                     await prisma.$transaction([
                         prisma.user.update({
                             where: { id: user.id },
@@ -112,33 +115,40 @@ export class DiceRoom {
                                 roomId: this.id,
                                 userId: user.id,
                                 position: pos
+                                // status: 'ACTIVE' <-- ELIMINADO (Causaba el error)
                             }
                         })
                     ]);
-                    console.log(`[DiceRoom] ✅ Cobro exitoso. Asiento asignado.`);
+                    console.log(`[DiceRoom] ✅ Transacción exitosa.`);
+                } else {
+                    // No tiene entrada y no está intentando comprar
+                    return;
                 }
             } catch (e: any) {
-                console.error("❌ Error en transacción de compra:", e.message);
-                socket.emit('error_msg', { message: 'Error procesando el pago. No se descontó saldo.' });
-                return; // <--- CRÍTICO: Si falla el pago, NO ENTRA.
+                console.error("❌ Error CRÍTICO al añadir jugador:", e.message);
+                socket.emit('error_msg', { message: 'Error al procesar la entrada. Si se descontó saldo, contacte a soporte.' });
+                return; // Si falló la transacción, no añadimos a memoria.
             }
         }
 
-        // 3. ÉXITO (O Re-conexión validada): Agregar a memoria
+        // 3. ÉXITO: Agregar a memoria
         const newPlayer: Player = {
             socketId: isBot ? 'bot' : socket.id,
             userId: user.id,
             username: user.name || "Jugador",
             avatarUrl: user.avatar || "",
-            position: pos, // Usamos la variable calculada arriba
+            position: pos,
             balance: this.priceCents,
             skin: user.selectedDiceColor || user.activeSkin || 'white',
             isBot,
             connected: true
         };
 
-        this.players.push(newPlayer);
-        this.players.sort((a, b) => a.position - b.position);
+        // Evitar duplicados en memoria por race condition
+        if (!this.players.find(p => p.userId === newPlayer.userId)) {
+            this.players.push(newPlayer);
+            this.players.sort((a, b) => a.position - b.position);
+        }
 
         this.broadcastState();
 
@@ -151,24 +161,34 @@ export class DiceRoom {
         }
     }
 
-    public removePlayer(socketId: string) {
-        // NOTE: this logic handles "leaving" while waiting.
-        // If playing, we just mark disconnect. But user asked for a specific logic.
-        // Assuming this method handles the "logic removal" or "disconnect".
-        // The original code filtered only if WAITING.
-
+    public async removePlayer(socketId: string) {
         const p = this.players.find(p => p.socketId === socketId);
         if (!p) return;
 
         if (this.status === 'WAITING') {
+            // Si se va mientras espera, lo sacamos de memoria
             this.players = this.players.filter(pl => pl.socketId !== socketId);
 
+            // IMPORTANTE: Liberar el asiento en la DB para que otro pueda entrar
+            // Si no hacemos esto, el asiento queda "ocupado" en DB y nadie más puede comprarlo.
+            if (!p.isBot) {
+                try {
+                    await prisma.entry.deleteMany({
+                        where: { roomId: this.id, userId: p.userId }
+                    });
+                    console.log(`[DiceRoom] 🗑️ Entrada liberada para ${p.username}`);
+                } catch (e) {
+                    console.error("Error liberando entrada:", e);
+                }
+            }
+
             if (this.players.length === 0) {
-                this.reset(); // Si se van todos, reset total (sin bot)
+                this.reset();
             } else if (this.players.length === 1 && this.status === 'WAITING') {
-                this.scheduleBot(); // Si queda uno solo esperando, llamar al bot
+                this.scheduleBot();
             }
         } else {
+            // Si ya está jugando, solo marcamos desconectado
             p.connected = false;
         }
         this.broadcastState();
@@ -179,7 +199,6 @@ export class DiceRoom {
     }
 
     private startGame() {
-        // Antes de empezar nada, asegúrate de que no haya un zombie corriendo
         this.killGameLoop();
 
         this.status = 'PLAYING';
@@ -187,14 +206,11 @@ export class DiceRoom {
         this.history = [];
         this.rolls = {};
 
-        // P1 (Creador) siempre empieza
         const firstPlayer = this.players.find(p => p.position === 1);
         this.roundStarterId = firstPlayer?.userId || this.players[0].userId;
         this.turnUserId = this.roundStarterId;
 
-        // CAMBIO CRÍTICO: Primero procesamos el turno (reset timer + set expiración)
         this.processTurn();
-        // LUEGO enviamos el estado con el tiempo correcto
         this.broadcastState();
     }
 
@@ -223,11 +239,6 @@ export class DiceRoom {
 
             if (opponent && !this.rolls[opponent.userId]) {
                 this.turnUserId = opponent.userId;
-                // CAMBIO: Asegurar orden correcto también aquí si fuera necesario, 
-                // pero handleRoll -> processTurn es directo.
-                // Sin embargo, processTurn se encarga de definir el tiempo.
-                // El orden aquí estaba: broadcast -> processTurn.
-                // CORRECCIÓN: Primero processTurn, luego broadcast.
                 this.processTurn();
                 this.broadcastState();
             } else {
@@ -236,7 +247,6 @@ export class DiceRoom {
         }, 1500);
     }
 
-    // Lógica cuando se acaba el tiempo de un jugador
     private handleTurnTimeout(userId: string) {
         if (this.status !== 'PLAYING') return;
 
@@ -245,13 +255,8 @@ export class DiceRoom {
 
         if (!loser || !winner) return;
 
-        // Forzamos dados [0,0] para el perdedor para indicar que no tiró
         this.rolls[userId] = [0, 0];
-
-        // Mensaje global
         this.io.to(this.id).emit('error_msg', { message: `⌛ ¡${loser.username} no tiró a tiempo!` });
-
-        // Resolver ronda forzando ganador
         this.finalizeRoundLogic(winner.userId, true);
     }
 
@@ -274,7 +279,6 @@ export class DiceRoom {
         this.turnUserId = null;
         if (this.timer) clearTimeout(this.timer);
 
-        // Actualizar saldos
         if (winnerId) {
             const winner = this.players.find(p => p.userId === winnerId);
             const loser = this.players.find(p => p.userId !== winnerId);
@@ -284,10 +288,8 @@ export class DiceRoom {
             }
         }
 
-        // Evitar negativos
         this.players.forEach(p => { if (p.balance < 0) p.balance = 0; });
 
-        // Guardar historial
         this.history.push({
             round: this.round,
             rolls: JSON.parse(JSON.stringify(this.rolls)),
@@ -298,21 +300,18 @@ export class DiceRoom {
 
         this.broadcastState();
 
-        // Datos para la pantalla de victoria de ronda
         this.io.to(this.id).emit('round_result', {
             winnerId,
             rolls: this.rolls,
             isTimeout
         });
 
-        // Verificar muerte súbita (Bancarrota)
         const bankruptPlayer = this.players.find(p => p.balance <= 0);
 
         if (bankruptPlayer) {
             const gameWinner = this.players.find(p => p.userId !== bankruptPlayer.userId)!;
             setTimeout(() => this.finishGame(gameWinner, "SCORE"), ROUND_TRANSITION_MS);
         } else {
-            // Si nadie murió, seguimos jugando
             setTimeout(() => this.nextRound(winnerId), ROUND_TRANSITION_MS);
         }
     }
@@ -322,7 +321,6 @@ export class DiceRoom {
         this.rolls = {};
         this.status = 'PLAYING';
 
-        // Ganador tira primero, si empate alterna
         if (lastWinnerId) {
             this.turnUserId = lastWinnerId;
         } else {
@@ -332,8 +330,6 @@ export class DiceRoom {
         }
 
         this.roundStarterId = this.turnUserId;
-
-        // CAMBIO CRÍTICO: Primero procesamos el turno, luego enviamos estado.
         this.processTurn();
         this.broadcastState();
     }
@@ -351,7 +347,6 @@ export class DiceRoom {
             reason: reason
         });
 
-        // Asegurar actualización final
         this.broadcastState();
 
         try {
@@ -362,12 +357,10 @@ export class DiceRoom {
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
         } catch (e) { }
 
-        console.log(`[DiceRoom ${this.id}] Partida finalizada. ⏳ Esperando 8s para limpieza automática...`);
+        console.log(`[DiceRoom ${this.id}] Partida finalizada. Reset en 8s.`);
 
         if (this.timer) clearTimeout(this.timer);
-
         this.timer = setTimeout(() => {
-            console.log(`[DiceRoom ${this.id}] ⏰ Tiempo agotado: Ejecutando Auto-Reset.`);
             this.reset();
         }, 8000);
     }
@@ -378,8 +371,6 @@ export class DiceRoom {
         const p = this.players.find(pl => pl.userId === this.turnUserId);
         if (!p) return;
 
-        // DEFINIR EL TIEMPO INMEDIATAMENTE (30s)
-        // Esto asegura que broadcastState siempre tenga el valor futuro correcto
         this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
 
         if (p.isBot) {
@@ -398,9 +389,7 @@ export class DiceRoom {
     }
     private cancelBot() { if (this.botTimer) clearTimeout(this.botTimer); }
     private async injectBot() {
-        // RACE FIX: Verificar si la situación cambió mientras esperábamos la DB
         if (this.players.length !== 1 || this.status !== 'WAITING') return;
-
         const bot = await prisma.user.findFirst({ where: { isBot: true } });
         if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
     }
@@ -414,7 +403,7 @@ export class DiceRoom {
             history: this.history,
             players: this.players.map(p => ({
                 userId: p.userId, name: p.username, avatar: p.avatarUrl,
-                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin, activeSkin: p.skin // Alias for Frontend request
+                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin, activeSkin: p.skin
             })),
             stepValue: this.stepValue,
             timeLeft: this.status === 'PLAYING' ? Math.max(0, Math.ceil((this.turnExpiresAt - Date.now()) / 1000)) : 0
@@ -429,37 +418,16 @@ export class DiceRoom {
         this.killGameLoop();
     }
 
-    // 1. MÉTODO DE LIMPIEZA PROFUNDA (CORTACABEZAS)
     private killGameLoop() {
-        console.log(`[DiceRoom ${this.id}] 🛑 MATANDO procesos anteriores...`);
-
-        if (this.gameLoopInterval) {
-            clearInterval(this.gameLoopInterval);
-            this.gameLoopInterval = null;
-        }
-
-        // Detener temporizador principal (Turnos / Bots jugando)
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
-        }
-
-        // Detener temporizador de búsqueda de bots
-        if (this.botTimer) {
-            clearTimeout(this.botTimer);
-            this.botTimer = null;
-        }
+        if (this.gameLoopInterval) { clearInterval(this.gameLoopInterval); this.gameLoopInterval = null; }
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
     }
 
     public async reset() {
-        console.log(`[DiceRoom ${this.id}] ☢️ EJECUTANDO HARD RESET ☢️`);
-
-        // 1. Matar lógica anterior
+        console.log(`[DiceRoom ${this.id}] ☢️ HARD RESET ☢️`);
         this.killGameLoop();
-        if (this.botTimer) clearTimeout(this.botTimer);
-        this.botTimer = null; // ¡IMPORTANTE!
 
-        // 2. Limpieza de memoria
         this.players = [];
         this.rolls = {};
         this.history = [];
@@ -468,20 +436,13 @@ export class DiceRoom {
         this.turnUserId = null;
         this.roundStarterId = null;
 
-        // 3. Sincronizar DB (Resetear a OPEN y BORRAR PARTICIPANTES)
         try {
-            // CRÍTICO: Borrar las entradas para que index.ts no los deje volver a entrar
             await prisma.entry.deleteMany({ where: { roomId: this.id } });
-
-            await prisma.room.update({
-                where: { id: this.id },
-                data: { state: 'OPEN' }
-            });
+            await prisma.room.update({ where: { id: this.id }, data: { state: 'OPEN' } });
         } catch (e) {
             console.error(`[DiceRoom ${this.id}] DB Reset Error:`, e);
         }
 
-        // 4. Ordenar al Frontend que se limpie
         this.broadcastState();
         this.io.to(this.id).emit('server:room:reset');
         this.io.to(this.id).emit('game:hard_reset');
