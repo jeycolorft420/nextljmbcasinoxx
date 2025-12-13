@@ -193,7 +193,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             {/* UPGRADED WINNER OVERLAY */}
             {revealWinner && (winnerSnapshot || room.winningEntryId) && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 p-4 animate-in fade-in">
-                    <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-[#0a0a0a] p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden min-w-[320px]">
+                    <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-[#0a0a0a] p-8 rounded-[40px] border border-white/10 shadow-2xl relative overflow-hidden min-w-[320px]">
 
                         {/* Background Splatter/Glow */}
                         <div className={`absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${isMe ? "from-emerald-500 via-emerald-900 to-transparent" : "from-amber-500 via-amber-900 to-transparent"}`}></div>
@@ -209,7 +209,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                         {!isMe && <div className="text-xs uppercase tracking-[0.3em] text-white/40 font-bold mb-4">GANADOR</div>}
 
                         {/* Amount Won */}
-                        <div className="flex flex-col items-center bg-white/5 rounded-2xl px-6 py-3 border border-white/5 backdrop-blur-md mt-2">
+                        <div className="flex flex-col items-center bg-white/5 rounded-3xl px-8 py-4 border border-white/5 backdrop-blur-md mt-2 shadow-inner">
                             <span className="text-[10px] uppercase text-white/40 font-bold tracking-widest mb-1">PREMIO TOTAL</span>
                             <span className={`text-4xl font-mono font-black ${isMe ? "text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"}`}>
                                 +${winnerAmount}
