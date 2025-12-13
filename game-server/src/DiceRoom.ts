@@ -49,6 +49,7 @@ export class DiceRoom {
     private timer: NodeJS.Timeout | null = null;
     private botTimer: NodeJS.Timeout | null = null;
     private turnExpiresAt: number = 0;
+    private gameLoopInterval: NodeJS.Timeout | null = null;
 
     constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, io: Server) {
         this.id = roomId;

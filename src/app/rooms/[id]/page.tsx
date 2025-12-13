@@ -335,25 +335,33 @@ export default function RoomPage() {
       toast.info("La sala se ha reiniciado.");
 
       // FORZAR LIMPIEZA VISUAL EXTRAMA
-      setGameState({
-        status: 'WAITING',
-        round: 1,
-        players: [], // Vaciamos explícitamente
-        rolls: {},
-        history: [],
-        timeLeft: 30
-      });
-      // Esto disparará la renderización de DiceBoard sin jugadores
+      setGameState(null);
+      setTimeout(() => {
+        setGameState({
+          status: 'WAITING',
+          round: 1,
+          players: [],
+          rolls: {},
+          history: [],
+          timeLeft: 30
+        });
+      }, 50);
     });
 
     socket.on('game:hard_reset', () => {
-      // Mismo comportamiento que reset
       console.log("nuclear: Recibido HARD RESET. Limpiando tablero...");
-      setGameState(null); // O reiniciar a objeto vacío como arriba, pero null fuerza 'loading' state maybe? 
-      // El usuario pidió: destructivo. Null es destructivo.
-      // Pero arriba en server:room:reset pidió "Vaciamos el array explícitamente" en el objecto.
-      // Voy a usar null para hard_reset para que sea "Reinicio de Fábrica" total.
+      setGameState(null);
       toast.error("La sala se ha reiniciado por completo.");
+      setTimeout(() => {
+        setGameState({
+          status: 'WAITING',
+          round: 1,
+          players: [],
+          rolls: {},
+          history: [],
+          timeLeft: 30
+        });
+      }, 50);
     });
 
     return () => { socket.disconnect(); };
