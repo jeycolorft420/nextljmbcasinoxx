@@ -42,6 +42,9 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   // New State: Result Overlay Delay
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
+  // Strategy: Maintain last known valid rolls in Refs to prevent default [1,1] reset (MOVED UP TO FIX HOOK ERROR)
+  const rollsRef = useRef<{ [key: string]: number[] }>({});
+
   // New Effect: Handle Delayed Result Overlay (3.5s delay for ROUND_END and FINISHED aka "Cartel Prematuro")
   useEffect(() => {
     if (gameState?.status === 'FINISHED' || gameState?.status === 'ROUND_END') {
@@ -172,8 +175,7 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   };
 
   // --- CALCULATE FINAL ROLLS FOR DISPLAY (FIX "1-1" GLITCH) ---
-  // Strategy: Maintain last known valid rolls in Refs to prevent default [1,1] reset
-  const rollsRef = useRef<{ [key: string]: number[] }>({});
+  // Ref: Defined at top level now.
 
   // Sync refs safely
   if (gameState.rolls) {
