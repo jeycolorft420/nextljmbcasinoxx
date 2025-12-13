@@ -38,9 +38,72 @@ export class RouletteRoom {
     }
 
     public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false, requestedPositions: number[] = [], count: number = 1) {
-        // 1. Validar Capacidad en Memoria
+        // 1. RECONEXIÓN / SINCRONIZACIÓN
+        // Buscar todas las entries de este usuario en memoria
+        const existingEntries = this.players.filter(p => p.userId === user.id);
+
+        if (existingEntries.length > 0) {
+            // Usuario ya está en memoria. Actualizar socketId de TODAS sus entries.
+            existingEntries.forEach(p => {
+                if (!isBot) p.socketId = socket.id;
+            });
+
+            // Si NO es intento de compra explícito, terminamos aquí (limerencia de estado).
+            // Si es intento de compra (isBuyAttempt=true), permitimos pasar al bloque de compra para comprar MÁS.
+            if (!isBuyAttempt) {
+                // Emit state solo a este socket para que se sincronice
+                this.emitStateToSocket(socket);
+                return;
+            }
+        } else {
+            // No está en memoria. Verificar si tiene entries en DB (Recuperación tras reinicio)
+            // Solo si NO es bot (los bots no persisten igual en reinicio salvo que queramos)
+            if (!isBot) {
+                try {
+                    const dbEntries = await prisma.entry.findMany({ where: { roomId: this.id, userId: user.id } });
+                    if (dbEntries.length > 0) {
+                        // Recuperar estado desde DB
+                        let recoveredCount = 0;
+                        dbEntries.forEach(dbEntry => {
+                            // Verificar que no esté ya ocupado en memoria por algun error
+                            if (!this.players.some(p => p.position === dbEntry.position)) {
+                                this.players.push({
+                                    socketId: socket.id,
+                                    userId: user.id,
+                                    username: user.name || "Jugador",
+                                    avatarUrl: user.avatar || "",
+                                    position: dbEntry.position,
+                                    isBot: false
+                                });
+                                recoveredCount++;
+                            }
+                        });
+
+                        if (recoveredCount > 0) {
+                            this.notifyLobby();
+                            this.broadcastState();
+                        }
+
+                        // Si no es compra explicita, terminamos
+                        if (!isBuyAttempt) {
+                            this.emitStateToSocket(socket);
+                            return;
+                        }
+                    }
+                } catch (e) { console.error("Error recover entries:", e); }
+            }
+        }
+
+        // --- LÓGICA DE COMPRA ---
+        if (this.status !== 'OPEN' && !isBot) {
+            socket.emit('error_msg', { message: 'La ronda ya comenzó' });
+            return;
+        }
+
+        if (!isBuyAttempt && !isBot) return; // Si solo entró a mirar y no tenía entries previas
+
+        // 2. Determinar Posiciones a Comprar
         const currentTaken = this.players.length;
-        // Si piden posiciones especificas, usar esas. Si no, usar la cantidad solicitada.
         const entriesToCreate = requestedPositions.length > 0 ? requestedPositions.length : count;
 
         if (currentTaken + entriesToCreate > this.capacity) {
@@ -48,18 +111,10 @@ export class RouletteRoom {
             return;
         }
 
-        if (this.status !== 'OPEN' && !isBot) {
-            // Si intenta reconectar y ya compró podría estar ok, pero aqui es compra nueva
-            socket.emit('error_msg', { message: 'La ronda ya comenzó' });
-            return;
-        }
-
-        // 2. Determinar Posiciones
         const positionsToBook: number[] = [];
+        const takenPositions = new Set(this.players.map(p => p.position));
 
         if (requestedPositions.length > 0) {
-            // Verificar disponibilidad exacta
-            const takenPositions = new Set(this.players.map(p => p.position));
             for (const p of requestedPositions) {
                 if (takenPositions.has(p)) {
                     if (!isBot) socket.emit('error_msg', { message: `El puesto ${p} ya está ocupado` });
@@ -68,8 +123,6 @@ export class RouletteRoom {
                 positionsToBook.push(p);
             }
         } else {
-            // Asignar aleatorias/siguientes libres
-            const takenPositions = new Set(this.players.map(p => p.position));
             let assigned = 0;
             for (let i = 1; i <= this.capacity && assigned < entriesToCreate; i++) {
                 if (!takenPositions.has(i)) {
@@ -81,18 +134,10 @@ export class RouletteRoom {
 
         if (positionsToBook.length === 0) return;
 
-        // 3. Procesar Compra en DB
+        // 3. Procesar Transacción
         const totalCost = this.priceCents * positionsToBook.length;
 
         try {
-            // Si es reconexión de alguien que ya pagó, deberíamos saberlo. 
-            // Pero simplificamos: addPlayer con isBuyAttempt=true SIEMPRE cobra.
-            // Para reconexión simple, el frontend debería enviar otro evento o manejarlo distinto,
-            // pero actualmente la arquitectura asume que si entras, compras si no estás en la lista.
-            // MEJORA: Buscar si el usuario ya tiene entries en DB que NO esten en memoria (crash server recover).
-
-            // Para Roulette, permitimos comprar MÁS.
-
             if (!isBot && isBuyAttempt) {
                 const userDb = await prisma.user.findUnique({ where: { id: user.id } });
                 if (!userDb || userDb.balanceCents < totalCost) {
@@ -100,7 +145,6 @@ export class RouletteRoom {
                     return;
                 }
 
-                // Transacción: Cobrar Total y Crear N entries
                 await prisma.$transaction([
                     prisma.user.update({ where: { id: user.id }, data: { balanceCents: { decrement: totalCost } } }),
                     prisma.entry.createMany({
@@ -127,7 +171,7 @@ export class RouletteRoom {
             return;
         }
 
-        // 4. Añadir a Memoria (Multiples entries)
+        // 4. Añadir a Memoria
         positionsToBook.forEach(pos => {
             this.players.push({
                 socketId: isBot ? 'bot' : socket.id,
@@ -143,12 +187,9 @@ export class RouletteRoom {
         this.broadcastState();
 
         // 5. Timer Logic
-        if (this.players.length >= 1 && !this.autoLockAt) { // Si hay alguien (incluso 1er puesto) inicia timer
-            // Solo si es el PRIMER entry de la sala.
-            // Como positionsToBook > 0, si antes length era 0, ahora es > 0.
-            // Ojo: this.players ya tiene los nuevos. 
-            // Si antes this.players.length - positionsToBook.length === 0...
+        if (this.players.length >= 1 && !this.autoLockAt) {
             const previousCount = this.players.length - positionsToBook.length;
+            // Si pasamos de 0 a algo, iniciar timer.
             if (previousCount === 0) this.startCountdown();
         }
 
