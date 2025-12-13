@@ -161,6 +161,10 @@ export default function RoomPage() {
       if (res.ok) {
         toast.success(`Dados: ${skin.toUpperCase()}`);
         updateSession();
+        // Notify server immediately
+        if (socketRef.current && room?.id) {
+          socketRef.current.emit('update_skin', { roomId: room.id, skin });
+        }
       } else {
         const d = await res.json();
         toast.error(d.error || "No se pudo cambiar");

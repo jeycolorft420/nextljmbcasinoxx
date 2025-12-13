@@ -144,6 +144,14 @@ export class DiceRoom {
         this.broadcastState();
     }
 
+    public updateSkin(userId: string, skin: string) {
+        const p = this.players.find(p => p.userId === userId);
+        if (p) {
+            p.skin = skin;
+            this.broadcastState();
+        }
+    }
+
     public handleRoll(userId: string) {
         if (this.status !== 'PLAYING') return;
         if (this.turnUserId !== userId) return;

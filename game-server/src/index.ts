@@ -67,6 +67,12 @@ io.on('connection', (socket) => {
         if (room && userId) room.handleRoll(userId);
     });
 
+    socket.on('update_skin', ({ roomId, skin }) => {
+        const room = rooms[roomId];
+        const userId = socketToUser[socket.id];
+        if (room && userId) room.updateSkin(userId, skin);
+    });
+
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
         if (roomId && rooms[roomId]) {
