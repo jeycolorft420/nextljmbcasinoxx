@@ -371,6 +371,15 @@ export default function RoomPage() {
       setGameState((prev: any) => ({ ...prev, lastRoll: data }));
     });
 
+    socket.on("spin_wheel", (data: any) => {
+      // Forzar estado LOCKED y setear ganador para que RouletteBoard inicie la animación
+      setGameState((prev: any) => ({
+        ...prev,
+        status: 'LOCKED',
+        winningEntryId: data.winnerId // Inyectamos winnerId tempranamente
+      }));
+    });
+
     socket.on("game_over", (data: any) => {
       if (data.winnerId === userId) toast.success(data.reason === 'TIMEOUT' ? "¡Ganaste por tiempo!" : "¡Ganaste!");
       else toast.error(data.reason === 'TIMEOUT' ? "Tiempo agotado" : "Perdiste");

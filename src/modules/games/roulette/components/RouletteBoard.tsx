@@ -61,7 +61,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
     // ANIMACIÓN DE GIRO (Critical Path)
     useEffect(() => {
         if (
-            room.state === "FINISHED" &&
+            (room.state === "FINISHED" || room.state === "LOCKED") &&
             room.winningEntryId
         ) {
             const winnerId = room.winningEntryId as string | null;
