@@ -318,7 +318,7 @@ export default function RoomPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!userId || !room || room.gameType !== 'DICE_DUEL') return;
+    if (!userId || !room || (room.gameType !== 'DICE_DUEL' && room.gameType !== 'ROULETTE')) return;
 
     let url: string | undefined = GAME_SERVER_URL;
     if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
