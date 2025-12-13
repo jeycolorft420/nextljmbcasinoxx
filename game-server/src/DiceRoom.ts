@@ -1,7 +1,17 @@
 import { Server, Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
+import Pusher from 'pusher';
 
 const prisma = new PrismaClient();
+
+// Configuración de Pusher (Debe coincidir con tu .env)
+const pusher = new Pusher({
+    appId: process.env.PUSHER_APP_ID!,
+    key: process.env.PUSHER_KEY!,
+    secret: process.env.PUSHER_SECRET!,
+    cluster: process.env.PUSHER_CLUSTER!,
+    useTLS: true
+});
 
 // --- CONFIGURACIÓN DEL JUEGO ---
 const PERCENTAGE_PER_ROUND = 0.20;
@@ -83,12 +93,15 @@ export class DiceRoom {
 
         let pos: 1 | 2 = this.players.some(p => p.position === 1) ? 2 : 1;
 
-        if (!isBot) {
-            try {
-                const activeEntry = await prisma.entry.findFirst({ where: { roomId: this.id, userId: user.id } });
-                if (activeEntry) {
-                    pos = activeEntry.position as 1 | 2;
-                } else if (isBuyAttempt) {
+        // --- PERSISTENCIA EN BASE DE DATOS (Humanos y Bots) ---
+        try {
+            const activeEntry = await prisma.entry.findFirst({ where: { roomId: this.id, userId: user.id } });
+
+            if (activeEntry) {
+                pos = activeEntry.position as 1 | 2;
+            } else {
+                if (!isBot && isBuyAttempt) {
+                    // Humano comprando
                     const userDb = await prisma.user.findUnique({ where: { id: user.id } });
                     if (!userDb || userDb.balanceCents < this.priceCents) {
                         socket.emit('error_msg', { message: 'Saldo insuficiente' });
@@ -98,15 +111,24 @@ export class DiceRoom {
                         prisma.user.update({ where: { id: user.id }, data: { balanceCents: { decrement: this.priceCents } } }),
                         prisma.entry.create({ data: { roomId: this.id, userId: user.id, position: pos } })
                     ]);
-                } else { return; }
-            } catch (e: any) {
-                socket.emit('error_msg', { message: 'Error procesando entrada.' });
-                return;
+                } else if (isBot) {
+                    // 🤖 BOT: CREAMOS ENTRADA EN DB PARA QUE EL LOBBY LO CUENTE
+                    await prisma.entry.create({
+                        data: { roomId: this.id, userId: user.id, position: pos }
+                    });
+                    DiceRoom.activeBotIds.add(user.id);
+                } else {
+                    // Humano sin ticket y no está comprando
+                    return;
+                }
             }
-        } else {
-            DiceRoom.activeBotIds.add(user.id);
+        } catch (e: any) {
+            console.error("Error addPlayer:", e);
+            if (!isBot) socket.emit('error_msg', { message: 'Error procesando entrada.' });
+            return;
         }
 
+        // --- AÑADIR A MEMORIA ---
         const newPlayer: Player = {
             socketId: isBot ? 'bot' : socket.id,
             userId: user.id,
@@ -125,6 +147,7 @@ export class DiceRoom {
         }
 
         this.broadcastState();
+        this.notifyLobby(); // Actualizar lista de salas en tiempo real
 
         if (this.players.length >= 2) {
             this.cancelBot();
@@ -141,11 +164,17 @@ export class DiceRoom {
 
         if (this.status === 'WAITING') {
             this.players = this.players.filter(pl => pl.socketId !== socketId);
-            if (!p.isBot) {
-                try { await prisma.entry.deleteMany({ where: { roomId: this.id, userId: p.userId } }); } catch (e) { }
-            } else {
+
+            // Eliminar de DB (Sea humano o bot)
+            try {
+                await prisma.entry.deleteMany({ where: { roomId: this.id, userId: p.userId } });
+            } catch (e) { }
+
+            if (p.isBot) {
                 DiceRoom.activeBotIds.delete(p.userId);
             }
+
+            this.notifyLobby(); // Actualizar lobby (restar jugador)
 
             if (this.players.length === 0) {
                 this.reset();
@@ -153,6 +182,8 @@ export class DiceRoom {
                 const survivor = this.players[0];
                 if (survivor.isBot) {
                     this.players = [];
+                    // Borrar al bot también si se queda solo
+                    try { await prisma.entry.deleteMany({ where: { roomId: this.id, userId: survivor.userId } }); } catch (e) { }
                     DiceRoom.activeBotIds.delete(survivor.userId);
                     this.reset();
                 } else {
@@ -165,9 +196,38 @@ export class DiceRoom {
         this.broadcastState();
     }
 
-    // --- NUEVO: MÉTODO PARA RENDIRSE (FORFEIT) ---
+    // --- NUEVO: NOTIFICAR A PUSHER PARA ACTUALIZAR LOBBY ---
+    private async notifyLobby() {
+        try {
+            // Obtenemos el estado real de la DB para ser consistentes
+            const roomDB = await prisma.room.findUnique({
+                where: { id: this.id },
+                include: { entries: true }
+            });
+
+            if (!roomDB) return;
+
+            const taken = roomDB.entries.length;
+
+            // Payload compatible con RoomList.tsx
+            const payload = {
+                id: roomDB.id,
+                title: roomDB.gameType === 'DICE_DUEL' ? 'Sala de Dados' : 'Ruleta',
+                priceCents: Number(roomDB.priceCents),
+                state: roomDB.state,
+                capacity: roomDB.capacity,
+                gameType: roomDB.gameType,
+                slots: { taken, free: roomDB.capacity - taken },
+                autoLockAt: roomDB.autoLockAt ? roomDB.autoLockAt.toISOString() : null
+            };
+
+            await pusher.trigger("public-rooms", "room:update", payload);
+        } catch (e) {
+            console.error("Error notificando a Pusher:", e);
+        }
+    }
+
     public playerForfeit(userId: string) {
-        // Solo si se está jugando o terminando ronda
         if (this.status !== 'PLAYING' && this.status !== 'ROUND_END') return;
 
         const leaver = this.players.find(p => p.userId === userId);
@@ -176,8 +236,6 @@ export class DiceRoom {
         if (winner && leaver) {
             console.log(`[DiceRoom ${this.id}] 🏳️ ${leaver.username} se ha rendido.`);
             this.io.to(this.id).emit('error_msg', { message: `🏳️ ${leaver.username} abandonó la partida.` });
-
-            // Forzar finalización inmediata
             this.finishGame(winner, 'FORFEIT');
         }
     }
@@ -186,7 +244,9 @@ export class DiceRoom {
         if (!this.autoLockAt) {
             const expiration = new Date(Date.now() + this.durationSeconds * 1000);
             this.autoLockAt = expiration;
-            prisma.room.update({ where: { id: this.id }, data: { autoLockAt: expiration } }).catch(console.error);
+            prisma.room.update({ where: { id: this.id }, data: { autoLockAt: expiration } })
+                .then(() => this.notifyLobby()) // Notificar cambio de lock time
+                .catch(console.error);
         }
     }
 
@@ -239,6 +299,13 @@ export class DiceRoom {
     private startGame() {
         this.killGameLoop();
         this.status = 'PLAYING';
+
+        // Actualizar estado DB a LOCKED/PLAYING
+        // Nota: Tu schema usa LOCKED o OPEN. Usualmente al jugar se pone LOCKED.
+        prisma.room.update({ where: { id: this.id }, data: { state: 'LOCKED' } })
+            .then(() => this.notifyLobby())
+            .catch(console.error);
+
         this.round = 1;
         this.history = [];
         this.rolls = {};
@@ -375,7 +442,6 @@ export class DiceRoom {
             reason: reason
         });
 
-        // Enviar estado final para que la UI se actualice a "Juego Terminado"
         this.broadcastState();
 
         try {
@@ -383,7 +449,13 @@ export class DiceRoom {
                 data: { roomId: this.id, winnerUserId: winner.userId, winnerName: winner.username, prizeCents: total, roundNumber: this.round }
             });
             await prisma.user.update({ where: { id: winner.userId }, data: { balanceCents: { increment: total } } });
+
+            // Marcar sala como finalizada
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
+
+            // Notificar que la sala ya no está disponible
+            this.notifyLobby();
+
         } catch (e) { console.error(e); }
 
         console.log(`[DiceRoom ${this.id}] Fin del juego (${reason}). Reset en 5s.`);
@@ -391,7 +463,7 @@ export class DiceRoom {
         if (this.timer) clearTimeout(this.timer);
         this.timer = setTimeout(() => {
             this.reset();
-        }, 5000); // 5 Segundos para que el reset sea más rápido tras rendirse
+        }, 5000);
     }
 
     private buildStatePayload() {
@@ -438,6 +510,8 @@ export class DiceRoom {
         try {
             await prisma.entry.deleteMany({ where: { roomId: this.id } });
             await prisma.room.update({ where: { id: this.id }, data: { state: 'OPEN' } });
+            // Notificar que la sala vuelve a estar OPEN y vacía
+            this.notifyLobby();
         } catch (e) { console.error(`[DiceRoom ${this.id}] DB Reset Error:`, e); }
 
         this.broadcastState();
