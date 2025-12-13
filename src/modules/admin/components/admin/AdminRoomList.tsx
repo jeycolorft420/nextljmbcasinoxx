@@ -59,10 +59,12 @@ export default function AdminRoomList({ gameType }: AdminRoomListProps) {
     };
 
     // --- Suscripción realtime a "private-rooms" (Admin channel) ---
+    // --- Suscripción realtime a "private-rooms" (Admin channel) y "public-rooms" (Game events) ---
     useEffect(() => {
         load();
 
-        const ch = pusherClient.subscribe("private-rooms");
+        const chPrivate = pusherClient.subscribe("private-rooms");
+        const chPublic = pusherClient.subscribe("public-rooms");
 
         const onIndex = (payload: Room[]) => {
             // Filter by gameType
@@ -70,11 +72,28 @@ export default function AdminRoomList({ gameType }: AdminRoomListProps) {
             setData(filtered);
         };
 
-        ch.bind("rooms:index", onIndex);
+        const onUpdate = (updatedRoom: Room) => {
+            if (updatedRoom.gameType !== gameType) return;
+            setData(prev => {
+                const exists = prev.find(r => r.id === updatedRoom.id);
+                if (exists) {
+                    return prev.map(r => r.id === updatedRoom.id ? { ...r, ...updatedRoom } : r);
+                }
+                // Si es nueva (creada dinámicamente) y coincide tipo, agregarla
+                return [updatedRoom, ...prev];
+            });
+        };
+
+        chPrivate.bind("rooms:index", onIndex);
+        chPublic.bind("rooms:index", onIndex); // Admin también escucha index público por si acaso
+        chPublic.bind("room:update", onUpdate); // EVENTO CLAVE: Updates individuales (Players, State)
 
         return () => {
-            try { ch.unbind("rooms:index", onIndex); } catch { }
-            try { pusherClient.unsubscribe("private-rooms"); } catch { }
+            chPrivate.unbind("rooms:index", onIndex);
+            chPublic.unbind("rooms:index", onIndex);
+            chPublic.unbind("room:update", onUpdate);
+            pusherClient.unsubscribe("private-rooms");
+            pusherClient.unsubscribe("public-rooms");
         };
     }, [gameType]);
 
