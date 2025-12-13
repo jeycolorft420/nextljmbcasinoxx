@@ -75,15 +75,16 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             ) {
                 const winnerEntry = room.entries?.find((e) => e.id === winnerId);
 
-                // Fallback local por si el payload viene incompleto
-                const fallbackEntry = !winnerEntry && room.entries
-                    ? room.entries.find(e => e.id === winnerId)
-                    : null;
+                // Try to get position from Entry (Best case) OR from explicit Server Payload via gameMeta (Fallback)
+                let finalPosition = winnerEntry ? winnerEntry.position : -1;
 
-                const finalEntry = winnerEntry || fallbackEntry;
+                if (finalPosition === -1 && (room as any).lastRoll?.winnerPosition) {
+                    finalPosition = (room as any).lastRoll.winnerPosition;
+                    console.log("⚠️ Using Fallback Position from Payload:", finalPosition);
+                }
 
-                if (finalEntry && finalEntry.position > 0) {
-                    const idx = finalEntry.position - 1;
+                if (finalPosition > 0) {
+                    const idx = finalPosition - 1;
                     console.log("🎬 STARTING SPIN to index:", idx);
                     play("spin");
                     setRevealWinner(false);
@@ -91,6 +92,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                     setTargetIndex(idx);
                     setSpinKey((k) => k + 1);
                     autoSpinForWinnerRef.current = winnerId;
+                } else {
+                    console.error("❌ Could not determine winner position for ID:", winnerId);
                 }
             }
         }

@@ -376,7 +376,9 @@ export default function RoomPage() {
       setGameState((prev: any) => ({
         ...prev,
         status: 'LOCKED',
-        winningEntryId: data.winnerId // Inyectamos winnerId tempranamente
+        winningEntryId: data.winnerId, // Inyectamos winnerId tempranamente
+        // Guardamos la posición exacta enviada por el server por robustez
+        lastRoll: { ...prev.lastRoll, winnerPosition: data.winnerPosition }
       }));
     });
 
