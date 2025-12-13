@@ -39,10 +39,14 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
     const [revealWinner, setRevealWinner] = useState(false);
 
     // refs para control de animación y reset
+    // refs para control de animación y reset
     const lastWinnerRef = useRef<string | null>(null);
     const autoSpinForWinnerRef = useRef<string | null>(null);
     const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const spinningRef = useRef(false);
+    // Sound guard
+    const hasPlayedWinSoundRef = useRef(false);
+
     useEffect(() => { spinningRef.current = spinning; }, [spinning]);
 
     // FIX: Snapshot winner to ensure display persistence
@@ -96,6 +100,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                     if (winnerEntry) setWinnerSnapshot(winnerEntry);
 
                     setRevealWinner(false);
+                    hasPlayedWinSoundRef.current = false; // Reset sound guard
                     setSpinning(true);
                     setTargetIndex(idx);
                     setSpinKey((k) => k + 1);
@@ -115,6 +120,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 setTargetIndex(null);
                 lastWinnerRef.current = null;
                 autoSpinForWinnerRef.current = null;
+                hasPlayedWinSoundRef.current = false;
                 if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
             } else {
                 console.log("🛡️ Ignoring reset (Spinning in progress)");
@@ -126,7 +132,11 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
         lastWinnerRef.current = room.winningEntryId ?? null;
         setRevealWinner(true);
         setSpinning(false);
-        play("win");
+
+        if (!hasPlayedWinSoundRef.current) {
+            play("win");
+            hasPlayedWinSoundRef.current = true;
+        }
 
         // 🎉 Efecto Confeti
         const duration = 4000;
@@ -158,8 +168,13 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
 
     // Safe name extraction (Use snapshot if available)
     const winnerName = (winnerSnapshot || room.entries?.find(e => e.user.id === room.winningEntryId))?.user.name || "Jugador";
-    const winnerAmount = room.prizeCents ? (room.prizeCents / 100).toFixed(2) : "0.00";
+
+    // Prize Calculation with Fallback (10x logic)
+    const rawPrize = room.prizeCents || ((room.priceCents || 0) * 10);
+    const winnerAmount = (rawPrize / 100).toFixed(2);
+
     const isMe = email && (winnerSnapshot?.user.email === email || room.winningEntryId && room.entries?.find(e => e.user.id === room.winningEntryId)?.user.email === email);
+
 
     console.log("🎲 Rendering Board:", { revealWinner, winningEntryId: room.winningEntryId, winnerName });
 
@@ -175,29 +190,39 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 soundUrl="/sfx/roulette-spin.mp3"
             />
 
-            {/* CASINO STYLE WINNER OVERLAY (DiceBoard Style) */}
+            {/* UPGRADED WINNER OVERLAY */}
             {revealWinner && (winnerSnapshot || room.winningEntryId) && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md transition-all duration-300 p-4">
-                    <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-black/90 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-xl min-w-[300px]">
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 p-4 animate-in fade-in">
+                    <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-[#0a0a0a] p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden min-w-[320px]">
 
-                        <div className="text-5xl md:text-6xl font-black drop-shadow-2xl mb-4">
-                            🏆
+                        {/* Background Splatter/Glow */}
+                        <div className={`absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${isMe ? "from-emerald-500 via-emerald-900 to-transparent" : "from-amber-500 via-amber-900 to-transparent"}`}></div>
+
+                        <div className="text-6xl md:text-7xl mb-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] animate-bounce-short">
+                            {isMe ? "🏆" : "👑"}
                         </div>
 
-                        <div className={`text-3xl md:text-4xl font-black uppercase mb-4 ${isMe ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {isMe ? "¡GANASTE!" : `GANÓ ${winnerName.toUpperCase()}`}
+                        <div className={`text-3xl md:text-4xl font-black uppercase mb-1 tracking-tight ${isMe ? 'text-transparent bg-clip-text bg-gradient-to-b from-emerald-300 to-emerald-600' : 'text-transparent bg-clip-text bg-gradient-to-b from-amber-200 to-amber-500'}`}>
+                            {isMe ? "¡VICTORIA!" : winnerName}
                         </div>
+
+                        {!isMe && <div className="text-xs uppercase tracking-[0.3em] text-white/40 font-bold mb-4">GANADOR</div>}
 
                         {/* Amount Won */}
-                        <div className={`text-2xl font-mono font-bold ${isMe ? "text-green-400" : "text-yellow-400"}`}>
-                            +{winnerAmount}
+                        <div className="flex flex-col items-center bg-white/5 rounded-2xl px-6 py-3 border border-white/5 backdrop-blur-md mt-2">
+                            <span className="text-[10px] uppercase text-white/40 font-bold tracking-widest mb-1">PREMIO TOTAL</span>
+                            <span className={`text-4xl font-mono font-black ${isMe ? "text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"}`}>
+                                +${winnerAmount}
+                            </span>
                         </div>
 
                         {/* Round Info */}
-                        <div className="mt-6 px-4 py-1 bg-white/10 rounded-full border border-white/5">
-                            <span className="text-xs text-white/60 font-bold uppercase tracking-widest">
-                                ROULETTE
-                            </span>
+                        <div className="mt-6 flex gap-2">
+                            <div className="px-3 py-1 bg-white/5 rounded-full border border-white/5">
+                                <span className="text-[10px] text-white/30 font-bold uppercase tracking-widest">
+                                    ROULETTE
+                                </span>
+                            </div>
                         </div>
 
                     </div>
