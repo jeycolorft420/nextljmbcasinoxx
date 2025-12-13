@@ -95,8 +95,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             }
         }
 
-        // Reset de flags si no está finished
-        if (room.state !== "FINISHED") {
+        // Reset de flags solo si está OPEN (nueva ronda)
+        if (room.state === "OPEN") {
             setRevealWinner(false);
             setTargetIndex(null);
             lastWinnerRef.current = null;
