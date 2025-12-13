@@ -211,8 +211,9 @@ export class RouletteRoom {
     // --- GAME LOOP & BOT LOGIC ---
 
     private startCycle() {
-        console.log(`[Roulette ${this.id}] Starting Cycle. Duration: ${this.totalDurationSeconds}s`);
-        // Regla: Duración total (Time 1)
+        console.log(`[Roulette ${this.id}] 🔄 Starting NEW Cycle.`);
+        console.log(`[Roulette ${this.id}] Config -> Duration: ${this.totalDurationSeconds}s, BotFill: ${this.botFillDurationMs / 1000}s`);
+
         const durationMs = this.totalDurationSeconds * 1000;
         this.autoLockAt = new Date(Date.now() + durationMs);
 
@@ -231,7 +232,10 @@ export class RouletteRoom {
         const lockTime = this.autoLockAt.getTime();
         const timeRemaining = lockTime - now;
 
+        console.log(`[Roulette ${this.id}] ⏱ Schedule Timers. Remaining: ${timeRemaining / 1000}s`);
+
         if (timeRemaining <= 0) {
+            console.log(`[Roulette ${this.id}] ⚠️ Timer Expired! Spinning immediately.`);
             this.spin();
             return;
         }
@@ -241,7 +245,7 @@ export class RouletteRoom {
         this.timer = setTimeout(() => this.spin(), timeRemaining);
 
         // 2. Timer de Bots (Time 2: Fill Phase)
-        if (this.botTimer) clearTimeout(this.botTimer); // Clear any existing bot timer
+        if (this.botTimer) clearTimeout(this.botTimer);
         // Bot Phase Starts at: LockTime - FillDuration
         // Example: Lock at 12:20. FillDuration 5m. Start bots at 12:15.
         // If Now is 12:10, wait 5m. If Now is 12:16, start immediately.
@@ -249,11 +253,17 @@ export class RouletteRoom {
         const botStartTime = lockTime - this.botFillDurationMs;
         const timeUntilBots = botStartTime - now;
 
+        console.log(`[Roulette ${this.id}] 🤖 Bot Phase starts in: ${timeUntilBots / 1000}s`);
+
         if (timeUntilBots > 0) {
             // Wait until phase starts
-            this.botTimer = setTimeout(() => this.startBotFill(), timeUntilBots);
+            this.botTimer = setTimeout(() => {
+                console.log(`[Roulette ${this.id}] 🤖 Starting Bot Fill Phase NOW.`);
+                this.startBotFill();
+            }, timeUntilBots);
         } else {
             // Already in fill phase, start filling immediately logic
+            console.log(`[Roulette ${this.id}] 🤖 Already in Bot Phase. Starting fill.`);
             this.startBotFill();
         }
     }
