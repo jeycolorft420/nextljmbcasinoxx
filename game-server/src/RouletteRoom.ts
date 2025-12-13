@@ -351,7 +351,40 @@ export class RouletteRoom {
         if (this.status !== 'OPEN') return;
         if (this.players.length >= this.capacity) return;
 
-        const botUser = await BotRegistry.getBot();
+        let botUser: any = null;
+
+        // 1. Intentar reusar bot de la DB
+        try {
+            const count = await prisma.user.count({ where: { isBot: true } });
+            if (count > 0) {
+                const skip = Math.floor(Math.random() * count);
+                const existing = await prisma.user.findFirst({
+                    where: { isBot: true },
+                    skip
+                });
+                if (existing) {
+                    botUser = {
+                        id: existing.id,
+                        name: existing.name,
+                        avatar: existing.avatarUrl // Map DB field correctly
+                    };
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching existing bot:", e);
+        }
+
+        // 2. Si no hay bots o falló, usar generator (fallback)
+        if (!botUser) {
+            botUser = BotRegistry.getBot();
+        }
+
+        // Check against active players to avoid duplicate bot in same room (though allowed, looks weird)
+        if (this.players.some(p => p.userId === botUser.id)) {
+            // Retry or abort
+            return;
+        }
+
         // Bot buys 1 seat
         await this.addPlayer(null as any, { id: botUser.id, name: botUser.name, avatar: botUser.avatar }, true, true, [], 1);
     }
@@ -359,6 +392,8 @@ export class RouletteRoom {
     private async fillWithBots(count: number) {
         for (let i = 0; i < count; i++) {
             await this.addBot();
+            // Small delay to prevent hammering DB
+            await new Promise(r => setTimeout(r, 100));
         }
     }
 
@@ -391,10 +426,13 @@ export class RouletteRoom {
         const winner = this.players[winnerIndex];
 
         // Result Animation
-        this.io.to(this.id).emit('spin_wheel', {
+        const payload = {
             winnerId: winner.userId,
             winnerPosition: winner.position
-        });
+        };
+        console.log(`[Roulette ${this.id}] 🎢 SPINNING! Payload:`, payload);
+
+        this.io.to(this.id).emit('spin_wheel', payload);
 
         // Regla 2: Payout Calculation (10x price)
         const prize = this.priceCents * 10;
