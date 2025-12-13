@@ -48,6 +48,7 @@ export class DiceRoom {
     private io: Server;
     private timer: NodeJS.Timeout | null = null;
     private botTimer: NodeJS.Timeout | null = null;
+    private turnExpiresAt: number = 0;
 
     constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, io: Server) {
         this.id = roomId;
@@ -283,7 +284,7 @@ export class DiceRoom {
             const botDelay = Math.random() * 2000 + 1000;
             this.timer = setTimeout(() => this.handleRoll(p.userId), botDelay);
         } else {
-            // TIMEOUT: Solo pierde la ronda
+            this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
             this.timer = setTimeout(() => {
                 this.handleTurnTimeout(p.userId);
             }, TURN_TIMEOUT_MS);
@@ -312,7 +313,7 @@ export class DiceRoom {
                 balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
             })),
             stepValue: this.stepValue,
-            timeLeft: this.status === 'PLAYING' ? 30 : 0
+            timeLeft: this.status === 'PLAYING' ? Math.max(0, Math.ceil((this.turnExpiresAt - Date.now()) / 1000)) : 0
         };
     }
 

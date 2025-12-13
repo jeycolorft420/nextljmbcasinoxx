@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import DiceDuel from "../DiceDuel";
+import confetti from "canvas-confetti";
 
 // Componente para dibujar los dados en el historial (Vectorial puro)
 const HistoryDiceIcon = ({ val }: { val: number }) => {
@@ -25,6 +26,9 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
   const [timeLeft, setTimeLeft] = useState(30);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // FIX: Usar el timeLeft del servidor como base si está disponible
+  const serverTimeLeft = gameState?.timeLeft;
+
   // 1. Efecto de Sonido y Animación de Dados al recibir resultado
   useEffect(() => {
     if (gameState?.lastRoll && gameState.lastRoll.userId) {
@@ -35,11 +39,13 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
     }
   }, [gameState?.lastRoll]);
 
-  // 2. Temporizador Visual
+  // 2. Temporizador Visual (Sincronizado con servidor)
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (gameState?.status === 'PLAYING' && gameState?.turnUserId) {
-      setTimeLeft(30);
+      // Si el servidor nos da un tiempo, lo usamos. Si no, 30.
+      setTimeLeft(serverTimeLeft !== undefined ? serverTimeLeft : 30);
+
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => Math.max(0, prev - 1));
       }, 1000);
@@ -47,7 +53,41 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
       setTimeLeft(0);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [gameState?.turnUserId, gameState?.status, gameState?.round]);
+  }, [gameState?.turnUserId, gameState?.status, gameState?.round, serverTimeLeft]);
+
+  // 3. Efectos de Victoria (Sonido + Confetti)
+  useEffect(() => {
+    if (gameState?.status === 'FINISHED') {
+      const iWon = gameState.players.find((p: any) => p.userId === userId)?.balance > 0;
+      if (iWon) {
+        const audio = new Audio("/sfx/win.mp3"); // Asumiendo que existe o usar dice-roll fallback
+        audio.catch(() => new Audio("/sfx/dice-roll.mp3")); // Fallback
+        audio.play().catch(() => { });
+
+        const duration = 3000;
+        const end = Date.now() + duration;
+        const frame = () => {
+          confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: ['#10b981', '#ffffff'] // Emerald & White
+          });
+          confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: ['#10b981', '#ffffff']
+          });
+          if (Date.now() < end) requestAnimationFrame(frame);
+        };
+        frame();
+      }
+    }
+  }, [gameState?.status, userId]);
+
 
   if (!gameState) return <div className="min-h-[400px] flex items-center justify-center text-emerald-500 font-mono animate-pulse">CONECTANDO...</div>;
 
@@ -68,7 +108,7 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
     const myRoll = lastRound?.rolls[userId] || [0, 0];
     const oppRoll = Object.values(lastRound?.rolls || {}).find((r: any) => JSON.stringify(r) !== JSON.stringify(myRoll)) as number[] || [0, 0];
 
-    // Cálculo de montos (aprox si no viene del backend, pero ahora debería venir)
+    // Cálculo de montos
     const amount = (gameState.stepValue / 100).toFixed(2);
 
     borderColor = isWinner ? "border-green-500/50" : isTie ? "border-yellow-500/50" : "border-red-500/50";
@@ -134,7 +174,7 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
         relative w-full h-full flex flex-col items-center justify-center overflow-hidden border transition-all duration-500
         /* Mobile Specific Styling */
         bg-slate-900/50 rounded-xl shadow-lg border-white/10
-        /* Desktop Styling */
+        /* Desktop Styling - FIX: Reduced height from 700px default (DiceDuel handles it) */
         md:bg-[#050505] md:rounded-3xl md:shadow-2xl md:border-white/5
     `}>
 
@@ -162,18 +202,12 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
       <div className={`flex flex-col md:flex-row w-full h-full z-10 ${borderColor}`}>
 
         {/* A. HISTORIAL LATERAL (Solo Desktop - Vertical corregido) */}
-        {/* FIX: Width fijo, Overflow hidden, Padding bottom para evitar overlap con label */}
+        {/* FIX: Width fijo, Overflow hidden, Padding bottom EXTENDIDO para evitar overlap con label */}
         <div className="hidden md:flex flex-col w-24 max-w-[96px] bg-black/30 border-r border-white/5 backdrop-blur-md relative overflow-hidden">
           <div className="h-full w-full overflow-hidden relative">
-            <div className="absolute inset-x-0 bottom-0 top-0 overflow-y-auto custom-scrollbar flex flex-col-reverse p-2 gap-3 pb-24">
-              {/* Item de Historial - Limitado a 10 items */}
+            {/* FIX: Added pb-32 to give ample space for the label */}
+            <div className="absolute inset-x-0 bottom-0 top-0 overflow-y-auto no-scrollbar flex flex-col-reverse p-2 gap-3 pb-32">
               {[...gameState.history].reverse().slice(0, 10).map((h: any, i: number) => {
-                // Nota: Como usamos flex-col-reverse, el orden visual es correcto si mapeamos el reverse().slice()
-                // Pero flex-col-reverse pone los items al fondo.
-                // Mejor usamos flex-col normal y ponemos los nuevos arriba?
-                // El usuario pidió "Historial de tiradas expande infinitamente".
-                // Vamos a usar flex-col normal y mostrar los ultimos arriba.
-
                 const iWon = h.winnerId === userId;
                 const isTie = !h.winnerId;
                 const myRoll = h.rolls[userId] || [0, 0];
@@ -201,7 +235,6 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
           </div>
 
           {/* Etiqueta "HISTORIAL" Vertical */}
-          {/* FIX: Padding extra around label area to ensure no overlap */}
           <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black via-black/80 to-transparent flex items-end justify-center pb-6 pointer-events-none">
             <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.3em] select-none" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               HISTORIAL
@@ -221,8 +254,8 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
               isRollingTop={opponent ? animRolls[opponent.userId] : false}
               isGhostTop={!opponent}
 
-              // Configuración Visual Propia
-              labelBottom={me?.name || "Tú"}
+              // Configuración Visual Propia - FIX: Label (Tú)
+              labelBottom={me ? `${me.name} (Tú)` : "Tú"}
               balanceBottom={me ? `$${(me.balance / 100).toFixed(2)}` : "---"}
               diceColorBottom={me?.skin || "blue"}
               bottomRoll={me ? gameState.rolls[me.userId] : null}
@@ -262,7 +295,8 @@ export const DiceHistory = ({ room }: { room: any }) => {
   if (!history.length) return <div className="p-4 text-center opacity-30 text-xs text-white">Sin historial</div>;
 
   return (
-    <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+    // FIX: no-scrollbar added
+    <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto no-scrollbar p-1">
       {[...history].reverse().slice(0, 15).map((h: any, i: number) => {
         const winnerName = players.find((p: any) => p.userId === h.winnerId)?.name?.substring(0, 10) || "EMPATE";
         const isTie = !h.winnerId;
