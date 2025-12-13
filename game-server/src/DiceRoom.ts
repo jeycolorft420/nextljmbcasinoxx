@@ -342,31 +342,31 @@ export class DiceRoom {
     }
 
     public reset() {
-        console.log("[DiceRoom " + this.id + "] EJECUTANDO RESET (Desalojando asientos)...");
+        console.log(`[DiceRoom ${this.id}] EJECUTANDO RESET NUCLEAR.`);
 
-        // Limpiar timers
-        if (this.timer) clearTimeout(this.timer);
-        if (this.botTimer) clearTimeout(this.botTimer);
+        // 1. Matar timers
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
 
-        // CRÍTICO: Vaciar array de jugadores (esto los levanta de la mesa)
-        this.players = [];
-
-        // Resetear variables de juego
+        // 2. VACIAR MEMORIA (Lo más importante)
+        this.players = []; // Array vacío = Nadie sentado
         this.rolls = {};
         this.history = [];
         this.round = 1;
         this.turnUserId = null;
         this.roundStarterId = null;
         this.status = 'WAITING';
+        // this.winner = null; // (Note: Property winner does not exist on class, skipping to avoid error)
 
-        // Notificar a todos que la sala está nueva y vacía
-        // Esto hará que el frontend muestre la pantalla de "Comprar Sitio"
+        // 3. Forzar actualización de estado INMEDIATA
+        // Enviamos el estado limpio para que el frontend redibuje una mesa vacía
         this.broadcastState();
 
-        // Emitir evento explícito de reset por si el frontend necesita limpiar estados locales
+        // 4. Emitir señal específica de reset
         this.io.to(this.id).emit('server:room:reset');
 
-        // Reiniciar ciclo de búsqueda de bots
+        // 5. Reiniciar bucle de bots (si aplica)
         this.scheduleBot();
     }
 }
+```
