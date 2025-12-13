@@ -45,9 +45,10 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
     const spinningRef = useRef(false);
     useEffect(() => { spinningRef.current = spinning; }, [spinning]);
 
-    const displayedWinningEntryId = revealWinner ? room.winningEntryId ?? null : null;
-    // Find winner by USER ID because spin_wheel event sends userId as winnerId
-    const winnerEntry = room.entries?.find(e => e.user.id === room.winningEntryId);
+    // FIX: Snapshot winner to ensure display persistence
+    const [winnerSnapshot, setWinnerSnapshot] = useState<Entry | null>(null);
+
+    const displayedWinningEntryId = revealWinner ? (winnerSnapshot?.user.id ?? room.winningEntryId ?? null) : null;
 
     // segmentos ruleta
     const segments = useMemo(() => {
@@ -90,7 +91,10 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 if (finalPosition > 0) {
                     const idx = finalPosition - 1;
                     console.log("🎬 STARTING SPIN to index:", idx);
-                    // play("spin"); // Start sound handled by RouletteWheel via soundUrl
+
+                    // SNAPSHOT WINNER DATA
+                    if (winnerEntry) setWinnerSnapshot(winnerEntry);
+
                     setRevealWinner(false);
                     setSpinning(true);
                     setTargetIndex(idx);
@@ -107,6 +111,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             if (!spinningRef.current) {
                 console.log("🔄 Resetting Board (State is OPEN and not spinning)");
                 setRevealWinner(false);
+                setWinnerSnapshot(null); // Clear snapshot
                 setTargetIndex(null);
                 lastWinnerRef.current = null;
                 autoSpinForWinnerRef.current = null;
@@ -151,8 +156,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
         if (onSpinEnd) onSpinEnd();
     };
 
-    // Safe name extraction
-    const winnerName = winnerEntry?.user.name || "Jugador";
+    // Safe name extraction (Use snapshot if available)
+    const winnerName = (winnerSnapshot || room.entries?.find(e => e.user.id === room.winningEntryId))?.user.name || "Jugador";
     console.log("🎲 Rendering Board:", { revealWinner, winningEntryId: room.winningEntryId, winnerName });
 
     return (
@@ -168,8 +173,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             />
 
             {/* PROFESSIONAL WINNER OVERLAY (TEXT ONLY) */}
-            {revealWinner && room.winningEntryId && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+            {revealWinner && (winnerSnapshot || room.winningEntryId) && (
+                <div className="absolute inset-0 z-[100] flex items-center justify-center pointer-events-none">
                     <div className="relative animate-in zoom-in fade-in duration-500 fill-mode-forwards filter drop-shadow-2xl">
 
                         {/* Glow Effect Background */}
