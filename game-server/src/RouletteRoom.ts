@@ -18,27 +18,37 @@ export class RouletteRoom {
     public capacity: number;
     public status: 'OPEN' | 'LOCKED' | 'FINISHED' = 'OPEN';
     public autoLockAt: Date | null;
+    public totalDurationSeconds: number;
+    public botFillDurationMs: number;
+    private botTimer: NodeJS.Timeout | null = null;
 
     // Almacenamos jugadores en memoria para velocidad
     public players: any[] = [];
     private io: Server;
     private timer: NodeJS.Timeout | null = null;
 
-    constructor(roomId: string, priceCents: number, capacity: number, autoLockAt: Date | null, io: Server) {
+    constructor(roomId: string, priceCents: number, capacity: number, autoLockAt: Date | null, durationSeconds: number, botFillDurationMs: number, io: Server) {
         this.id = roomId;
         this.priceCents = priceCents;
         this.capacity = capacity;
         this.autoLockAt = autoLockAt;
+        this.totalDurationSeconds = durationSeconds;
+        this.botFillDurationMs = botFillDurationMs;
         this.io = io;
 
-        // Si la sala se reinicia y ya tenía fecha de cierre, programar el giro
-        if (this.autoLockAt && this.autoLockAt.getTime() > Date.now()) {
-            this.scheduleSpin();
+        // Si la sala reinicia y tiene fecha, reprogramamos todo.
+        // Si no tiene fecha (null), iniciamos ciclo si está OPEN.
+        if (this.status === 'OPEN') {
+            if (this.autoLockAt && this.autoLockAt.getTime() > Date.now()) {
+                this.scheduleTimers();
+            } else if (!this.autoLockAt) {
+                this.startCycle();
+            }
         }
     }
 
     public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false, requestedPositions: number[] = [], count: number = 1) {
-        // 1. RECONEXIÓN / SINCRONIZACIÓN
+        // --- 1. RECOVERY / REJOIN LOGIC (Existing) ---
         // Buscar todas las entries de este usuario en memoria
         const existingEntries = this.players.filter(p => p.userId === user.id);
 
@@ -79,22 +89,16 @@ export class RouletteRoom {
                             }
                         });
 
-                        if (recoveredCount > 0) {
-                            this.notifyLobby();
-                            this.broadcastState();
-                        }
+                        if (recoveredCount > 0) { this.notifyLobby(); this.broadcastState(); }
 
                         // Si no es compra explicita, terminamos
-                        if (!isBuyAttempt) {
-                            this.emitStateToSocket(socket);
-                            return;
-                        }
+                        if (!isBuyAttempt) { this.emitStateToSocket(socket); return; }
                     }
                 } catch (e) { console.error("Error recover entries:", e); }
             }
         }
 
-        // --- LÓGICA DE COMPRA ---
+        // --- 2. BUY LOGIC ---
         if (this.status !== 'OPEN' && !isBot) {
             socket.emit('error_msg', { message: 'La ronda ya comenzó' });
             return;
@@ -102,9 +106,15 @@ export class RouletteRoom {
 
         if (!isBuyAttempt && !isBot) return; // Si solo entró a mirar y no tenía entries previas
 
-        // 2. Determinar Posiciones a Comprar
+        // MAX SEATS CHECK (Regla 1: Max 9 puestos por usuario)
         const currentTaken = this.players.length;
         const entriesToCreate = requestedPositions.length > 0 ? requestedPositions.length : count;
+        const userCurrentSeats = this.players.filter(p => p.userId === user.id).length;
+
+        if (!isBot && (userCurrentSeats + entriesToCreate > 9)) {
+            socket.emit('error_msg', { message: 'Máximo 9 puestos por usuario.' });
+            return;
+        }
 
         if (currentTaken + entriesToCreate > this.capacity) {
             if (!isBot) socket.emit('error_msg', { message: 'No hay suficientes puestos' });
@@ -134,9 +144,8 @@ export class RouletteRoom {
 
         if (positionsToBook.length === 0) return;
 
-        // 3. Procesar Transacción
+        // EXECUTE TRANSACTION
         const totalCost = this.priceCents * positionsToBook.length;
-
         try {
             if (!isBot && isBuyAttempt) {
                 const userDb = await prisma.user.findUnique({ where: { id: user.id } });
@@ -144,24 +153,15 @@ export class RouletteRoom {
                     socket.emit('error_msg', { message: 'Saldo insuficiente' });
                     return;
                 }
-
                 await prisma.$transaction([
                     prisma.user.update({ where: { id: user.id }, data: { balanceCents: { decrement: totalCost } } }),
                     prisma.entry.createMany({
-                        data: positionsToBook.map(pos => ({
-                            roomId: this.id,
-                            userId: user.id,
-                            position: pos
-                        }))
+                        data: positionsToBook.map(pos => ({ roomId: this.id, userId: user.id, position: pos }))
                     })
                 ]);
             } else if (isBot) {
                 await prisma.entry.createMany({
-                    data: positionsToBook.map(pos => ({
-                        roomId: this.id,
-                        userId: user.id,
-                        position: pos
-                    }))
+                    data: positionsToBook.map(pos => ({ roomId: this.id, userId: user.id, position: pos }))
                 });
                 BotRegistry.add(user.id);
             }
@@ -171,7 +171,7 @@ export class RouletteRoom {
             return;
         }
 
-        // 4. Añadir a Memoria
+        // UPDATE MEMORY
         positionsToBook.forEach(pos => {
             this.players.push({
                 socketId: isBot ? 'bot' : socket.id,
@@ -186,15 +186,9 @@ export class RouletteRoom {
         this.notifyLobby();
         this.broadcastState();
 
-        // 5. Timer Logic
-        if (this.players.length >= 1 && !this.autoLockAt) {
-            const previousCount = this.players.length - positionsToBook.length;
-            // Si pasamos de 0 a algo, iniciar timer.
-            if (previousCount === 0) this.startCountdown();
-        }
-
+        // AUTO-SPIN CHECK (Regla 4: Girar si se llena)
         if (this.players.length >= this.capacity) {
-            this.shortenTimer();
+            this.spin();
         }
     }
 
@@ -214,69 +208,138 @@ export class RouletteRoom {
         */
     }
 
-    // --- LOGICA DEL JUEGO ---
+    // --- GAME LOOP & BOT LOGIC ---
 
-    private startCountdown() {
-        // 60 segundos desde el primer jugador
-        const seconds = 60;
-        this.autoLockAt = new Date(Date.now() + seconds * 1000);
+    private startCycle() {
+        // Regla: Duración total (Time 1)
+        const durationMs = this.totalDurationSeconds * 1000;
+        this.autoLockAt = new Date(Date.now() + durationMs);
 
+        // Actualizar DB
         prisma.room.update({ where: { id: this.id }, data: { autoLockAt: this.autoLockAt } })
             .then(() => {
                 this.notifyLobby();
-                this.scheduleSpin();
+                this.scheduleTimers();
             })
             .catch(console.error);
     }
 
-    private shortenTimer() {
-        // Si se llena, reducir tiempo a 10s si faltaba más
+    private scheduleTimers() {
         if (!this.autoLockAt) return;
-        const remaining = this.autoLockAt.getTime() - Date.now();
-        if (remaining > 10000) {
-            this.autoLockAt = new Date(Date.now() + 10000);
-            prisma.room.update({ where: { id: this.id }, data: { autoLockAt: this.autoLockAt } })
-                .then(() => {
-                    this.notifyLobby();
-                    this.scheduleSpin();
-                });
+        const now = Date.now();
+        const lockTime = this.autoLockAt.getTime();
+        const timeRemaining = lockTime - now;
+
+        if (timeRemaining <= 0) {
+            this.spin();
+            return;
+        }
+
+        // 1. Timer de Giro (Hard Lock)
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.spin(), timeRemaining);
+
+        // 2. Timer de Bots (Time 2: Fill Phase)
+        if (this.botTimer) clearTimeout(this.botTimer); // Clear any existing bot timer
+        // Bot Phase Starts at: LockTime - FillDuration
+        // Example: Lock at 12:20. FillDuration 5m. Start bots at 12:15.
+        // If Now is 12:10, wait 5m. If Now is 12:16, start immediately.
+
+        const botStartTime = lockTime - this.botFillDurationMs;
+        const timeUntilBots = botStartTime - now;
+
+        if (timeUntilBots > 0) {
+            // Wait until phase starts
+            this.botTimer = setTimeout(() => this.startBotFill(), timeUntilBots);
+        } else {
+            // Already in fill phase, start filling immediately logic
+            this.startBotFill();
         }
     }
 
-    private scheduleSpin() {
-        if (this.timer) clearTimeout(this.timer);
+    private startBotFill() {
+        // Logica recursiva para llenar:
+        // Calcular cuantos faltan y cuanto tiempo queda.
+        // Programar siguiente bot.
+        if (this.status !== 'OPEN') return;
         if (!this.autoLockAt) return;
 
-        const delay = Math.max(0, this.autoLockAt.getTime() - Date.now());
-        console.log(`[Roulette ${this.id}] Girando en ${delay / 1000}s`);
+        const now = Date.now();
+        const timeRemaining = this.autoLockAt.getTime() - now;
+        const slotsNeeded = this.capacity - this.players.length;
 
-        this.timer = setTimeout(() => this.spin(), delay);
+        if (slotsNeeded <= 0) return; // Full
+        if (timeRemaining <= 1000) {
+            // Panic mode: fill all immediately just before spin
+            this.fillWithBots(slotsNeeded);
+            return;
+        }
+
+        // Distribuir bots en el tiempo restante
+        // Interval = TimeRemaining / SlotsNeeded
+        // Pero añadimos algo de aleatoriedad
+        const interval = timeRemaining / slotsNeeded;
+        // Schedule next bot
+        this.botTimer = setTimeout(() => {
+            this.addBot();
+            this.startBotFill(); // Recurse
+        }, interval * 0.9); // 90% del intervalo para asegurar que den todos
+    }
+
+    private async addBot() {
+        if (this.status !== 'OPEN') return;
+        if (this.players.length >= this.capacity) return;
+
+        const botUser = await BotRegistry.getBot();
+        // Bot buys 1 seat
+        await this.addPlayer(null as any, { id: botUser.id, name: botUser.name, avatar: botUser.avatar }, true, true, [], 1);
+    }
+
+    private async fillWithBots(count: number) {
+        for (let i = 0; i < count; i++) {
+            await this.addBot();
+        }
+    }
+
+    // --- GAME CONTROL ---
+
+    private scheduleSpin() {
+        // Legacy wrapper, now logic is in scheduleTimers
+    }
+    private shortenTimer() {
+        // Legacy: Auto-spin check is now instant in addPlayer
+    }
+    private startCountdown() {
+        // Legacy: Using fixed startCycle now
     }
 
     private async spin() {
+        if (this.status !== 'OPEN') return; // Prevent double spin
         if (this.players.length === 0) {
             this.reset();
             return;
         }
 
         this.status = 'LOCKED';
+        if (this.timer) clearTimeout(this.timer);
+        if (this.botTimer) clearTimeout(this.botTimer);
+
         this.notifyLobby();
 
-        // Elegir ganador aleatorio
         const winnerIndex = Math.floor(Math.random() * this.players.length);
         const winner = this.players[winnerIndex];
 
-        // Calcular premio total
-        const totalPot = this.players.length * this.priceCents;
-
-        // Notificar frontend para animación
+        // Result Animation
         this.io.to(this.id).emit('spin_wheel', {
             winnerId: winner.userId,
             winnerPosition: winner.position
         });
 
-        // Esperar animación (ej: 8 segundos) y finalizar
-        setTimeout(() => this.finishGame(winner, totalPot), 8000);
+        // Regla 2: Payout Calculation (10x price)
+        const prize = this.priceCents * 10;
+
+        // Wait animation
+        setTimeout(() => this.finishGame(winner, prize), 8000);
     }
 
     private async finishGame(winner: any, prize: number) {
@@ -284,19 +347,16 @@ export class RouletteRoom {
 
         try {
             await prisma.$transaction([
-                // Pagar al ganador
                 prisma.user.update({ where: { id: winner.userId }, data: { balanceCents: { increment: prize } } }),
-                // Registrar resultado
                 prisma.gameResult.create({
                     data: {
                         roomId: this.id,
                         winnerUserId: winner.userId,
                         winnerName: winner.username,
                         prizeCents: prize,
-                        roundNumber: 1 // Ruleta suele ser 1 ronda
+                        roundNumber: 1
                     }
                 }),
-                // Marcar sala
                 prisma.room.update({
                     where: { id: this.id },
                     data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId }
@@ -307,7 +367,7 @@ export class RouletteRoom {
         this.io.to(this.id).emit('game_over', { winnerId: winner.userId, prize });
         this.notifyLobby();
 
-        // Reset automático
+        // Regla 5: Auto-Loop immediately (wait 10s then reset)
         setTimeout(() => this.reset(), 10000);
     }
 
@@ -323,11 +383,14 @@ export class RouletteRoom {
 
         try {
             await prisma.entry.deleteMany({ where: { roomId: this.id } });
-            await prisma.room.update({ where: { id: this.id }, data: { state: 'OPEN', autoLockAt: null, finishedAt: null } });
+            await prisma.room.update({ where: { id: this.id }, data: { state: 'OPEN', autoLockAt: null, finishedAt: null, winningEntryId: null } });
         } catch (e) { console.error(e); }
 
         this.notifyLobby();
         this.io.to(this.id).emit('server:room:reset');
+
+        // RESTART CYCLE
+        this.startCycle();
     }
 
     // --- UTILS ---

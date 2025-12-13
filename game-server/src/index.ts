@@ -92,7 +92,15 @@ io.on('connection', (socket) => {
             const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
             if (dbRoom) {
                 if (dbRoom.gameType === 'ROULETTE') {
-                    room = new RouletteRoom(roomId, Number(dbRoom.priceCents), dbRoom.capacity, dbRoom.autoLockAt, io);
+                    room = new RouletteRoom(
+                        roomId,
+                        Number(dbRoom.priceCents),
+                        dbRoom.capacity,
+                        dbRoom.autoLockAt,
+                        dbRoom.durationSeconds || 1200, // 20 min default
+                        dbRoom.botWaitMs || 300000,    // 5 min default (Phase 2 duration)
+                        io
+                    );
                 } else {
                     room = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt, dbRoom.durationSeconds || 600, io);
                 }
