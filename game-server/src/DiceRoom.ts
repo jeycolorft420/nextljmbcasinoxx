@@ -77,6 +77,9 @@ export class DiceRoom {
 
         if (this.status !== 'WAITING' && !isBot) return;
 
+        // Calculamos la posición antes de la transacción para usarla en ambos lados
+        const pos = this.players.some(p => p.position === 1) ? 2 : 1;
+
         // 2. SI ES COMPRA EXPLÍCITA: VERIFICAR Y DESCONTAR SALDO (Atomicidad)
         if (isBuyAttempt && !isBot) {
             try {
@@ -98,15 +101,18 @@ export class DiceRoom {
                     }
 
                     // TRANSACCIÓN: Cobrar y Crear Ticket
-                    const pos = this.players.some(p => p.position === 1) ? 2 : 1;
-
+                    // CORRECCIÓN: Eliminado 'status' porque no existe en el schema de Entry
                     await prisma.$transaction([
                         prisma.user.update({
                             where: { id: user.id },
                             data: { balanceCents: { decrement: this.priceCents } }
                         }),
                         prisma.entry.create({
-                            data: { roomId: this.id, userId: user.id, position: pos }
+                            data: {
+                                roomId: this.id,
+                                userId: user.id,
+                                position: pos
+                            }
                         })
                     ]);
                     console.log(`[DiceRoom] ✅ Cobro exitoso. Asiento asignado.`);
@@ -124,7 +130,7 @@ export class DiceRoom {
             userId: user.id,
             username: user.name || "Jugador",
             avatarUrl: user.avatar || "",
-            position: this.players.some(p => p.position === 1) ? 2 : 1, // Fallback
+            position: pos, // Usamos la variable calculada arriba
             balance: this.priceCents,
             skin: user.selectedDiceColor || user.activeSkin || 'white',
             isBot,
