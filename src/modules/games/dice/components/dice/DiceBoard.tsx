@@ -403,11 +403,11 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
               // Cartel de estado Central
               statusText={
                 gameState.status === 'PLAYING' ? (
-                  <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                  <div className="flex flex-col items-center justify-center w-full text-center animate-in fade-in zoom-in duration-300">
                     <span className={`text-2xl md:text-3xl font-black italic tracking-tighter drop-shadow-lg ${isMyTurn ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`}>
                       {isMyTurn ? "¡TU TURNO!" : (isSpectator ? `Turno de ${gameState.players.find((p: any) => p.userId === gameState.turnUserId)?.name || "..."}` : "ESPERANDO...")}
                     </span>
-                    <div className="mt-2 flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/5">
+                    <div className="mt-2 flex items-center justify-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/5 mx-auto">
                       <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`}></div>
                       <span className="text-xs font-mono text-white/60">{timeLeft}s</span>
                     </div>
