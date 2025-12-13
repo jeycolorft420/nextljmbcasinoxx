@@ -360,7 +360,7 @@ export class DiceRoom {
             history: this.history,
             players: this.players.map(p => ({
                 userId: p.userId, name: p.username, avatar: p.avatarUrl,
-                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
+                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin, activeSkin: p.skin // Alias for Frontend request
             })),
             stepValue: this.stepValue,
             timeLeft: this.status === 'PLAYING' ? Math.max(0, Math.ceil((this.turnExpiresAt - Date.now()) / 1000)) : 0

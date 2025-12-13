@@ -42,10 +42,10 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   // New State: Result Overlay Delay
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
-  // New Effect: Handle Delayed Result Overlay (3s delay for ROUND_END and FINISHED)
+  // New Effect: Handle Delayed Result Overlay (3.5s delay for ROUND_END and FINISHED aka "Cartel Prematuro")
   useEffect(() => {
     if (gameState?.status === 'FINISHED' || gameState?.status === 'ROUND_END') {
-      const t = setTimeout(() => setShowResultOverlay(true), 3000);
+      const t = setTimeout(() => setShowResultOverlay(true), 3500); // FIX: 3500ms enforced
       return () => clearTimeout(t);
     } else {
       setShowResultOverlay(false);
@@ -171,11 +171,21 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
     return p.name;
   };
 
-  // --- CALCULATE FINAL ROLLS FOR DISPLAY ---
-  // If in result mode (ROUND_END or FINISHED), use history to prevent 1-1 glitch
-  let topRollDisp = topPlayer ? gameState.rolls[topPlayer.userId] : null;
-  let bottomRollDisp = bottomPlayer ? gameState.rolls[bottomPlayer.userId] : null;
+  // --- CALCULATE FINAL ROLLS FOR DISPLAY (FIX "1-1" GLITCH) ---
+  // Strategy: Maintain last known valid rolls in Refs to prevent default [1,1] reset
+  const rollsRef = useRef<{ [key: string]: number[] }>({});
 
+  // Sync refs safely
+  if (gameState.rolls) {
+    if (topPlayer && gameState.rolls[topPlayer.userId]) rollsRef.current[topPlayer.userId] = gameState.rolls[topPlayer.userId];
+    if (bottomPlayer && gameState.rolls[bottomPlayer.userId]) rollsRef.current[bottomPlayer.userId] = gameState.rolls[bottomPlayer.userId];
+  }
+
+  // Determine Display Rolls
+  let topRollDisp = topPlayer ? (gameState.rolls[topPlayer.userId] || rollsRef.current[topPlayer.userId]) : null;
+  let bottomRollDisp = bottomPlayer ? (gameState.rolls[bottomPlayer.userId] || rollsRef.current[bottomPlayer.userId]) : null;
+
+  // If in result mode (ROUND_END or FINISHED), FORCE use history
   if (gameState.status === 'ROUND_END' || gameState.status === 'FINISHED') {
     const lastRound = gameState.history[gameState.history.length - 1];
     if (lastRound) {
@@ -370,7 +380,7 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
               // Configuración Visual del Oponente (TOP)
               labelTop={formatName(topPlayer, topPlayer?.userId === userId)}
               balanceTop={topPlayer ? `$${(topPlayer.balance / 100).toFixed(2)}` : "---"}
-              diceColorTop={topPlayer?.skin || "red"}
+              diceColorTop={topPlayer?.activeSkin || topPlayer?.skin || "red"}
               topRoll={topRollDisp}
               isRollingTop={topPlayer ? animRolls[topPlayer.userId] : false}
               isGhostTop={!topPlayer}
@@ -378,8 +388,8 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
               // Configuración Visual Propia (BOTTOM)
               labelBottom={formatName(bottomPlayer, bottomPlayer?.userId === userId)}
               balanceBottom={bottomPlayer ? `$${(bottomPlayer.balance / 100).toFixed(2)}` : "---"}
-              // FIX: Use userSkin locally if available, otherwise server skin
-              diceColorBottom={(bottomPlayer?.userId === userId) ? (userSkin || bottomPlayer?.skin || "blue") : (bottomPlayer?.skin || "blue")}
+              // FIX: Use activeSkin (DB) only. Fallback to skin.
+              diceColorBottom={bottomPlayer?.activeSkin || bottomPlayer?.skin || "blue"}
               bottomRoll={bottomRollDisp}
               isRollingBottom={bottomPlayer ? animRolls[bottomPlayer.userId] : false}
               isGhostBottom={!bottomPlayer}
