@@ -98,13 +98,18 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             }
         }
 
-        // Reset de flags solo si está OPEN (nueva ronda)
+        // Reset de flags solo si está OPEN (nueva ronda) Y NO estemos girando (protección contra blip)
         if (room.state === "OPEN") {
-            setRevealWinner(false);
-            setTargetIndex(null);
-            lastWinnerRef.current = null;
-            autoSpinForWinnerRef.current = null;
-            if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+            if (!spinningRef.current) {
+                console.log("🔄 Resetting Board (State is OPEN and not spinning)");
+                setRevealWinner(false);
+                setTargetIndex(null);
+                lastWinnerRef.current = null;
+                autoSpinForWinnerRef.current = null;
+                if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+            } else {
+                console.log("🛡️ Ignoring OPEN state reset (Spinning in progress)");
+            }
         }
     }, [room.state, room.winningEntryId, room.entries, play]);
 
