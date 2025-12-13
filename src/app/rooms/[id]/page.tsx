@@ -96,6 +96,7 @@ export default function RoomPage() {
   // selección manual
   const [selectedPositions, setSelectedPositions] = useState<number[]>([]);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+  const [nextDest, setNextDest] = useState("/rooms"); // Destino tras salir/forfeit
 
   // THEME & SKINS
   const [currentTheme, setCurrentTheme] = useState("default");
@@ -431,9 +432,10 @@ export default function RoomPage() {
 
   // --- NUEVA LÓGICA DE ABANDONAR ---
   const handleLeave = async () => {
+    setMobileMenuOpen(false); // CERRAR MENU SIEMPRE
     if (!id) return;
     const isParticipant = effectiveEntries.some(e => e.user.id === userId);
-    if (!isParticipant) { window.location.href = "/rooms"; return; }
+    if (!isParticipant) { window.location.href = nextDest; return; }
 
     // Detectar si está en juego
     const isPlaying = room?.state === 'LOCKED' || gameState?.status === 'PLAYING';
@@ -464,7 +466,7 @@ export default function RoomPage() {
           }
 
           // Redirigir
-          window.location.href = "/rooms";
+          window.location.href = nextDest;
         } catch (e) {
           toast.error("Error al procesar la salida");
         }
@@ -475,9 +477,17 @@ export default function RoomPage() {
   };
 
   const handleBackToLobby = () => {
+    setNextDest("/rooms");
     const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (isParticipant) handleLeave();
     else window.location.href = "/rooms";
+  };
+
+  const handleSafeNav = (url: string) => {
+    setNextDest(url);
+    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
+    if (isParticipant) handleLeave();
+    else window.location.href = url;
   };
 
   const handleRejoin = async () => {
@@ -659,39 +669,39 @@ export default function RoomPage() {
             {/* Menú Global (Estilo Dashboard) */}
             <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider mb-2">Navegación</h3>
 
-            <button onClick={handleBackToLobby} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
+            <button onClick={() => handleSafeNav("/rooms")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M16 8h.01" /><path d="M8 8h.01" /><path d="M8 16h.01" /><path d="M16 16h.01" /><path d="M12 12h.01" /></svg>
               <span className="font-medium">Salas de Juego</span>
             </button>
 
-            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <button onClick={() => handleSafeNav("/dashboard")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
               <span className="font-medium">Dashboard</span>
-            </Link>
+            </button>
 
-            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <button onClick={() => handleSafeNav("/shop")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
               <span className="font-medium">Tienda</span>
-            </Link>
+            </button>
 
             {verificationStatus === "PENDING" && (
-              <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+              <button onClick={() => handleSafeNav("/verification")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                 <span className="font-medium">Verificación</span>
-              </Link>
+              </button>
             )}
 
-            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <button onClick={() => handleSafeNav("/profile")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
               <span className="font-medium">Mi Perfil</span>
-            </Link>
+            </button>
 
             {/* ENLACE DE ADMIN (SOLO SI ES ADMIN/GOD) */}
             {isAdmin && (
-              <Link href="/admin" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+              <button onClick={() => handleSafeNav("/admin")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                 <span className="font-medium">Panel Admin</span>
-              </Link>
+              </button>
             )}
 
           </div>
