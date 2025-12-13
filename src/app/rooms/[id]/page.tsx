@@ -646,7 +646,7 @@ export default function RoomPage() {
             </div>
           ) : (
             <div className="relative z-10 transition-all duration-500" style={{ width: wheelSize, height: wheelSize }}>
-              <RouletteBoard room={room} email={email} wheelSize={wheelSize} theme={currentTheme} onSpinEnd={handleSpinEnd} />
+              <RouletteBoard room={liveRoom as any} email={email} wheelSize={wheelSize} theme={currentTheme} onSpinEnd={handleSpinEnd} />
             </div>
           )}
 
