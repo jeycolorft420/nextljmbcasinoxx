@@ -100,7 +100,7 @@ export class DiceRoom {
         // No usamos 'await' aquí para no bloquear el juego.
         if (!isBot) {
             prisma.entry.create({
-                data: { roomId: this.id, userId: user.id, status: 'ACTIVE', position: newPlayer.position }
+                data: { roomId: this.id, userId: user.id, position: newPlayer.position }
             }).catch(err => {
                 console.error(`[DiceRoom ${this.id}] Error guardando entrada en DB (Rollback):`, err);
                 // Si falla la DB, lo sacamos (caso muy raro)
