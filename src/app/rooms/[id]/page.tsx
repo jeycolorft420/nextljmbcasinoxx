@@ -205,9 +205,36 @@ export default function RoomPage() {
   };
 
   // --- LÓGICA DE UNIFICACIÓN DE ESTADO ---
+  // --- LIVE ROOM SYNC (Roulette) ---
+  // El socket envía `gameState.players` con la lista real en memoria.
+  // Mapeamos eso a `room.entries` para que el componente visual (RouletteBoard) se actualice al instante.
+  const liveRoom = useMemo(() => {
+    if (!room) return room;
+    if (room.gameType === "ROULETTE" && gameState?.players) {
+      // Mapear players de socket a formato Entry de la UI
+      const liveEntries = gameState.players.map((p: any) => ({
+        id: p.userId, // Usamos userId como id de entry visual
+        position: p.position,
+        user: {
+          id: p.userId,
+          name: p.username,
+          email: p.username || "Jugador" // Fallback
+        }
+      }));
+      return {
+        ...room,
+        entries: liveEntries,
+        state: gameState.status || room.state,
+        winningEntryId: gameState.status === 'FINISHED' ? room.winningEntryId : null // Mantener winner sync
+      };
+    }
+    return room;
+  }, [room, gameState]);
+
+  // entries efectivas (para avatares y calculos)
   const effectiveEntries = useMemo(() => {
-    const dbEntries = room?.entries?.filter((e: any) => (e.round ?? 1) === (room.currentRound ?? 1)) ?? [];
-    if (room?.gameType === 'DICE_DUEL' && gameState?.players) {
+    const dbEntries = liveRoom?.entries?.filter((e: any) => (e.round ?? 1) === (liveRoom.currentRound ?? 1)) ?? [];
+    if (liveRoom?.gameType === 'DICE_DUEL' && gameState?.players) {
       const socketEntries = gameState.players.map((p: any) => ({
         id: p.userId,
         position: p.position,
@@ -221,10 +248,11 @@ export default function RoomPage() {
       return socketEntries;
     }
     return dbEntries;
-  }, [room?.entries, room?.currentRound, room?.gameType, gameState?.players]);
+  }, [liveRoom?.entries, liveRoom?.currentRound, liveRoom?.gameType, gameState?.players]);
 
+  // Calculos derivados
   const taken = effectiveEntries.length;
-  const free = room ? Math.max(0, room.capacity - taken) : 0;
+  const free = liveRoom ? Math.max(0, liveRoom.capacity - taken) : 0;
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -805,7 +833,7 @@ export default function RoomPage() {
                   onLeave={handleLeave}
                 />
               ) : (
-                <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
+                <RouletteBoard room={liveRoom as any} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
               )}
             </div>
             {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
