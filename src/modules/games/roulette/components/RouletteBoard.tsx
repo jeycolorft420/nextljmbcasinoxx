@@ -46,7 +46,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
     useEffect(() => { spinningRef.current = spinning; }, [spinning]);
 
     const displayedWinningEntryId = revealWinner ? room.winningEntryId ?? null : null;
-    const winnerEntry = room.entries?.find(e => e.id === room.winningEntryId);
+    // Find winner by USER ID because spin_wheel event sends userId as winnerId
+    const winnerEntry = room.entries?.find(e => e.user.id === room.winningEntryId);
 
     // segmentos ruleta
     const segments = useMemo(() => {
@@ -54,7 +55,8 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
         return Array.from({ length: room.capacity }).map((_, i) => {
             const entry = room.entries?.find((e) => e.position === i + 1);
             const label = entry ? (entry.user.name || entry.user.email.split("@")[0]) : `Libre #${i + 1}`;
-            const isRealWinner = !!displayedWinningEntryId && entry?.id === displayedWinningEntryId;
+            // Match using user.id
+            const isRealWinner = !!displayedWinningEntryId && entry?.user.id === displayedWinningEntryId;
             return { label, muted: !entry, isYou: !!email && entry?.user.email === email, isWinner: isRealWinner };
         });
     }, [room, email, displayedWinningEntryId]);
@@ -74,7 +76,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 autoSpinForWinnerRef.current !== winnerId &&
                 !spinningRef.current
             ) {
-                const winnerEntry = room.entries?.find((e) => e.id === winnerId);
+                const winnerEntry = room.entries?.find((e) => e.user.id === winnerId);
 
                 // Try to get position from Entry (Best case) OR from explicit Server Payload via gameMeta (Fallback)
                 let finalPosition = winnerEntry ? winnerEntry.position : -1;
