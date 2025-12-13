@@ -600,6 +600,8 @@ export default function RoomPage() {
                 userId={safeUser.id}
                 onRoll={handleRoll}
                 onReset={handleRejoin}
+                userSkin={currentDiceSkin}
+                onLeave={handleLeave}
               />
             </div>
           ) : (
@@ -657,10 +659,10 @@ export default function RoomPage() {
             {/* Menú Global (Estilo Dashboard) */}
             <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider mb-2">Navegación</h3>
 
-            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <button onClick={handleBackToLobby} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80 text-left">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M16 8h.01" /><path d="M8 8h.01" /><path d="M8 16h.01" /><path d="M16 16h.01" /><path d="M12 12h.01" /></svg>
               <span className="font-medium">Salas de Juego</span>
-            </Link>
+            </button>
 
             <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
@@ -790,6 +792,7 @@ export default function RoomPage() {
                   onRoll={handleRoll}
                   onReset={() => join()}
                   userSkin={currentDiceSkin}
+                  onLeave={handleLeave}
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />

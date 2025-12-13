@@ -22,7 +22,7 @@ const HistoryDiceIcon = ({ val }: { val: number }) => {
   );
 };
 
-export default function DiceBoard({ gameState: providedState, userId, onRoll, onReset, userSkin }: { gameState: any, userId: string, onRoll: () => void, onReset?: () => void, userSkin?: string }) {
+export default function DiceBoard({ gameState: providedState, userId, onRoll, onReset, userSkin, onLeave }: { gameState: any, userId: string, onRoll: () => void, onReset?: () => void, userSkin?: string, onLeave?: () => void }) {
   // NUKE LOGIC: If players are empty, force clean state locally if needed
   // We use a derived state or just use the providedState directly but ensure we handle empty array explicitly
   const gameState = (providedState?.players?.length === 0 && providedState?.status === 'WAITING')
@@ -421,7 +421,7 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
 
               canRoll={isMyTurn && !animRolls[userId]}
               onRoll={onRoll}
-              onExit={() => window.location.href = '/rooms'}
+              onExit={onLeave}
             />
             {/* Ronda Pasada Indicator - FIX: Move higher (15%) to avoid clashing with center VS/Status */}
             {isPastRound && (
