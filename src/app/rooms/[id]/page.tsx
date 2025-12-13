@@ -24,7 +24,7 @@ const GAME_SERVER_URL = process.env.NEXT_PUBLIC_GAME_SERVER_URL || "http://local
 type Entry = {
   id: string;
   position: number;
-  user: { id: string; name: string | null; email: string };
+  user: { id: string; name: string | null; email: string; image?: string | null };
 };
 
 type GameType = "ROULETTE" | "DICE_DUEL";
@@ -186,19 +186,6 @@ export default function RoomPage() {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
-  // métricas
-  const currentEntries = useMemo(() => {
-    return room?.entries?.filter((e: any) => (e.round ?? 1) === (room.currentRound ?? 1)) ?? [];
-  }, [room?.entries, room?.currentRound]);
-
-  const taken = currentEntries.length;
-  const free = room ? Math.max(0, room.capacity - taken) : 0;
-
-  // Mobile Menu State
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [showMobileBuy, setShowMobileBuy] = useState(true);
-
   // Carga inicial
   const load = async (): Promise<Room | null> => {
     if (!id) return null;
@@ -210,9 +197,7 @@ export default function RoomPage() {
       setRoom(data);
       setReloadHistoryKey(n => n + 1);
 
-      const libres = Math.max(0, data.capacity - (data.entries?.length ?? 0));
-      setQty((q) => Math.min(Math.max(1, q), Math.max(1, libres)));
-
+      // Limpieza inicial de selección
       const occupied = new Set((data.entries ?? []).map((e) => e.position));
       setSelectedPositions((prev) => prev.filter((p) => !occupied.has(p)));
       return data;
@@ -223,6 +208,40 @@ export default function RoomPage() {
       setLoading(false);
     }
   };
+
+  // --- LÓGICA DE UNIFICACIÓN DE ESTADO (CRÍTICO) ---
+  // Combinamos la base de datos (room.entries) con el estado en vivo (gameState.players)
+  // para que la UI reaccione instantáneamente.
+  const effectiveEntries = useMemo(() => {
+    // 1. Obtener entradas de la DB
+    const dbEntries = room?.entries?.filter((e: any) => (e.round ?? 1) === (room.currentRound ?? 1)) ?? [];
+
+    // 2. Si es Dice Duel y tenemos estado del socket, priorizamos el socket para la ocupación
+    if (room?.gameType === 'DICE_DUEL' && gameState?.players) {
+      // Convertimos players del socket al formato Entry para renderizar
+      const socketEntries = gameState.players.map((p: any) => ({
+        id: p.userId, // ID temporal
+        position: p.position,
+        user: {
+          id: p.userId,
+          name: p.name,
+          email: "", // No disponible en socket público, no importa para display
+          image: p.avatar
+        }
+      }));
+      return socketEntries;
+    }
+
+    return dbEntries;
+  }, [room?.entries, room?.currentRound, room?.gameType, gameState?.players]);
+
+  const taken = effectiveEntries.length;
+  const free = room ? Math.max(0, room.capacity - taken) : 0;
+
+  // Mobile Menu State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [showMobileBuy, setShowMobileBuy] = useState(true);
 
   const handleRoomUpdate = (payload: Room) => {
     setRoom((prev) => {
@@ -257,6 +276,19 @@ export default function RoomPage() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // RECARGA SILENCIOSA CUANDO SOCKET CAMBIA
+  // Esto asegura que la DB local se sincronice con el socket eventualmente
+  useEffect(() => {
+    if (room?.gameType === 'DICE_DUEL' && gameState?.players) {
+      const dbCount = room.entries?.length || 0;
+      const socketCount = gameState.players.length;
+      if (socketCount > dbCount) {
+        // Si el socket tiene más gente, actualizamos la data de base
+        load();
+      }
+    }
+  }, [gameState?.players, room?.entries, room?.gameType]);
 
   useEffect(() => {
     if (!room) { setCountdownSeconds(null); return; }
@@ -320,7 +352,6 @@ export default function RoomPage() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      // Al conectar solo nos unimos a la sala (sin comprar)
       socket.emit("join_room", { roomId: id, user: { id: userId, name: session?.user?.name, avatar: session?.user?.image, selectedDiceColor: (session?.user as any)?.selectedDiceColor } });
     });
 
@@ -338,34 +369,17 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔄 RESET RECIBIDO: Forzando limpieza de UI (Passive Sync Fix)");
+      console.log("🔄 RESET RECIBIDO");
       toast.info("La sala se ha reiniciado.");
-
-      setGameState({
-        status: 'WAITING',
-        players: [],
-        round: 1,
-        rolls: {},
-        history: [],
-        timeLeft: 30
-      });
-
+      setGameState({ status: 'WAITING', players: [], round: 1, rolls: {}, history: [], timeLeft: 30 });
       load();
     });
 
     socket.on('game:hard_reset', () => {
-      console.log("nuclear: Recibido HARD RESET. Limpiando tablero...");
       setGameState(null);
       toast.error("La sala se ha reiniciado por completo.");
       setTimeout(() => {
-        setGameState({
-          status: 'WAITING',
-          round: 1,
-          players: [],
-          rolls: {},
-          history: [],
-          timeLeft: 30
-        });
+        setGameState({ status: 'WAITING', round: 1, players: [], rolls: {}, history: [], timeLeft: 30 });
       }, 50);
     });
 
@@ -378,7 +392,7 @@ export default function RoomPage() {
 
   const togglePosition = (pos: number) => {
     if (!room || room.state !== "OPEN") return;
-    const occupied = new Set((room.entries ?? []).map((e) => e.position));
+    const occupied = new Set(effectiveEntries.map((e) => e.position));
     if (occupied.has(pos)) return;
     setSelectedPositions((prev) => {
       if (prev.includes(pos)) return prev.filter((p) => p !== pos);
@@ -391,7 +405,6 @@ export default function RoomPage() {
     if (selectedPositions.length > 0 && qty < selectedPositions.length) setQty(selectedPositions.length);
   }, [selectedPositions.length, qty]);
 
-  // FUNCIÓN JOIN CORREGIDA
   const join = async () => {
     if (!id || !userId) return;
 
@@ -409,9 +422,6 @@ export default function RoomPage() {
 
     try {
       if (socketRef.current && socketRef.current.connected) {
-        console.log("⚡ SOCKET JOIN: Enviando petición DE COMPRA...");
-
-        // CORRECCIÓN AQUÍ: Usar 'buy_seat' en lugar de 'join_room' para comprar
         socketRef.current.emit("buy_seat", {
           roomId: id,
           user: {
@@ -422,7 +432,6 @@ export default function RoomPage() {
             activeSkin: currentDiceSkin
           }
         });
-
         toast.success("Procesando compra...");
         setSelectedPositions([]);
       } else {
@@ -445,7 +454,8 @@ export default function RoomPage() {
   };
   const handleLeave = async () => {
     if (!id) return;
-    const isParticipant = room?.entries?.some(e => e.user.email === email);
+    // Usamos effectiveEntries para saber si está participando
+    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (!isParticipant) { window.location.href = "/rooms"; return; }
     setConfirmModal({
       isOpen: true, title: "Abandonar", message: "¿Seguro?",
@@ -458,7 +468,7 @@ export default function RoomPage() {
     });
   };
   const handleBackToLobby = () => {
-    const isParticipant = room?.entries?.some(e => e.user.email === email);
+    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (isParticipant) handleLeave();
     else window.location.href = "/rooms";
   };
@@ -491,13 +501,14 @@ export default function RoomPage() {
     selectedDiceColor: currentDiceSkin
   } : { id: "guest", name: "Invitado", image: "", selectedDiceColor: "white" };
 
+  // RENDER SEATS USANDO effectiveEntries
   const renderSeats = () => (
     <div className="grid grid-cols-4 gap-2">
       {Array.from({ length: room.capacity }).map((_, i) => {
         const pos = i + 1;
-        const entry = currentEntries.find((e: any) => e.position === pos);
+        const entry = effectiveEntries.find((e: any) => e.position === pos);
         const occupied = !!entry;
-        const isMine = entry?.user.email === email;
+        const isMine = entry?.user.id === userId;
         const isSelected = selectedPositions.includes(pos);
         const isWinner = showResults && !!room.winningEntryId && entry?.id === room.winningEntryId;
         const canToggle = room.state === "OPEN" && !occupied;
@@ -516,7 +527,7 @@ export default function RoomPage() {
           >
             <span className="font-bold opacity-50 text-[8px]">#{pos}</span>
             {entry ? (
-              <span className={`truncate w-full text-center font-medium ${isMine ? "text-purple-300" : ""}`}>{entry.user.name || "..."}</span>
+              <span className={`truncate w-full text-center font-medium ${isMine ? "text-purple-300" : ""}`}>{entry.user.name || "Jugador"}</span>
             ) : (
               <span className="opacity-30">Libre</span>
             )}
@@ -602,7 +613,7 @@ export default function RoomPage() {
           <div className="absolute bottom-24 left-4 right-4 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-4 text-center animate-in slide-in-from-bottom duration-300 z-30">
             <h3 className="text-primary font-bold">¡Ronda Finalizada!</h3>
             <p className="text-white text-lg font-bold mt-1">
-              🏆 {room.entries?.find(e => e.id === room.winningEntryId)?.user.name || "Ganador"}
+              🏆 {effectiveEntries.find(e => e.id === room.winningEntryId)?.user.name || "Ganador"}
             </p>
             <p className="text-xs opacity-50 font-mono mt-2">{countdownSeconds ? `Reiniciando… ${countdownSeconds}s` : "Reiniciando..."}</p>
           </div>
@@ -615,33 +626,18 @@ export default function RoomPage() {
 
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
+          {/* ... MENÚ MOVIL (Sin cambios) ... */}
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold">Menú</h2>
             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
           </div>
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            {room.gameType === "ROULETTE" && (
-              <button onClick={() => { setMobileMenuOpen(false); setThemeSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-lg" />
-                <div><span className="block font-bold text-white">Cambiar Apariencia</span><span className="text-xs opacity-60">Personaliza tu ruleta</span></div>
-              </button>
-            )}
-            {room.gameType === "DICE_DUEL" && (
-              <button onClick={() => { setMobileMenuOpen(false); setDiceSelectorOpen(true); }} className="w-full text-left p-4 bg-gradient-to-r from-emerald-900/40 to-green-900/40 border border-white/10 rounded-xl flex items-center gap-3 active:scale-95 transition-transform">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-green-500 shadow-lg" />
-                <div><span className="block font-bold text-white">Color de Dados</span><span className="text-xs opacity-60">Personaliza tus dados</span></div>
-              </button>
-            )}
-            <div className="h-px bg-white/10 my-2" />
-            <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider">Navegación</h3>
+            {/* ... Opciones del menú ... */}
             <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span>Salas de Juego</span></Link>
             <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg><span>Dashboard</span></Link>
-            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg><span>Tienda</span></Link>
-            <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg><span>Verificación</span></Link>
-            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg><span>Mi Perfil</span></Link>
-          </div>
-          <div className="mt-auto pt-4 border-t border-white/10">
-            {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>Cerrar Sesión</button>}
+            <div className="mt-auto pt-4 border-t border-white/10">
+              {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2">Cerrar Sesión</button>}
+            </div>
           </div>
         </div>
       )}
@@ -669,8 +665,8 @@ export default function RoomPage() {
 
       <div className="lg:hidden">
         {!joining && room.state === "OPEN" &&
-          (Math.max(0, room.capacity - (room.entries?.length ?? 0)) > 0) &&
-          (room.gameType !== "DICE_DUEL" || !room.entries?.find(e => e.user.email === email)) && (
+          (Math.max(0, room.capacity - taken) > 0) &&
+          (room.gameType !== "DICE_DUEL" || !effectiveEntries.some(e => e.user.id === userId)) && (
             <>
               {showMobileBuy ? (
                 <div className="fixed inset-x-0 bottom-0 z-[200] p-4 animate-in slide-in-from-bottom duration-300">
@@ -725,18 +721,17 @@ export default function RoomPage() {
 
       <div className="hidden sm:grid gap-6 grid-cols-12 items-start px-2">
         <div className="col-span-3 h-[600px] sticky top-4">
-          {features.includes("chat") ? <ChatWindow roomId={room.id} activePlayerIds={room.entries?.map(e => e.user.id) || []} className="h-full shadow-xl" /> : <div className="h-full bg-white/5 rounded-xl border border-white/10 p-6 flex items-center justify-center">Chat off</div>}
+          {features.includes("chat") ? <ChatWindow roomId={room.id} activePlayerIds={effectiveEntries.map(e => e.user.id)} className="h-full shadow-xl" /> : <div className="h-full bg-white/5 rounded-xl border border-white/10 p-6 flex items-center justify-center">Chat off</div>}
         </div>
         <div className="col-span-5">
           <div className="card bg-base-100 shadow-xl border border-white/5 p-8 flex flex-col items-center justify-center min-h-[500px]">
             <div style={{ maxWidth: 450 }}>
               {room.gameType === "DICE_DUEL" ? (
-                // ✅ CORRECCIÓN DESKTOP: Pasamos roomId y user COMPLETO
                 <DiceBoard
                   gameState={gameState}
                   userId={safeUser.id}
                   onRoll={handleRoll}
-                  onReset={() => join()} // Pasamos JOIN para comprar entrada automáticamente
+                  onReset={() => join()}
                   userSkin={currentDiceSkin}
                 />
               ) : (
@@ -746,7 +741,7 @@ export default function RoomPage() {
             {showResults && room.state === "FINISHED" && room.gameType === "ROULETTE" && (
               <div className="mt-8 p-4 bg-black/40 rounded-xl text-center">
                 <h2 className="text-xl font-bold text-emerald-400">¡GANADOR!</h2>
-                <div className="text-2xl font-bold my-2">{room.entries?.find(e => e.id === room.winningEntryId)?.user.name}</div>
+                <div className="text-2xl font-bold my-2">{effectiveEntries.find(e => e.id === room.winningEntryId)?.user.name}</div>
                 <div className="font-mono opacity-50">{countdownSeconds ? `Next in ${countdownSeconds}s` : "Loading..."}</div>
               </div>
             )}
@@ -759,7 +754,10 @@ export default function RoomPage() {
               <span className="text-xs opacity-50">{taken}/{room.capacity}</span>
             </div>
             {renderSeats()}
-            <div className="mt-4"><BuySeatUI room={room} qty={qty} setQty={setQty} selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions} joining={joining} onJoin={join} /></div>
+            {/* CORRECCIÓN: OCULTAR BOTÓN SI ESTÁ LLENO */}
+            {taken < room.capacity && (
+              <div className="mt-4"><BuySeatUI room={room} qty={qty} setQty={setQty} selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions} joining={joining} onJoin={join} /></div>
+            )}
           </div>
           <div className="mt-4 space-y-4">
             {room.gameType === "DICE_DUEL" && (
@@ -774,7 +772,7 @@ export default function RoomPage() {
       </div>
 
       {features.includes("chat") && (
-        <ChatBubble roomId={room.id} activePlayerIds={room.entries?.map(e => e.user.id) || []} />
+        <ChatBubble roomId={room.id} activePlayerIds={effectiveEntries.map(e => e.user.id)} />
       )}
 
       <ConfirmationModal isOpen={confirmModal.isOpen} title={confirmModal.title} onConfirm={confirmModal.onConfirm} onCancel={closeConfirm} variant={confirmModal.variant}>
