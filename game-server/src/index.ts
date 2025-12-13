@@ -57,7 +57,10 @@ io.on('connection', (socket) => {
         const roomId = socketToRoom[socket.id];
         if (roomId && rooms[roomId]) {
             rooms[roomId].removePlayer(socket.id);
-            if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') delete rooms[roomId];
+            if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') {
+                rooms[roomId].destroy(); // Cleanup timers
+                delete rooms[roomId];
+            }
         }
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
