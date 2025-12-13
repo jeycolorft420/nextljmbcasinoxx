@@ -20,7 +20,7 @@ export default function ChatBubble({ roomId, activePlayerIds = [] }: Props) {
             {/* Botón Flotante (Solo visible en movil vía clases CSS o lógica padre) */}
             <button
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-4 right-4 z-50 btn btn-circle btn-primary shadow-lg border-2 border-white/20 sm:hidden"
+                className="fixed bottom-6 left-4 z-50 btn btn-circle btn-primary shadow-lg border-2 border-white/20 sm:hidden"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             </button>

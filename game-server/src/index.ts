@@ -10,6 +10,18 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // Necesario para POST vacíos o body
+
+app.post('/reset/:id', async (req, res) => {
+    const { id } = req.params;
+    const room = rooms[id];
+    if (room) {
+        await room.reset();
+        console.log(`[API] Sala ${id} reseteada forzosamente.`);
+        return res.json({ ok: true });
+    }
+    return res.status(404).json({ error: "Room not in memory" });
+});
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
