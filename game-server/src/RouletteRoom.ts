@@ -36,14 +36,37 @@ export class RouletteRoom {
         this.botFillDurationMs = botFillDurationMs;
         this.io = io;
 
-        // Si la sala reinicia y tiene fecha, reprogramamos todo.
-        // Si no tiene fecha (null), iniciamos ciclo si está OPEN.
         if (this.status === 'OPEN') {
-            if (this.autoLockAt && this.autoLockAt.getTime() > Date.now()) {
-                this.scheduleTimers();
-            } else if (!this.autoLockAt) {
-                this.startCycle();
-            }
+            // Cargar estado inicial (Sync DB -> Memory) para evitar colisiones
+            this.loadStateFromDb().then(() => {
+                if (this.autoLockAt && this.autoLockAt.getTime() > Date.now()) {
+                    this.scheduleTimers();
+                } else if (!this.autoLockAt) {
+                    this.startCycle();
+                }
+            });
+        }
+    }
+
+    private async loadStateFromDb() {
+        try {
+            const entries = await prisma.entry.findMany({
+                where: { roomId: this.id },
+                include: { user: true }
+            });
+
+            // Reconstruir memoria
+            this.players = entries.map(e => ({
+                socketId: null, // Desconocido hasta que reconecten
+                userId: e.userId,
+                username: e.user.name || "Jugador",
+                avatarUrl: e.user.avatarUrl || "",
+                position: e.position,
+                isBot: e.user.isBot // O determinar si es bot desde user
+            }));
+            console.log(`[Roulette ${this.id}] 📂 Loaded ${this.players.length} players from DB.`);
+        } catch (e) {
+            console.error(`[Roulette ${this.id}] Error loading state:`, e);
         }
     }
 
