@@ -110,6 +110,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     await emitRoomsIndex();
     await emitRoomUpdate(id);
 
+    // 🚀 SYNC GAME SERVER MEMORY (Exterminar Zombies)
+    try {
+      await fetch(`http://localhost:4000/reset/${id}`, { method: 'POST' });
+    } catch (err) {
+      console.error("GameServer Sync Reset Warning:", err);
+      // No fallamos el request entero, porque la DB ya se limpió
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("reset error:", e);

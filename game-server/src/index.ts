@@ -14,6 +14,20 @@ const io = new Server(httpServer, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
+app.use(express.json()); // Enable JSON body parsing
+
+// Endpoint HTTP para forzar reset desde la API de Next.js
+app.post('/reset/:roomId', (req, res) => {
+    const { roomId } = req.params;
+    const room = rooms[roomId];
+    if (room) {
+        room.reset();
+        res.json({ success: true, message: `Room ${roomId} reset trigger sent to internal Engine.` });
+    } else {
+        res.status(404).json({ error: "Room not active in memory" });
+    }
+});
+
 const rooms: { [key: string]: DiceRoom } = {};
 const socketToRoom: { [key: string]: string } = {};
 const socketToUser: { [key: string]: string } = {};
