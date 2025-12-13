@@ -217,7 +217,7 @@ export default function RoomPage() {
         position: p.position,
         user: {
           id: p.userId,
-          name: p.username,
+          name: p.username || (typeof p.username === 'string' ? "Jugador" : "Jugador"), // Ensure string
           email: p.username || "Jugador" // Fallback
         }
       }));
