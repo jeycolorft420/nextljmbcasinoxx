@@ -370,8 +370,8 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
             </div>
           </div>
 
-          {/* Etiqueta "HISTORIAL" Vertical */}
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black via-black/80 to-transparent flex items-end justify-center pb-6 pointer-events-none">
+          {/* Etiqueta "HISTORIAL" Vertical - FIX: Stronger gradient and higher z-index to mask content */}
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black via-black to-transparent flex items-end justify-center pb-8 pointer-events-none z-20">
             <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.3em] select-none" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
               HISTORIAL
             </span>
@@ -422,11 +422,11 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
               onRoll={onRoll}
               onExit={() => window.location.href = '/rooms'}
             />
-            {/* Ronda Pasada Indicator */}
+            {/* Ronda Pasada Indicator - FIX: Move higher (15%) to avoid clashing with center VS/Status */}
             {isPastRound && (
-              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+              <div className="absolute top-[15%] left-1/2 -translate-x-1/2 z-40 pointer-events-none">
                 <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1 rounded-full shadow-lg">
-                  <span className="text-[10px] uppercase font-bold text-amber-400 tracking-widest whitespace-nowrap">Ronda Pasada</span>
+                  <span className="text-[9px] uppercase font-bold text-amber-400 tracking-widest whitespace-nowrap">Ronda Pasada</span>
                 </div>
               </div>
             )}
