@@ -414,21 +414,20 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
                 ) : ""
               }
 
-                ) : ""
-              }
 
-            {/* Ronda Pasada Indicator */}
-            {isPastRound && (
-              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
-                <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1 rounded-full shadow-lg">
-                  <span className="text-[10px] uppercase font-bold text-amber-400 tracking-widest whitespace-nowrap">Ronda Pasada</span>
+
+              {/* Ronda Pasada Indicator */}
+              {isPastRound && (
+                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                  <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1 rounded-full shadow-lg">
+                    <span className="text-[10px] uppercase font-bold text-amber-400 tracking-widest whitespace-nowrap">Ronda Pasada</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            canRoll={isMyTurn && !animRolls[userId]}
-            onRoll={onRoll}
-            onExit={() => window.location.href = '/rooms'}
+              canRoll={isMyTurn && !animRolls[userId]}
+              onRoll={onRoll}
+              onExit={() => window.location.href = '/rooms'}
             />
           </div>
         </div>
