@@ -448,7 +448,13 @@ export default function RoomPage() {
       onConfirm: async () => {
         try {
           if (isPlaying) {
-            // Si está jugando, perder forzosamente
+            // 1. EMITIR SOCKET PARA RESPUESTA INSTANTÁNEA
+            if (socketRef.current) {
+              console.log("🏳️ Enviando forfeit al socket...");
+              socketRef.current.emit('forfeit_game', { roomId: id });
+            }
+
+            // 2. LLAMAR API COMO RESPALDO
             await fetch(`/api/rooms/${id}/forfeit`, { method: "POST" });
             toast.error("Has abandonado la partida.");
           } else {
@@ -456,6 +462,8 @@ export default function RoomPage() {
             await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
             toast.info("Has salido de la sala.");
           }
+
+          // Redirigir
           window.location.href = "/rooms";
         } catch (e) {
           toast.error("Error al procesar la salida");
