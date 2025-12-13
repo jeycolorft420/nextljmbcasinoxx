@@ -160,6 +160,22 @@ export class RouletteRoom {
                     })
                 ]);
             } else if (isBot) {
+                // Bots must exist in DB to satisfy Foreign Key
+                await prisma.user.upsert({
+                    where: { id: user.id },
+                    update: {},
+                    create: {
+                        id: user.id,
+                        name: user.name || "Bot",
+                        email: `${user.id}@bot.local`,
+                        username: `bot_${user.id}`, // Ensure unique username
+                        password: "BOT_PASSWORD_PLACEHOLDER", // Required field
+                        avatarUrl: user.avatar || "", // Correct field name
+                        balanceCents: 0,
+                        isBot: true
+                    }
+                });
+
                 await prisma.entry.createMany({
                     data: positionsToBook.map(pos => ({ roomId: this.id, userId: user.id, position: pos }))
                 });
