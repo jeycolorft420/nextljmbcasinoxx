@@ -119,8 +119,10 @@ export class DiceRoom {
         this.roundStarterId = firstPlayer?.userId || this.players[0].userId;
         this.turnUserId = this.roundStarterId;
 
-        this.broadcastState();
+        // CAMBIO CRÍTICO: Primero procesamos el turno (reset timer + set expiración)
         this.processTurn();
+        // LUEGO enviamos el estado con el tiempo correcto
+        this.broadcastState();
     }
 
     public handleRoll(userId: string) {
@@ -140,8 +142,13 @@ export class DiceRoom {
 
             if (opponent && !this.rolls[opponent.userId]) {
                 this.turnUserId = opponent.userId;
-                this.broadcastState();
+                // CAMBIO: Asegurar orden correcto también aquí si fuera necesario, 
+                // pero handleRoll -> processTurn es directo.
+                // Sin embargo, processTurn se encarga de definir el tiempo.
+                // El orden aquí estaba: broadcast -> processTurn.
+                // CORRECCIÓN: Primero processTurn, luego broadcast.
                 this.processTurn();
+                this.broadcastState();
             } else {
                 this.resolveRound();
             }
@@ -245,8 +252,9 @@ export class DiceRoom {
 
         this.roundStarterId = this.turnUserId;
 
-        this.broadcastState();
+        // CAMBIO CRÍTICO: Primero procesamos el turno, luego enviamos estado.
         this.processTurn();
+        this.broadcastState();
     }
 
     private async finishGame(winner: Player, reason: string = "SCORE") {
@@ -280,11 +288,14 @@ export class DiceRoom {
         const p = this.players.find(pl => pl.userId === this.turnUserId);
         if (!p) return;
 
+        // DEFINIR EL TIEMPO INMEDIATAMENTE (30s)
+        // Esto asegura que broadcastState siempre tenga el valor futuro correcto
+        this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
+
         if (p.isBot) {
             const botDelay = Math.random() * 2000 + 1000;
             this.timer = setTimeout(() => this.handleRoll(p.userId), botDelay);
         } else {
-            this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
             this.timer = setTimeout(() => {
                 this.handleTurnTimeout(p.userId);
             }, TURN_TIMEOUT_MS);
