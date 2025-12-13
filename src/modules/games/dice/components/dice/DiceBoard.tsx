@@ -7,18 +7,17 @@ import confetti from "canvas-confetti";
 // Componente para dibujar los dados en el historial (Vectorial puro)
 const HistoryDiceIcon = ({ val }: { val: number }) => {
   const dots = {
-    const dots = {
-      1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8]
-    }[val] || [];
+    1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8]
+  }[val] || [];
 
-    return(
-    <div className = "w-5 h-5 bg-white text-black rounded-[4px] grid grid-cols-3 grid-rows-3 p-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.5)]" >
-        { [...Array(9)].map((_, i) => (
-          <div key={i} className="flex justify-center items-center">
-            {dots.includes(i) && <div className="w-1 h-1 bg-black rounded-full" />}
-          </div>
-        ))
-  }
+  return (
+    <div className="w-5 h-5 bg-white text-black rounded-[4px] grid grid-cols-3 grid-rows-3 p-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.5)]" >
+      {[...Array(9)].map((_, i) => (
+        <div key={i} className="flex justify-center items-center">
+          {dots.includes(i) && <div className="w-1 h-1 bg-black rounded-full" />}
+        </div>
+      ))
+      }
     </div >
   );
 };

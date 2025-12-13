@@ -369,4 +369,3 @@ export class DiceRoom {
         this.scheduleBot();
     }
 }
-```
