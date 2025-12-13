@@ -196,25 +196,29 @@ export class DiceRoom {
         this.broadcastState();
     }
 
-    // --- NUEVO: NOTIFICAR A PUSHER PARA ACTUALIZAR LOBBY ---
+    // --- CORRECCIÓN: Notificación Optimista (Usa Memoria) ---
     private async notifyLobby() {
         try {
-            // Obtenemos el estado real de la DB para ser consistentes
+            // 1. Usamos MEMORIA para la ocupación real e instantánea (Incluso bots)
+            const taken = this.players.length;
+
+            // 2. Obtenemos datos estáticos de la sala
             const roomDB = await prisma.room.findUnique({
-                where: { id: this.id },
-                include: { entries: true }
+                where: { id: this.id }
             });
 
             if (!roomDB) return;
 
-            const taken = roomDB.entries.length;
+            // 3. Calculamos estado visual basado en la ocupación real
+            let publicState = this.status === 'WAITING' ? 'OPEN' : 'LOCKED';
+            if (taken >= roomDB.capacity) publicState = 'LOCKED';
+            if (this.status === 'FINISHED') publicState = 'FINISHED';
 
-            // Payload compatible con RoomList.tsx
             const payload = {
                 id: roomDB.id,
                 title: roomDB.gameType === 'DICE_DUEL' ? 'Sala de Dados' : 'Ruleta',
                 priceCents: Number(roomDB.priceCents),
-                state: roomDB.state,
+                state: publicState,
                 capacity: roomDB.capacity,
                 gameType: roomDB.gameType,
                 slots: { taken, free: roomDB.capacity - taken },
