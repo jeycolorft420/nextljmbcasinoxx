@@ -42,6 +42,9 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   // New State: Result Overlay Delay
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
+  // Detect Past Round (Waiting state after round 1)
+  const isPastRound = gameState?.status === 'WAITING' && gameState?.round > 1;
+
   // Strategy: Maintain last known valid rolls in Refs to prevent default [1,1] reset (MOVED UP TO FIX HOOK ERROR)
   const rollsRef = useRef<{ [key: string]: number[] }>({});
 
@@ -411,9 +414,21 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
                 ) : ""
               }
 
-              canRoll={isMyTurn && !animRolls[userId]}
-              onRoll={onRoll}
-              onExit={() => window.location.href = '/rooms'}
+                ) : ""
+              }
+
+            {/* Ronda Pasada Indicator */}
+            {isPastRound && (
+              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1 rounded-full shadow-lg">
+                  <span className="text-[10px] uppercase font-bold text-amber-400 tracking-widest whitespace-nowrap">Ronda Pasada</span>
+                </div>
+              </div>
+            )}
+
+            canRoll={isMyTurn && !animRolls[userId]}
+            onRoll={onRoll}
+            onExit={() => window.location.href = '/rooms'}
             />
           </div>
         </div>
@@ -429,8 +444,8 @@ export const DiceHistory = ({ room }: { room: any }) => {
   if (!history.length) return <div className="p-4 text-center opacity-30 text-xs text-white">Sin historial</div>;
 
   return (
-    // FIX: no-scrollbar added
-    <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto no-scrollbar p-1">
+    // FIX: no-scrollbar added, max-h and relative for z-index containment
+    <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1 relative z-0">
       {[...history].reverse().slice(0, 15).map((h: any, i: number) => {
         const winnerName = players.find((p: any) => p.userId === h.winnerId)?.name?.substring(0, 10) || "EMPATE";
         const isTie = !h.winnerId;

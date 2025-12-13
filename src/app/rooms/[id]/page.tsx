@@ -587,7 +587,7 @@ export default function RoomPage() {
 
         <div className="flex-1 flex items-center justify-center relative w-full px-4">
           {room.gameType === "DICE_DUEL" ? (
-            <div className="relative z-10 w-full max-w-md h-full">
+            <div className="relative z-10 w-full max-w-md h-full min-h-[550px] flex items-center">
               <DiceBoard
                 gameState={gameState}
                 userId={safeUser.id}
@@ -761,9 +761,15 @@ export default function RoomPage() {
           </div>
           <div className="mt-4 space-y-4">
             {room.gameType === "DICE_DUEL" && (
-              <div className="card bg-[#050505] border border-white/10 p-4">
-                <div className="mb-2 text-xs font-bold uppercase opacity-50">Historial de Tiradas</div>
-                <DiceHistory room={gameState} />
+              <div className="card bg-[#050505] border border-white/10 p-0 overflow-hidden relative">
+                {/* Fixed Header */}
+                <div className="p-4 border-b border-white/5 bg-[#050505] relative z-20 shadow-md">
+                  <div className="text-xs font-bold uppercase opacity-50 tracking-wider">Historial de Tiradas</div>
+                </div>
+                {/* Scrollable Content */}
+                <div className="p-4 pt-2 relative z-0">
+                  <DiceHistory room={gameState} />
+                </div>
               </div>
             )}
             <RoomHistoryList roomId={room.id} reloadKey={reloadHistoryKey} />
