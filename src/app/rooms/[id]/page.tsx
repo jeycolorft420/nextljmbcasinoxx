@@ -486,6 +486,48 @@ export default function RoomPage() {
     });
   };
 
+
+  // --- SEGURA NAVEGACIÓN (EXIT WARNINGS) ---
+  const handleSafeNavigation = (url: string) => {
+    // 1. Cerrar menú móvil inmediatamente para evitar solapamiento
+    setMobileMenuOpen(false);
+
+    // 2. Comprobar si participa
+    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
+
+    if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
+      setConfirmModal({
+        isOpen: true,
+        title: "¡Advertencia!",
+        message: "Si sales ahora, perderás tu apuesta y serás eliminado de la partida. ¿Seguro que quieres salir?",
+        variant: "danger",
+        onConfirm: async () => {
+          // Intentar notificar al servidor de la rendición/salida
+          try {
+            await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
+          } catch (e) { console.error(e); }
+          window.location.href = url; // Navegación final
+        }
+      });
+    } else {
+      // Navegación normal sin bloqueo
+      window.location.href = url;
+    }
+  };
+
+  // Protección contra recarga/cierre de pestaña
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isParticipant = effectiveEntries.some(entry => entry.user.id === userId);
+      if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
+        e.preventDefault();
+        e.returnValue = ''; // Trigger browser standard warning
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [effectiveEntries, userId, room?.state, room?.gameType]);
+
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
   if (!room) return <div className="text-center mt-10">Sala no encontrada</div>;
 
@@ -533,46 +575,7 @@ export default function RoomPage() {
   );
 
 
-  // --- SEGURA NAVEGACIÓN (EXIT WARNINGS) ---
-  const handleSafeNavigation = (url: string) => {
-    // 1. Cerrar menú móvil inmediatamente para evitar solapamiento
-    setMobileMenuOpen(false);
 
-    // 2. Comprobar si participa
-    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
-
-    if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
-      setConfirmModal({
-        isOpen: true,
-        title: "¡Advertencia!",
-        message: "Si sales ahora, perderás tu apuesta y serás eliminado de la partida. ¿Seguro que quieres salir?",
-        variant: "danger",
-        onConfirm: async () => {
-          // Intentar notificar al servidor de la rendición/salida
-          try {
-            await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
-          } catch (e) { console.error(e); }
-          window.location.href = url; // Navegación final
-        }
-      });
-    } else {
-      // Navegación normal sin bloqueo
-      window.location.href = url;
-    }
-  };
-
-  // Protección contra recarga/cierre de pestaña
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const isParticipant = effectiveEntries.some(entry => entry.user.id === userId);
-      if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
-        e.preventDefault();
-        e.returnValue = ''; // Trigger browser standard warning
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [effectiveEntries, userId, room?.state, room?.gameType]);
 
   return (
     <main className="fixed inset-0 z-[200] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-[#050505] to-black text-white overflow-hidden flex flex-col sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
