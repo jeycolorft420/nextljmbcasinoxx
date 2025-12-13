@@ -60,7 +60,6 @@ export default function RoomPage() {
   const email = session?.user?.email ?? null;
   const userId = (session?.user as any)?.id ?? null;
 
-  // Lógica de Admin (Igual que en NavBar)
   const userRole = (session?.user as any)?.role;
   const isAdmin = userRole === "admin" || userRole === "god";
   const verificationStatus = (session?.user as any)?.verificationStatus;
@@ -74,7 +73,7 @@ export default function RoomPage() {
   const [joining, setJoining] = useState(false);
 
   // ESTADO DEL JUEGO (Centralizado)
-  const [gameState, setGameState] = useState<any>(null); // Estado en vivo del Socket
+  const [gameState, setGameState] = useState<any>(null);
   const socketRef = useRef<Socket | null>(null);
 
   // Confirmation Modal
@@ -96,19 +95,14 @@ export default function RoomPage() {
 
   // selección manual
   const [selectedPositions, setSelectedPositions] = useState<number[]>([]);
-
-  // Cuenta regresiva
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
 
-  // THEME STATE
+  // THEME & SKINS
   const [currentTheme, setCurrentTheme] = useState("default");
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
-
-  // DICE SKIN STATE
   const [currentDiceSkin, setCurrentDiceSkin] = useState("white");
   const [diceSelectorOpen, setDiceSelectorOpen] = useState(false);
 
-  // --- JOIN ---
   const { optimisticUpdate, rollbackUpdate, balanceCents: walletBalance } = useWallet();
   const userBalanceCents = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
 
@@ -166,7 +160,6 @@ export default function RoomPage() {
       if (res.ok) {
         toast.success(`Dados: ${skin.toUpperCase()}`);
         updateSession();
-        // Notify server immediately
         if (socketRef.current && room?.id) {
           socketRef.current.emit('update_skin', { roomId: room.id, skin });
         }
@@ -179,7 +172,6 @@ export default function RoomPage() {
     }
   };
 
-  // tamaño
   const [wheelSize, setWheelSize] = useState(320);
   useEffect(() => {
     const compute = () => {
@@ -191,7 +183,6 @@ export default function RoomPage() {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
-  // Carga inicial
   const load = async (): Promise<Room | null> => {
     if (!id) return null;
     setLoading((v) => (!room ? true : v));
@@ -201,8 +192,6 @@ export default function RoomPage() {
       const data = (await res.json()) as Room;
       setRoom(data);
       setReloadHistoryKey(n => n + 1);
-
-      // Limpieza inicial de selección
       const occupied = new Set((data.entries ?? []).map((e) => e.position));
       setSelectedPositions((prev) => prev.filter((p) => !occupied.has(p)));
       return data;
@@ -236,7 +225,6 @@ export default function RoomPage() {
   const taken = effectiveEntries.length;
   const free = room ? Math.max(0, room.capacity - taken) : 0;
 
-  // Mobile Menu State
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showMobileBuy, setShowMobileBuy] = useState(true);
@@ -275,14 +263,11 @@ export default function RoomPage() {
 
   useEffect(() => { load(); }, [id]);
 
-  // RECARGA SILENCIOSA CUANDO SOCKET CAMBIA
   useEffect(() => {
     if (room?.gameType === 'DICE_DUEL' && gameState?.players) {
       const dbCount = room.entries?.length || 0;
       const socketCount = gameState.players.length;
-      if (socketCount > dbCount) {
-        load();
-      }
+      if (socketCount > dbCount) load();
     }
   }, [gameState?.players, room?.entries, room?.gameType]);
 
@@ -314,7 +299,6 @@ export default function RoomPage() {
     return () => clearInterval(timer);
   }, [room?.state, room?.finishedAt, room?.lockedAt, room?.gameType, id]);
 
-  // Pusher
   useEffect(() => {
     if (!id) return;
     const channelName = `private-room-${id}`;
@@ -332,13 +316,12 @@ export default function RoomPage() {
     return () => { channel.unbind("room:update", onUpdate); pusherClient.unsubscribe(channelName); };
   }, [id]);
 
-  // SOCKET CENTRALIZADO
   useEffect(() => {
     if (!userId || !room || room.gameType !== 'DICE_DUEL') return;
 
     let url: string | undefined = GAME_SERVER_URL;
     if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-      url = undefined; // Usar path relativo en producción
+      url = undefined;
     }
 
     const socket = io(url, {
@@ -365,7 +348,6 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔄 RESET RECIBIDO");
       toast.info("La sala se ha reiniciado.");
       setGameState({ status: 'WAITING', players: [], round: 1, rolls: {}, history: [], timeLeft: 30 });
       load();
@@ -403,7 +385,6 @@ export default function RoomPage() {
 
   const join = async () => {
     if (!id || !userId) return;
-
     const costCents = room ? room.priceCents * ((selectedPositions.length > 0 ? selectedPositions.length : qty)) : 0;
     const currentBalance = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
 
@@ -413,7 +394,6 @@ export default function RoomPage() {
     }
 
     setJoining(true);
-    // Optimistic Wallet Update
     optimisticUpdate(-costCents);
 
     try {
@@ -448,25 +428,50 @@ export default function RoomPage() {
     if (skipConfirm) fn();
     else setConfirmModal({ isOpen: true, title: "Rendirse", message: "¿Rendirse?", onConfirm: () => { fn(); closeConfirm(); }, variant: "danger" });
   };
+
+  // --- NUEVA LÓGICA DE ABANDONAR ---
   const handleLeave = async () => {
     if (!id) return;
     const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (!isParticipant) { window.location.href = "/rooms"; return; }
+
+    // Detectar si está en juego
+    const isPlaying = room?.state === 'LOCKED' || gameState?.status === 'PLAYING';
+    const message = isPlaying
+      ? "¿Seguro? Si sales ahora perderás la partida automáticamente."
+      : "¿Seguro que quieres salir de la sala?";
+
     setConfirmModal({
-      isOpen: true, title: "Abandonar", message: "¿Seguro?",
+      isOpen: true,
+      title: isPlaying ? "Abandonar y Perder" : "Abandonar Sala",
+      message: message,
       onConfirm: async () => {
-        const r = await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
-        if (r.ok) window.location.href = "/rooms";
-        else toast.error("Error al salir");
+        try {
+          if (isPlaying) {
+            // Si está jugando, perder forzosamente
+            await fetch(`/api/rooms/${id}/forfeit`, { method: "POST" });
+            toast.error("Has abandonado la partida.");
+          } else {
+            // Si está esperando, salir normal
+            await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
+            toast.info("Has salido de la sala.");
+          }
+          window.location.href = "/rooms";
+        } catch (e) {
+          toast.error("Error al procesar la salida");
+        }
         closeConfirm();
-      }, variant: "danger"
+      },
+      variant: "danger"
     });
   };
+
   const handleBackToLobby = () => {
     const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (isParticipant) handleLeave();
     else window.location.href = "/rooms";
   };
+
   const handleRejoin = async () => {
     if (!id) return;
     if (room?.state === "FINISHED") {
@@ -485,48 +490,6 @@ export default function RoomPage() {
       toast.error("Error al entrar");
     });
   };
-
-
-  // --- SEGURA NAVEGACIÓN (EXIT WARNINGS) ---
-  const handleSafeNavigation = (url: string) => {
-    // 1. Cerrar menú móvil inmediatamente para evitar solapamiento
-    setMobileMenuOpen(false);
-
-    // 2. Comprobar si participa
-    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
-
-    if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
-      setConfirmModal({
-        isOpen: true,
-        title: "¡Advertencia!",
-        message: "Si sales ahora, perderás tu apuesta y serás eliminado de la partida. ¿Seguro que quieres salir?",
-        variant: "danger",
-        onConfirm: async () => {
-          // Intentar notificar al servidor de la rendición/salida
-          try {
-            await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
-          } catch (e) { console.error(e); }
-          window.location.href = url; // Navegación final
-        }
-      });
-    } else {
-      // Navegación normal sin bloqueo
-      window.location.href = url;
-    }
-  };
-
-  // Protección contra recarga/cierre de pestaña
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const isParticipant = effectiveEntries.some(entry => entry.user.id === userId);
-      if (isParticipant && room?.gameType === "DICE_DUEL" && room?.state !== "FINISHED") {
-        e.preventDefault();
-        e.returnValue = ''; // Trigger browser standard warning
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [effectiveEntries, userId, room?.state, room?.gameType]);
 
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
   if (!room) return <div className="text-center mt-10">Sala no encontrada</div>;
@@ -574,15 +537,12 @@ export default function RoomPage() {
     </div>
   );
 
-
-
-
   return (
     <main className="fixed inset-0 z-[200] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-[#050505] to-black text-white overflow-hidden flex flex-col sm:static sm:z-auto sm:bg-transparent sm:block sm:max-w-[1400px] sm:mx-auto sm:space-y-4 sm:px-2 sm:pb-4">
       {/* MOBILE TOP BAR */}
       <div className="sm:hidden h-16 px-4 flex items-center justify-between z-[210] bg-gradient-to-b from-black/90 to-transparent shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={() => handleSafeNavigation("/rooms")} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/90">
+          <button onClick={handleBackToLobby} className="p-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 backdrop-blur-md text-white/90">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
           </button>
           {countdownSeconds !== null && (
@@ -689,41 +649,40 @@ export default function RoomPage() {
             {/* Menú Global (Estilo Dashboard) */}
             <h3 className="text-xs font-bold uppercase opacity-50 px-2 tracking-wider mb-2">Navegación</h3>
 
-            <button onClick={() => handleSafeNavigation("/rooms")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M16 8h.01" /><path d="M8 8h.01" /><path d="M8 16h.01" /><path d="M16 16h.01" /><path d="M12 12h.01" /></svg>
               <span className="font-medium">Salas de Juego</span>
-            </button>
+            </Link>
 
-            <button onClick={() => handleSafeNavigation("/dashboard")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
               <span className="font-medium">Dashboard</span>
-            </button>
+            </Link>
 
-            <button onClick={() => handleSafeNavigation("/shop")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
               <span className="font-medium">Tienda</span>
-            </button>
+            </Link>
 
             {verificationStatus === "PENDING" && (
-              <button onClick={() => handleSafeNavigation("/verification")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+              <Link href="/verification" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                 <span className="font-medium">Verificación</span>
-              </button>
+              </Link>
             )}
 
-            <button onClick={() => handleSafeNavigation("/profile")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
               <span className="font-medium">Mi Perfil</span>
-            </button>
+            </Link>
 
             {/* ENLACE DE ADMIN (SOLO SI ES ADMIN/GOD) */}
             {isAdmin && (
-              <button onClick={() => handleSafeNavigation("/admin")} className="w-full text-left flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
+              <Link href="/admin" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 hover:text-white transition-colors text-white/80">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                 <span className="font-medium">Panel Admin</span>
-              </button>
+              </Link>
             )}
-
 
           </div>
           <div className="mt-auto pt-4 border-t border-white/10">

@@ -18,37 +18,42 @@ type Room = {
     autoLockAt?: string; // Serialized date
 };
 
-function stateBadgeClass(s: State) {
-    if (s === "OPEN") return "badge badge-success";
-    if (s === "LOCKED") return "badge badge-warn";
-    if (s === "FINISHED") return "badge badge-info";
-    return "badge";
-}
-
-function gameBadge(gt: GameType) {
-    return <span className="badge text-[10px]">{gt === "ROULETTE" ? "Ruleta" : "Dados"}</span>;
-}
-
-function Countdown({ target }: { target: string }) {
-    const [left, setLeft] = useState("");
+function Countdown({ target }: { target?: string }) {
+    const [left, setLeft] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!target) {
+            setLeft(null);
+            return;
+        }
+
         const end = new Date(target).getTime();
-        const interval = setInterval(() => {
+
+        const update = () => {
             const now = Date.now();
             const diff = end - now;
             if (diff <= 0) {
-                setLeft("00:00");
+                setLeft(null); // Ocultar si ya pasó
                 return;
             }
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
             setLeft(`${m}:${s.toString().padStart(2, "0")}`);
-        }, 1000);
+        };
+
+        update();
+        const interval = setInterval(update, 1000);
         return () => clearInterval(interval);
     }, [target]);
 
-    return <span>{left}</span>;
+    if (!left) return null;
+
+    return (
+        <div className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full mt-2 font-mono flex items-center gap-1">
+            <span>⏳</span>
+            <span>{left}</span>
+        </div>
+    );
 }
 
 interface RoomListProps {
@@ -58,14 +63,13 @@ interface RoomListProps {
 export default function RoomList({ gameType }: RoomListProps) {
     const { features } = useLicense();
 
-    // We only care about OPEN and LOCKED for the list
+    // Estado local de salas
     const [data, setData] = useState<Room[]>([]);
     const [loading, setLoading] = useState(false);
     const [openGroups, setOpenGroups] = useState<Record<number, boolean>>({});
 
     // --- Carga inicial por HTTP ---
     const fetchRooms = async () => {
-        // Fetch OPEN and LOCKED
         const [open, locked] = await Promise.all([
             fetch(`/api/rooms?state=OPEN&gameType=${gameType}`, { cache: "no-store" }).then(r => r.ok ? r.json() : []),
             fetch(`/api/rooms?state=LOCKED&gameType=${gameType}`, { cache: "no-store" }).then(r => r.ok ? r.json() : []),
@@ -83,25 +87,54 @@ export default function RoomList({ gameType }: RoomListProps) {
         }
     };
 
-    // --- Suscripción realtime a "public-rooms" ---
+    // --- Suscripción realtime ---
     useEffect(() => {
         load();
 
         const ch = pusherClient.subscribe("public-rooms");
 
+        // 1. Carga masiva (Index)
         const onIndex = (payload: Room[]) => {
-            // Filter by gameType and state (OPEN or LOCKED)
             const filtered = payload.filter(
                 (r) => r.gameType === gameType && (r.state === "OPEN" || r.state === "LOCKED")
             );
             setData(filtered);
         };
 
+        // 2. Actualización unitaria (Mejora TR)
+        const onUpdate = (updatedRoom: Room) => {
+            if (updatedRoom.gameType !== gameType) return;
+
+            // Si la sala ya no es visible (FINISHED), la quitamos
+            if (updatedRoom.state === 'FINISHED') {
+                setData(prev => prev.filter(r => r.id !== updatedRoom.id));
+                return;
+            }
+
+            setData(prev => {
+                const index = prev.findIndex(r => r.id === updatedRoom.id);
+                if (index > -1) {
+                    // Actualizar existente
+                    const newData = [...prev];
+                    newData[index] = updatedRoom;
+                    return newData;
+                } else if (updatedRoom.state === 'OPEN' || updatedRoom.state === 'LOCKED') {
+                    // Es nueva o cambió de estado a visible
+                    return [...prev, updatedRoom];
+                }
+                return prev;
+            });
+        };
+
         ch.bind("rooms:index", onIndex);
+        ch.bind("room:update", onUpdate);
 
         return () => {
-            try { ch.unbind("rooms:index", onIndex); } catch { }
-            try { pusherClient.unsubscribe("public-rooms"); } catch { }
+            try {
+                ch.unbind("rooms:index", onIndex);
+                ch.unbind("room:update", onUpdate);
+                pusherClient.unsubscribe("public-rooms");
+            } catch { }
         };
     }, [gameType]);
 
@@ -110,7 +143,6 @@ export default function RoomList({ gameType }: RoomListProps) {
         const groups: Record<number, Room[]> = {};
 
         data.forEach(r => {
-            // Double check feature flags just in case
             if (r.gameType === "ROULETTE" && !features.includes("roulette")) return;
             if (r.gameType === "DICE_DUEL" && !features.includes("dice")) return;
 
@@ -236,10 +268,9 @@ export default function RoomList({ gameType }: RoomListProps) {
                                                                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
                                                                     Entrada
                                                                 </div>
+                                                                {/* Solo mostrar Countdown si está definida y la sala está OPEN */}
                                                                 {r.autoLockAt && r.state === "OPEN" && (
-                                                                    <div className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full mt-2 font-mono">
-                                                                        ⏳ <Countdown target={r.autoLockAt} />
-                                                                    </div>
+                                                                    <Countdown target={r.autoLockAt} />
                                                                 )}
                                                             </div>
 
@@ -281,4 +312,3 @@ export default function RoomList({ gameType }: RoomListProps) {
         </div>
     );
 }
-
