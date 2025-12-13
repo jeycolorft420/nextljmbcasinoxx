@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { DiceRoom } from './DiceRoom';
+import { RouletteRoom } from './RouletteRoom';
 
 dotenv.config();
 
@@ -30,92 +31,106 @@ const io = new Server(httpServer, {
 });
 
 const prisma = new PrismaClient();
-const rooms: { [key: string]: DiceRoom } = {};
+// Usamos any para evitar problemas de tipos interseccion "never" entre clases dispares
+const rooms: { [key: string]: any } = {};
 
 io.on('connection', (socket) => {
-    // ... (resto de eventos join_room, buy_seat, etc que ya tenías) ...
+    console.log('Cliente conectado:', socket.id);
 
     socket.on('join_room', async (payload) => {
         const { roomId, user } = payload;
         socket.join(roomId);
-
-        // Guardar datos del usuario en el socket para usarlos luego
         socket.data.user = user;
         socket.data.roomId = roomId;
 
         let room = rooms[roomId];
+
         if (!room) {
             const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
             if (dbRoom) {
-                rooms[roomId] = new DiceRoom(
-                    roomId,
-                    Number(dbRoom.priceCents),
-                    dbRoom.botWaitMs || 0,
-                    dbRoom.autoLockAt,
-                    dbRoom.durationSeconds || 600,
-                    io
-                );
-                room = rooms[roomId];
+                if (dbRoom.gameType === 'ROULETTE') {
+                    room = new RouletteRoom(
+                        roomId,
+                        Number(dbRoom.priceCents),
+                        dbRoom.capacity,
+                        dbRoom.autoLockAt,
+                        io
+                    );
+                } else {
+                    // DiceRoom constructor match: (id, price, botWait, autoLock, duration, io)
+                    room = new DiceRoom(
+                        roomId,
+                        Number(dbRoom.priceCents),
+                        dbRoom.botWaitMs || 0,
+                        dbRoom.autoLockAt,
+                        dbRoom.durationSeconds || 600,
+                        io
+                    );
+                }
+                rooms[roomId] = room;
             }
         }
 
         if (room) {
-            // Solo unirse como observador o reconectar si ya existe en memoria
-            room.addPlayer(socket, user, false, false);
+            // Ambos aceptan (socket, user, isBot, isBuyAttempt)
+            // En DiceRoom isBuyAttempt puede ser opcional o default false, pero ya vimos que lo acepta.
+            await room.addPlayer(socket, user, false, false);
+
+            // Roulette tiene metodo especial para emitir estado inicial al socket
+            if (room instanceof RouletteRoom) {
+                room.emitStateToSocket(socket);
+            }
         }
     });
 
     socket.on('buy_seat', async (payload) => {
         const { roomId, user } = payload;
         socket.join(roomId);
-        socket.data.user = user;
-        socket.data.roomId = roomId;
 
         let room = rooms[roomId];
         if (!room) {
             const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
             if (dbRoom) {
-                rooms[roomId] = new DiceRoom(
-                    roomId,
-                    Number(dbRoom.priceCents),
-                    dbRoom.botWaitMs || 0,
-                    dbRoom.autoLockAt,
-                    dbRoom.durationSeconds || 600,
-                    io
-                );
-                room = rooms[roomId];
+                if (dbRoom.gameType === 'ROULETTE') {
+                    room = new RouletteRoom(roomId, Number(dbRoom.priceCents), dbRoom.capacity, dbRoom.autoLockAt, io);
+                } else {
+                    room = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt, dbRoom.durationSeconds || 600, io);
+                }
+                rooms[roomId] = room;
             }
         }
-
         if (room) {
-            // Intento de compra
-            await room.addPlayer(socket, user, false, true);
+            await room.addPlayer(socket, user, false, true); // true = isBuyAttempt
+            if (room instanceof RouletteRoom) {
+                room.emitStateToSocket(socket);
+            }
         }
     });
 
+    // Eventos Específicos
     socket.on('roll_dice', ({ roomId }) => {
         const room = rooms[roomId];
-        const userId = socket.data.user?.id;
-        if (room && userId) {
-            room.handleRoll(userId);
+        if (room instanceof DiceRoom && socket.data.user?.id) {
+            room.handleRoll(socket.data.user.id);
         }
     });
 
+    // Eventos Comunes
     socket.on('update_skin', ({ roomId, skin }) => {
         const room = rooms[roomId];
-        const userId = socket.data.user?.id;
-        if (room && userId) {
-            room.updateSkin(userId, skin);
+        // Solo DiceRoom tiene skins por ahora
+        if (room instanceof DiceRoom && socket.data.user?.id) {
+            room.updateSkin(socket.data.user.id, skin);
         }
     });
 
     // --- NUEVO: EVENTO DE RENDICIÓN ---
     socket.on('forfeit_game', ({ roomId }) => {
         const room = rooms[roomId];
-        const userId = socket.data.user?.id;
-        if (room && userId) {
-            console.log(`[Socket] Usuario ${userId} se rinde en sala ${roomId}`);
-            room.playerForfeit(userId);
+        // Solo DiceRoom tiene forfeit 1vs1 por ahora
+        if (room instanceof DiceRoom && socket.data.user?.id) {
+            console.log(`[Socket] Usuario ${socket.data.user.id} se rinde en sala ${roomId}`);
+            room.playerForfeit(socket.data.user.id);
         }
     });
 
