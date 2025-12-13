@@ -60,8 +60,8 @@ export class DiceRoom {
         this.io = io;
     }
 
-    public async addPlayer(socket: Socket, user: any, isBot: boolean = false) {
-        // 1. Validación rápida en memoria (Instantánea)
+    public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false) {
+        // 1. Validaciones previas
         if (this.players.length >= 2) {
             socket.emit('error_msg', { message: 'Sala llena' });
             return;
@@ -77,15 +77,56 @@ export class DiceRoom {
 
         if (this.status !== 'WAITING' && !isBot) return;
 
-        // 2. CREAR JUGADOR EN MEMORIA (RAM) - ¡ESTO ES LO QUE DA VELOCIDAD!
+        // 2. SI ES COMPRA EXPLÍCITA: VERIFICAR Y DESCONTAR SALDO (Atomicidad)
+        if (isBuyAttempt && !isBot) {
+            try {
+                // Safeguard: Check if already has entry in DB to avoid double charge
+                const activeEntry = await prisma.entry.findFirst({
+                    where: { roomId: this.id, userId: user.id }
+                });
+
+                if (activeEntry) {
+                    console.log(`[DiceRoom] Usuario ${user.username} ya tenía entrada. Recuperando...`);
+                    // Proceed to add to memory without charging (Recover)
+                } else {
+                    console.log(`[DiceRoom] 💳 Iniciando Transacción Atómica para ${user.username}...`);
+
+                    const userDb = await prisma.user.findUnique({ where: { id: user.id } });
+                    if (!userDb || userDb.balanceCents < this.priceCents) {
+                        socket.emit('error_msg', { message: 'Saldo insuficiente' });
+                        return;
+                    }
+
+                    // TRANSACCIÓN: Cobrar y Crear Ticket
+                    const pos = this.players.some(p => p.position === 1) ? 2 : 1;
+
+                    await prisma.$transaction([
+                        prisma.user.update({
+                            where: { id: user.id },
+                            data: { balanceCents: { decrement: this.priceCents } }
+                        }),
+                        prisma.entry.create({
+                            data: { roomId: this.id, userId: user.id, position: pos }
+                        })
+                    ]);
+                    console.log(`[DiceRoom] ✅ Cobro exitoso. Asiento asignado.`);
+                }
+            } catch (e: any) {
+                console.error("❌ Error en transacción de compra:", e.message);
+                socket.emit('error_msg', { message: 'Error procesando el pago. No se descontó saldo.' });
+                return; // <--- CRÍTICO: Si falla el pago, NO ENTRA.
+            }
+        }
+
+        // 3. ÉXITO (O Re-conexión validada): Agregar a memoria
         const newPlayer: Player = {
             socketId: isBot ? 'bot' : socket.id,
             userId: user.id,
             username: user.name || "Jugador",
             avatarUrl: user.avatar || "",
-            position: this.players.some(p => p.position === 1) ? 2 : 1,
+            position: this.players.some(p => p.position === 1) ? 2 : 1, // Fallback
             balance: this.priceCents,
-            skin: user.selectedDiceColor || user.activeSkin || 'white', // Compatible with both
+            skin: user.selectedDiceColor || user.activeSkin || 'white',
             isBot,
             connected: true
         };
@@ -93,23 +134,9 @@ export class DiceRoom {
         this.players.push(newPlayer);
         this.players.sort((a, b) => a.position - b.position);
 
-        // 3. BROADCAST INMEDIATO (El cliente ve que se sentó en <50ms)
         this.broadcastState();
 
-        // 4. PERSISTENCIA EN SEGUNDO PLANO (Fire and Forget)
-        // No usamos 'await' aquí para no bloquear el juego.
-        if (!isBot) {
-            prisma.entry.create({
-                data: { roomId: this.id, userId: user.id, position: newPlayer.position }
-            }).catch(err => {
-                console.error(`[DiceRoom ${this.id}] Error guardando entrada en DB (Rollback):`, err);
-                // Si falla la DB, lo sacamos (caso muy raro)
-                this.removePlayer(socket.id);
-                socket.emit('error_msg', { message: 'Error de conexión con base de datos.' });
-            });
-        }
-
-        // 5. Iniciar lógica de juego si está lleno
+        // 4. Iniciar lógica de juego si está lleno
         if (this.players.length >= 2) {
             this.cancelBot();
             setTimeout(() => this.startGame(), 2000);
