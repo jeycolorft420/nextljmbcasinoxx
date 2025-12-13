@@ -211,6 +211,7 @@ export class RouletteRoom {
     // --- GAME LOOP & BOT LOGIC ---
 
     private startCycle() {
+        console.log(`[Roulette ${this.id}] Starting Cycle. Duration: ${this.totalDurationSeconds}s`);
         // Regla: Duración total (Time 1)
         const durationMs = this.totalDurationSeconds * 1000;
         this.autoLockAt = new Date(Date.now() + durationMs);
