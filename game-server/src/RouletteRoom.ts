@@ -41,8 +41,12 @@ export class RouletteRoom {
             this.loadStateFromDb().then(() => {
                 if (this.autoLockAt && this.autoLockAt.getTime() > Date.now()) {
                     this.scheduleTimers();
-                } else if (!this.autoLockAt) {
-                    this.startCycle();
+                } else {
+                    // Solo arrancar si hay jugadores REALES recuperados
+                    const hasRealPlayers = this.players.some(p => !p.isBot);
+                    if (hasRealPlayers) {
+                        this.startCycle();
+                    }
                 }
             });
         }
@@ -235,6 +239,11 @@ export class RouletteRoom {
 
         this.notifyLobby();
         this.broadcastState();
+
+        // TIMER TRIGGER: Start only if real user joins and not running
+        if (!isBot && !this.autoLockAt && this.status === 'OPEN') {
+            this.startCycle();
+        }
 
         // AUTO-SPIN CHECK (Regla 4: Girar si se llena)
         if (this.players.length >= this.capacity) {
@@ -488,8 +497,8 @@ export class RouletteRoom {
         this.notifyLobby();
         this.io.to(this.id).emit('server:room:reset');
 
-        // RESTART CYCLE
-        this.startCycle();
+        // RESTART CYCLE: REMOVED. Wait for user to trigger.
+        // this.startCycle();
     }
 
     // --- UTILS ---
