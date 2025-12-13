@@ -76,6 +76,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 autoSpinForWinnerRef.current !== winnerId &&
                 !spinningRef.current
             ) {
+                // FIXED: Match by userId
                 const winnerEntry = room.entries?.find((e) => e.user.id === winnerId);
 
                 // Try to get position from Entry (Best case) OR from explicit Server Payload via gameMeta (Fallback)
@@ -150,9 +151,9 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
         if (onSpinEnd) onSpinEnd();
     };
 
-    // Safe avatar extraction
-    const winnerAvatar = winnerEntry?.user.image || winnerEntry?.user.avatar || "/avatars/0.png"; // Fallback default
+    // Safe name extraction
     const winnerName = winnerEntry?.user.name || "Jugador";
+    console.log("🎲 Rendering Board:", { revealWinner, winningEntryId: room.winningEntryId, winnerName });
 
     return (
         <div className="relative flex flex-col items-center justify-center min-h-[400px]">
@@ -166,45 +167,32 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 soundUrl="/sfx/roulette-spin.mp3"
             />
 
-            {/* PROFESSIONAL WINNER OVERLAY */}
+            {/* PROFESSIONAL WINNER OVERLAY (TEXT ONLY) */}
             {revealWinner && room.winningEntryId && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
                     <div className="relative animate-in zoom-in fade-in duration-500 fill-mode-forwards filter drop-shadow-2xl">
 
                         {/* Glow Effect Background */}
-                        <div className="absolute -inset-10 bg-gradient-to-r from-yellow-500/30 via-emerald-500/30 to-yellow-500/30 blur-3xl rounded-full animate-pulse-slow"></div>
+                        <div className="absolute -inset-20 bg-gradient-to-r from-yellow-500/20 via-emerald-500/20 to-yellow-500/20 blur-3xl rounded-full animate-pulse-slow"></div>
 
                         {/* Card Container */}
-                        <div className="relative bg-gray-900/95 border border-yellow-500/50 rounded-xl p-8 flex flex-col items-center justify-center min-w-[280px] shadow-[0_0_50px_rgba(234,179,8,0.3)] backdrop-blur-xl">
+                        <div className="relative bg-gray-900/95 border-2 border-yellow-500/50 rounded-2xl p-10 flex flex-col items-center justify-center min-w-[320px] shadow-[0_0_60px_rgba(234,179,8,0.2)] backdrop-blur-xl">
 
                             {/* Header Badge */}
-                            <div className="absolute -top-5 bg-gradient-to-r from-yellow-600 to-yellow-400 text-black font-black uppercase tracking-widest text-xs py-1.5 px-6 rounded-full shadow-lg border border-yellow-200">
+                            <div className="bg-gradient-to-r from-yellow-500 to-yellow-300 text-black font-black uppercase tracking-[0.2em] text-sm py-2 px-8 rounded-full shadow-lg border border-yellow-100 mb-6 animate-bounce-short">
                                 Winner!
                             </div>
 
-                            {/* Avatar Ring */}
-                            <div className="relative mb-4 mt-2">
-                                <div className="absolute -inset-1 bg-gradient-to-tr from-yellow-400 to-emerald-500 rounded-full animate-spin-slow opacity-75 blur-sm"></div>
-                                <img
-                                    src={winnerAvatar}
-                                    alt="Winner"
-                                    className="relative w-24 h-24 rounded-full border-4 border-gray-900 object-cover bg-gray-800"
-                                />
-                                <div className="absolute -bottom-2 -right-2 bg-yellow-400 text-black text-xs font-bold w-8 h-8 flex items-center justify-center rounded-full border-2 border-gray-900">
-                                    #1
-                                </div>
-                            </div>
-
                             {/* Winner Name */}
-                            <div className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-300 text-center mb-1 max-w-[200px] truncate">
+                            <div className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400 text-center mb-4 max-w-[280px] break-words leading-tight">
                                 {winnerName}
                             </div>
 
                             {/* Prize Amount */}
                             {room.prizeCents && (
-                                <div className="flex flex-col items-center mt-2 animate-bounce-short">
-                                    <span className="text-gray-400 text-xs font-medium uppercase tracking-wider">Has ganado</span>
-                                    <span className="text-4xl font-black text-emerald-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                                <div className="flex flex-col items-center mt-2">
+                                    <span className="text-emerald-400/80 text-xs font-bold uppercase tracking-widest mb-1">Premio Total</span>
+                                    <span className="text-5xl font-black text-emerald-400 drop-shadow-[0_4px_8px_rgba(16,185,129,0.4)]">
                                         +${(room.prizeCents / 100).toFixed(2)}
                                     </span>
                                 </div>
