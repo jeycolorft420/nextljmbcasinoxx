@@ -446,15 +446,14 @@ export default function RoomPage() {
     }
   };
 
-  const role = (session?.user as any)?.role; // Ensure this is coming from your auth provider correctly
+  const role = (session?.user as any)?.role || (session as any)?.role;
+  console.log("DEBUG ROLE:", role, session);
 
   // --- SAFE NAVIGATION & EXIT LOGIC ---
   const isParticipant = effectiveEntries.some((e: any) => e.user.id === userId);
 
   const handleSafeNavigation = (path: string) => {
-    // 1. Close menu immediately
-    setMobileMenuOpen(false);
-
+    setMobileMenuOpen(false); // 1. Close menu immediately to show modal clearly
     if (room?.gameType === "DICE_DUEL" && isParticipant) {
       setConfirmModal({
         isOpen: true,
