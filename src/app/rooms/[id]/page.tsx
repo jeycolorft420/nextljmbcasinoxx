@@ -320,6 +320,7 @@ export default function RoomPage() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      // Al conectar solo nos unimos a la sala (sin comprar)
       socket.emit("join_room", { roomId: id, user: { id: userId, name: session?.user?.name, avatar: session?.user?.image, selectedDiceColor: (session?.user as any)?.selectedDiceColor } });
     });
 
@@ -340,17 +341,15 @@ export default function RoomPage() {
       console.log("🔄 RESET RECIBIDO: Forzando limpieza de UI (Passive Sync Fix)");
       toast.info("La sala se ha reiniciado.");
 
-      // 1. Limpieza Nuclear de Estados Visuales para el Jugador Pasivo
       setGameState({
         status: 'WAITING',
-        players: [], // Array vacío OBLIGATORIO para disparar re-render
+        players: [],
         round: 1,
         rolls: {},
         history: [],
         timeLeft: 30
       });
 
-      // 2. Forzar recarga de datos de sala
       load();
     });
 
@@ -392,9 +391,10 @@ export default function RoomPage() {
     if (selectedPositions.length > 0 && qty < selectedPositions.length) setQty(selectedPositions.length);
   }, [selectedPositions.length, qty]);
 
+  // FUNCIÓN JOIN CORREGIDA
   const join = async () => {
     if (!id || !userId) return;
-    // Calculate cost
+
     const costCents = room ? room.priceCents * ((selectedPositions.length > 0 ? selectedPositions.length : qty)) : 0;
     const currentBalance = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
 
@@ -404,28 +404,26 @@ export default function RoomPage() {
     }
 
     setJoining(true);
-    // Optimistic Wallet Update (Client Side)
+    // Optimistic Wallet Update
     optimisticUpdate(-costCents);
 
-    // --- OPTIMISTIC SOCKET JOIN (No REST API wait) ---
     try {
       if (socketRef.current && socketRef.current.connected) {
-        console.log("⚡ SOCKET JOIN: Enviando petición optimista...");
-        socketRef.current.emit("join_room", {
+        console.log("⚡ SOCKET JOIN: Enviando petición DE COMPRA...");
+
+        // CORRECCIÓN AQUÍ: Usar 'buy_seat' en lugar de 'join_room' para comprar
+        socketRef.current.emit("buy_seat", {
           roomId: id,
           user: {
             id: userId,
             name: session?.user?.name,
             avatar: session?.user?.image,
-            selectedDiceColor: currentDiceSkin, // Send dice color
-            activeSkin: currentDiceSkin // Send as activeSkin too for compatibility
+            selectedDiceColor: currentDiceSkin,
+            activeSkin: currentDiceSkin
           }
         });
 
-        // Assuming success for UI feedback
-        toast.success("¡Uniendo...");
-
-        // Clear selections
+        toast.success("Procesando compra...");
         setSelectedPositions([]);
       } else {
         throw new Error("Socket no conectado");
@@ -435,7 +433,6 @@ export default function RoomPage() {
       rollbackUpdate(costCents);
       toast.error("Error de conexión al servidor de juego");
     } finally {
-      // Stop loading spinner after a short delay (UI feel)
       setTimeout(() => setJoining(false), 500);
     }
   };
@@ -470,7 +467,7 @@ export default function RoomPage() {
     if (room?.state === "FINISHED") {
       try {
         await fetch(`/api/rooms/${id}/reset`, { method: "POST" });
-        socketRef.current?.emit("request_reset", { roomId: id }); // 🔥 Forzar reset en socket server
+        socketRef.current?.emit("request_reset", { roomId: id });
       } catch (e) {
         toast.error("Error al reiniciar la sala");
         return;
@@ -487,7 +484,6 @@ export default function RoomPage() {
   if (loading && !room) return <div className="text-center mt-10 opacity-50">Cargando...</div>;
   if (!room) return <div className="text-center mt-10">Sala no encontrada</div>;
 
-  // --- SAFE USER OBJECT FOR DICE BOARD ---
   const safeUser = session?.user ? {
     id: userId || "guest",
     name: session.user.name || "Jugador",
