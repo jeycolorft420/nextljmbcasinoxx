@@ -106,10 +106,10 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
             }
         }
 
-        // Reset de flags solo si está OPEN (nueva ronda) Y NO estemos girando (protección contra blip)
-        if (room.state === "OPEN") {
+        // Reset de flags si está OPEN o WAITING (nueva ronda) Y NO estemos girando (protección contra blip)
+        if (room.state === "OPEN" || room.state === "WAITING") {
             if (!spinningRef.current) {
-                console.log("🔄 Resetting Board (State is OPEN and not spinning)");
+                console.log("🔄 Resetting Board (State is OPEN/WAITING and not spinning)");
                 setRevealWinner(false);
                 setWinnerSnapshot(null); // Clear snapshot
                 setTargetIndex(null);
@@ -117,7 +117,7 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 autoSpinForWinnerRef.current = null;
                 if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
             } else {
-                console.log("🛡️ Ignoring OPEN state reset (Spinning in progress)");
+                console.log("🛡️ Ignoring reset (Spinning in progress)");
             }
         }
     }, [room.state, room.winningEntryId, room.entries]);
@@ -158,6 +158,9 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
 
     // Safe name extraction (Use snapshot if available)
     const winnerName = (winnerSnapshot || room.entries?.find(e => e.user.id === room.winningEntryId))?.user.name || "Jugador";
+    const winnerAmount = room.prizeCents ? (room.prizeCents / 100).toFixed(2) : "0.00";
+    const isMe = email && (winnerSnapshot?.user.email === email || room.winningEntryId && room.entries?.find(e => e.user.id === room.winningEntryId)?.user.email === email);
+
     console.log("🎲 Rendering Board:", { revealWinner, winningEntryId: room.winningEntryId, winnerName });
 
     return (
@@ -172,38 +175,31 @@ export default function RouletteBoard({ room, email, wheelSize, onSpinEnd, theme
                 soundUrl="/sfx/roulette-spin.mp3"
             />
 
-            {/* PROFESSIONAL WINNER OVERLAY (TEXT ONLY) */}
+            {/* CASINO STYLE WINNER OVERLAY (DiceBoard Style) */}
             {revealWinner && (winnerSnapshot || room.winningEntryId) && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center pointer-events-none">
-                    <div className="relative animate-in zoom-in fade-in duration-500 fill-mode-forwards filter drop-shadow-2xl">
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md transition-all duration-300 p-4">
+                    <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-black/90 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-xl min-w-[300px]">
 
-                        {/* Glow Effect Background */}
-                        <div className="absolute -inset-20 bg-gradient-to-r from-yellow-500/20 via-emerald-500/20 to-yellow-500/20 blur-3xl rounded-full animate-pulse-slow"></div>
-
-                        {/* Card Container */}
-                        <div className="relative bg-gray-900/95 border-2 border-yellow-500/50 rounded-2xl p-10 flex flex-col items-center justify-center min-w-[320px] shadow-[0_0_60px_rgba(234,179,8,0.2)] backdrop-blur-xl">
-
-                            {/* Header Badge */}
-                            <div className="bg-gradient-to-r from-yellow-500 to-yellow-300 text-black font-black uppercase tracking-[0.2em] text-sm py-2 px-8 rounded-full shadow-lg border border-yellow-100 mb-6 animate-bounce-short">
-                                Winner!
-                            </div>
-
-                            {/* Winner Name */}
-                            <div className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400 text-center mb-4 max-w-[280px] break-words leading-tight">
-                                {winnerName}
-                            </div>
-
-                            {/* Prize Amount */}
-                            {room.prizeCents && (
-                                <div className="flex flex-col items-center mt-2">
-                                    <span className="text-emerald-400/80 text-xs font-bold uppercase tracking-widest mb-1">Premio Total</span>
-                                    <span className="text-5xl font-black text-emerald-400 drop-shadow-[0_4px_8px_rgba(16,185,129,0.4)]">
-                                        +${(room.prizeCents / 100).toFixed(2)}
-                                    </span>
-                                </div>
-                            )}
-
+                        <div className="text-5xl md:text-6xl font-black drop-shadow-2xl mb-4">
+                            🏆
                         </div>
+
+                        <div className={`text-3xl md:text-4xl font-black uppercase mb-4 ${isMe ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {isMe ? "¡GANASTE!" : `GANÓ ${winnerName.toUpperCase()}`}
+                        </div>
+
+                        {/* Amount Won */}
+                        <div className={`text-2xl font-mono font-bold ${isMe ? "text-green-400" : "text-yellow-400"}`}>
+                            +{winnerAmount}
+                        </div>
+
+                        {/* Round Info */}
+                        <div className="mt-6 px-4 py-1 bg-white/10 rounded-full border border-white/5">
+                            <span className="text-xs text-white/60 font-bold uppercase tracking-widest">
+                                ROULETTE
+                            </span>
+                        </div>
+
                     </div>
                 </div>
             )}
