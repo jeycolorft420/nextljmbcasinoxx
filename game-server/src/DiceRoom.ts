@@ -85,19 +85,34 @@ export class DiceRoom {
         this.players.sort((a, b) => a.position - b.position);
         this.broadcastState();
 
-        if (this.players.length === 1) this.scheduleBot();
-        else if (this.players.length === 2) {
+        // Lógica del Bot corregida
+        if (this.players.length === 1) {
+            // Solo programar bot si hay 1 humano esperando
+            this.scheduleBot();
+        } else if (this.players.length >= 2) {
+            // Si se llenó, cancelar cualquier bot pendiente
             this.cancelBot();
             setTimeout(() => this.startGame(), 2000);
         }
     }
 
     public removePlayer(socketId: string) {
+        // NOTE: this logic handles "leaving" while waiting.
+        // If playing, we just mark disconnect. But user asked for a specific logic.
+        // Assuming this method handles the "logic removal" or "disconnect".
+        // The original code filtered only if WAITING.
+
         const p = this.players.find(p => p.socketId === socketId);
         if (!p) return;
+
         if (this.status === 'WAITING') {
             this.players = this.players.filter(pl => pl.socketId !== socketId);
-            this.scheduleBot();
+
+            if (this.players.length === 0) {
+                this.reset(); // Si se van todos, reset total (sin bot)
+            } else if (this.players.length === 1 && this.status === 'WAITING') {
+                this.scheduleBot(); // Si queda uno solo esperando, llamar al bot
+            }
         } else {
             p.connected = false;
         }
@@ -362,25 +377,35 @@ export class DiceRoom {
     }
 
     public reset() {
-        // PASO 1: Matar el juego anterior OBLIGATORIAMENTE
+        console.log(`[DiceRoom ${this.id}] 🛑 RESET TOTAL: Vaciando sala...`);
+
+        // 1. Matar todos los timers del juego anterior
         this.killGameLoop();
+        if (this.botTimer) clearTimeout(this.botTimer);
+        this.botTimer = null;
 
-        console.log(`[DiceRoom ${this.id}] EJECUTANDO RESET NUCLEAR.`);
+        // 2. VACIADO REAL DE JUGADORES
+        // Esto es vital: la sala debe quedar con 0 jugadores lógicos
+        this.players = [];
+        // this.seats = {}; // (Nota: seats no existe en la clase actual, omitido para evitar error TS)
 
-        // PASO 2: Vaciar datos
-        this.players = []; // Array vacío (CRÍTICO)
+        // 3. Reset de variables de estado
         this.rolls = {};
         this.history = [];
         this.round = 1;
         this.turnUserId = null;
-        this.roundStarterId = null;
+        this.roundStarterId = null; // Ensuring this is cleared too as per class def
         this.status = 'WAITING';
+        // this.winner = null; // (Propiedad no existe en clase, omitido)
 
-        // PASO 3: Notificar al frontend que la sala está MUERTA y VACÍA
-        this.broadcastState();
-        this.io.to(this.id).emit('server:room:reset'); // Señal explicita para recargar UI
+        // 4. Notificar a todos los sockets conectados que YA NO tienen asiento
+        // Esto fuerza al frontend a mostrar "Comprar Asiento"
+        this.io.to(this.id).emit('update_game', this.buildStatePayload()); // = emit('game_update' logic)
+        this.io.to(this.id).emit('server:room:reset');
 
-        // PASO 4: Reiniciar bucle de bots (si aplica)
-        this.scheduleBot();
+        // 5. IMPORTANTE: NO PROGRAMAR EL BOT INMEDIATAMENTE
+        // El bot solo debe programarse cuando ALGUIEN NUEVO entre.
+        // Si la sala está vacía, no debe haber timer de bot.
     }
 }
+```
