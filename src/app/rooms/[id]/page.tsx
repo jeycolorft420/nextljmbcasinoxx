@@ -324,6 +324,8 @@ export default function RoomPage() {
     });
 
     socket.on("update_game", (data) => setGameState(data));
+    socket.on("error_msg", (data: any) => { toast.error(data.message || "Error"); setJoining(false); });
+    socket.on("error", (data: any) => { toast.error(data.message || "Error"); setJoining(false); });
 
     socket.on("dice_anim", (data) => {
       setGameState((prev: any) => ({ ...prev, lastRoll: data }));

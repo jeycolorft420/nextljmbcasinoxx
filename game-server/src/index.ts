@@ -59,37 +59,57 @@ io.on('connection', (socket) => {
                 gameRoom.emitStateToSocket(socket); // Espectador
             }
         } catch (e) { console.error(e); }
-    });
+    } catch (e) { console.error(e); }
+});
 
-    socket.on('roll_dice', ({ roomId }) => {
-        const room = rooms[roomId];
-        const userId = socketToUser[socket.id];
-        if (room && userId) room.handleRoll(userId);
-    });
+// Evento EXCLUSIVO para comprar entrada (Botón "Comprar")
+socket.on('buy_seat', async ({ roomId, user }) => {
+    try {
+        // 1. Obtener la sala de memoria (debe estar iniciada por join_room alguien, si no, crearla)
+        const dbRoom = await prisma.room.findUnique({ where: { id: roomId } });
+        if (!dbRoom) { socket.emit('error_msg', { message: 'Sala no existe' }); return; }
 
-    socket.on('update_skin', ({ roomId, skin }) => {
-        const room = rooms[roomId];
-        const userId = socketToUser[socket.id];
-        if (room && userId) room.updateSkin(userId, skin);
-    });
-
-    socket.on('disconnect', () => {
-        const roomId = socketToRoom[socket.id];
-        if (roomId && rooms[roomId]) {
-            rooms[roomId].removePlayer(socket.id);
-            if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') {
-                rooms[roomId].destroy(); // Cleanup timers
-                delete rooms[roomId];
-            }
+        if (!rooms[roomId]) {
+            rooms[roomId] = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt || null, io);
         }
-        delete socketToRoom[socket.id];
-        delete socketToUser[socket.id];
-    });
+        const gameRoom = rooms[roomId];
 
-    socket.on('request_reset', ({ roomId }) => {
-        const room = rooms[roomId];
-        if (room) room.reset();
-    });
+        // 2. Intentar Agregar (Esto gatilla el Cobro Atómico)
+        // Agregamos flag isBuy=true para indicar intención de compra explícita
+        gameRoom.addPlayer(socket, user, false, true);
+
+    } catch (e) { console.error(e); }
+});
+
+socket.on('roll_dice', ({ roomId }) => {
+    const room = rooms[roomId];
+    const userId = socketToUser[socket.id];
+    if (room && userId) room.handleRoll(userId);
+});
+
+socket.on('update_skin', ({ roomId, skin }) => {
+    const room = rooms[roomId];
+    const userId = socketToUser[socket.id];
+    if (room && userId) room.updateSkin(userId, skin);
+});
+
+socket.on('disconnect', () => {
+    const roomId = socketToRoom[socket.id];
+    if (roomId && rooms[roomId]) {
+        rooms[roomId].removePlayer(socket.id);
+        if (rooms[roomId].players.length === 0 && rooms[roomId].status !== 'PLAYING') {
+            rooms[roomId].destroy(); // Cleanup timers
+            delete rooms[roomId];
+        }
+    }
+    delete socketToRoom[socket.id];
+    delete socketToUser[socket.id];
+});
+
+socket.on('request_reset', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (room) room.reset();
+});
 });
 
 const PORT = process.env.PORT || 4000;
