@@ -46,7 +46,7 @@ io.on('connection', (socket) => {
             socketToUser[socket.id] = user.id;
 
             if (!rooms[roomId]) {
-                rooms[roomId] = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt || null, io);
+                rooms[roomId] = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt || null, dbRoom.durationSeconds || 600, io);
             }
             const gameRoom = rooms[roomId];
 
@@ -69,7 +69,7 @@ io.on('connection', (socket) => {
             if (!dbRoom) { socket.emit('error_msg', { message: 'Sala no existe' }); return; }
 
             if (!rooms[roomId]) {
-                rooms[roomId] = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt || null, io);
+                rooms[roomId] = new DiceRoom(roomId, Number(dbRoom.priceCents), dbRoom.botWaitMs || 0, dbRoom.autoLockAt || null, dbRoom.durationSeconds || 600, io);
             }
             const gameRoom = rooms[roomId];
 

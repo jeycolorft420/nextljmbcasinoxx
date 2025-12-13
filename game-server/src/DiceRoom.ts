@@ -29,11 +29,15 @@ interface RoundHistory {
 }
 
 export class DiceRoom {
+    // Memoria estática para evitar que el mismo bot juegue en 2 salas a la vez
+    public static activeBotIds: Set<string> = new Set();
+
     public id: string;
     public priceCents: number;
     public stepValue: number;
     public botWaitMs: number;
     public autoLockAt: Date | null;
+    public durationSeconds: number; // Nuevo: Tiempo límite de sala abierta
 
     public players: Player[] = [];
     public status: 'WAITING' | 'PLAYING' | 'ROUND_END' | 'FINISHED' = 'WAITING';
@@ -51,19 +55,23 @@ export class DiceRoom {
     private turnExpiresAt: number = 0;
     private gameLoopInterval: NodeJS.Timeout | null = null;
 
-    constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, io: Server) {
+    // Para la lógica de "Jugar de nuevo" con el mismo bot
+    private lastBotId: string | null = null;
+
+    constructor(roomId: string, priceCents: number, botWaitMs: number, autoLockAt: Date | null, durationSeconds: number, io: Server) {
         this.id = roomId;
         this.priceCents = priceCents;
         this.stepValue = Math.floor(this.priceCents * PERCENTAGE_PER_ROUND);
         this.botWaitMs = botWaitMs;
         this.autoLockAt = autoLockAt;
+        this.durationSeconds = durationSeconds || 600; // Por defecto 10 min si no viene
         this.io = io;
     }
 
     public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false) {
         // 1. Validaciones previas
         if (this.players.length >= 2) {
-            socket.emit('error_msg', { message: 'Sala llena' });
+            if (!isBot) socket.emit('error_msg', { message: 'Sala llena' });
             return;
         }
 
@@ -76,29 +84,25 @@ export class DiceRoom {
             return;
         }
 
-        if (this.status !== 'WAITING' && !isBot) return;
+        // Un bot NUNCA puede entrar si la sala no está en WAITING o si ya hay 2 jugadores
+        if (this.status !== 'WAITING') return;
 
-        // Determinar posición (1 o 2) basada en huecos libres en memoria
-        // Si el jugador 1 está ocupado, asignamos el 2, si no el 1.
+        // Determinar posición
         let pos: 1 | 2 = this.players.some(p => p.position === 1) ? 2 : 1;
 
-        // 2. LOGICA DE COMPRA / RECUPERACIÓN
+        // 2. LOGICA DE COMPRA / RECUPERACIÓN (Solo Humanos)
         if (!isBot) {
             try {
-                // Verificar si ya tiene entrada en DB (recuperación tras reinicio)
+                // Verificar si ya tiene entrada en DB
                 const activeEntry = await prisma.entry.findFirst({
                     where: { roomId: this.id, userId: user.id }
                 });
 
                 if (activeEntry) {
-                    console.log(`[DiceRoom] Usuario ${user.username} recuperado (ya pagó).`);
-                    // Usar la posición que dice la DB para evitar conflictos
+                    console.log(`[DiceRoom] Usuario ${user.username} recuperado.`);
                     pos = activeEntry.position as 1 | 2;
                 } else if (isBuyAttempt) {
-                    // COMPRA NUEVA: TRANSACCIÓN ATÓMICA
-                    // Si falla create (por ocupado), falla el cobro.
-                    console.log(`[DiceRoom] 💳 Cobrando a ${user.username} por puesto ${pos}...`);
-
+                    // COBRO ATÓMICO
                     const userDb = await prisma.user.findUnique({ where: { id: user.id } });
                     if (!userDb || userDb.balanceCents < this.priceCents) {
                         socket.emit('error_msg', { message: 'Saldo insuficiente' });
@@ -111,24 +115,20 @@ export class DiceRoom {
                             data: { balanceCents: { decrement: this.priceCents } }
                         }),
                         prisma.entry.create({
-                            data: {
-                                roomId: this.id,
-                                userId: user.id,
-                                position: pos
-                                // status: 'ACTIVE' <-- ELIMINADO (Causaba el error)
-                            }
+                            data: { roomId: this.id, userId: user.id, position: pos }
                         })
                     ]);
-                    console.log(`[DiceRoom] ✅ Transacción exitosa.`);
                 } else {
-                    // No tiene entrada y no está intentando comprar
                     return;
                 }
             } catch (e: any) {
                 console.error("❌ Error CRÍTICO al añadir jugador:", e.message);
-                socket.emit('error_msg', { message: 'Error al procesar la entrada. Si se descontó saldo, contacte a soporte.' });
-                return; // Si falló la transacción, no añadimos a memoria.
+                socket.emit('error_msg', { message: 'Error procesando entrada.' });
+                return;
             }
+        } else {
+            // Si es BOT, lo registramos en el Set global para que no entre a otra sala
+            DiceRoom.activeBotIds.add(user.id);
         }
 
         // 3. ÉXITO: Agregar a memoria
@@ -144,7 +144,6 @@ export class DiceRoom {
             connected: true
         };
 
-        // Evitar duplicados en memoria por race condition
         if (!this.players.find(p => p.userId === newPlayer.userId)) {
             this.players.push(newPlayer);
             this.players.sort((a, b) => a.position - b.position);
@@ -152,12 +151,16 @@ export class DiceRoom {
 
         this.broadcastState();
 
-        // 4. Iniciar lógica de juego si está lleno
+        // 4. LÓGICA DE BOTS Y TIEMPOS
         if (this.players.length >= 2) {
+            // Sala llena: cancelar espera de bot e iniciar juego
             this.cancelBot();
             setTimeout(() => this.startGame(), 2000);
-        } else if (this.players.length === 1) {
+        } else if (this.players.length === 1 && !isBot) {
+            // Jugador REAL entró solo: Iniciar cuenta atrás para Bot
+            // Y configurar el tiempo de cierre de sala (autoLock) si es necesario
             this.scheduleBot();
+            this.updateRoomExpiration();
         }
     }
 
@@ -166,33 +169,129 @@ export class DiceRoom {
         if (!p) return;
 
         if (this.status === 'WAITING') {
-            // Si se va mientras espera, lo sacamos de memoria
             this.players = this.players.filter(pl => pl.socketId !== socketId);
 
-            // IMPORTANTE: Liberar el asiento en la DB para que otro pueda entrar
-            // Si no hacemos esto, el asiento queda "ocupado" en DB y nadie más puede comprarlo.
+            // Liberar DB y Global Set
             if (!p.isBot) {
                 try {
-                    await prisma.entry.deleteMany({
-                        where: { roomId: this.id, userId: p.userId }
-                    });
-                    console.log(`[DiceRoom] 🗑️ Entrada liberada para ${p.username}`);
-                } catch (e) {
-                    console.error("Error liberando entrada:", e);
-                }
+                    await prisma.entry.deleteMany({ where: { roomId: this.id, userId: p.userId } });
+                } catch (e) { console.error(e); }
+            } else {
+                DiceRoom.activeBotIds.delete(p.userId); // Liberar bot
             }
 
+            // Si no queda nadie, reset total
             if (this.players.length === 0) {
                 this.reset();
-            } else if (this.players.length === 1 && this.status === 'WAITING') {
-                this.scheduleBot();
+            }
+            // Si queda alguien...
+            else if (this.players.length === 1) {
+                const survivor = this.players[0];
+                if (survivor.isBot) {
+                    // ⚠️ REGLA: Un bot NO puede quedarse solo. Se sale.
+                    console.log(`[DiceRoom] Bot ${survivor.username} quedó solo. Saliendo...`);
+                    this.players = [];
+                    DiceRoom.activeBotIds.delete(survivor.userId);
+                    this.reset();
+                } else {
+                    // Si queda un humano, volvemos a llamar al bot
+                    this.scheduleBot();
+                }
             }
         } else {
-            // Si ya está jugando, solo marcamos desconectado
             p.connected = false;
         }
         this.broadcastState();
     }
+
+    private updateRoomExpiration() {
+        // Actualizar en DB que la sala está "viva" y corriendo tiempo
+        // Esto es opcional, depende de si usas autoLockAt para cerrar la sala
+        if (!this.autoLockAt) {
+            const expiration = new Date(Date.now() + this.durationSeconds * 1000);
+            this.autoLockAt = expiration;
+            // update db async (fire and forget)
+            prisma.room.update({ where: { id: this.id }, data: { autoLockAt: expiration } }).catch(console.error);
+        }
+    }
+
+    // --- LÓGICA DE INYECCIÓN DE BOTS ---
+
+    private scheduleBot() {
+        if (this.botTimer) clearTimeout(this.botTimer);
+        // Solo programar si hay 1 jugador, es WAITING y el tiempo de espera > 0
+        if (this.players.length === 1 && this.status === 'WAITING' && this.botWaitMs > 0) {
+            console.log(`[DiceRoom] 🤖 Bot programado en ${this.botWaitMs / 1000}s`);
+            this.botTimer = setTimeout(() => this.injectBot(), this.botWaitMs);
+        }
+    }
+
+    private cancelBot() {
+        if (this.botTimer) {
+            clearTimeout(this.botTimer);
+            this.botTimer = null;
+        }
+    }
+
+    private async injectBot() {
+        // Verificar doble check
+        if (this.players.length !== 1 || this.status !== 'WAITING') return;
+
+        try {
+            // 1. Obtener todos los bots disponibles de la DB
+            const allBots = await prisma.user.findMany({
+                where: { isBot: true },
+                select: { id: true, name: true, avatarUrl: true, selectedDiceColor: true }
+            });
+
+            if (allBots.length === 0) return;
+
+            // 2. Filtrar bots que ya están ocupados en otras salas
+            const availableBots = allBots.filter(b => !DiceRoom.activeBotIds.has(b.id));
+
+            if (availableBots.length === 0) {
+                console.log("[DiceRoom] Todos los bots están ocupados.");
+                // Reintentar en 5 segundos
+                this.botTimer = setTimeout(() => this.injectBot(), 5000);
+                return;
+            }
+
+            let selectedBot = null;
+
+            // 3. Lógica de "Revancha": A veces (40%) intentar traer el mismo bot anterior
+            const wantsRematch = Math.random() < 0.4;
+            if (this.lastBotId && wantsRematch) {
+                const previousBot = availableBots.find(b => b.id === this.lastBotId);
+                if (previousBot) {
+                    selectedBot = previousBot;
+                    console.log(`[DiceRoom] 🤖 Regresando al bot ${selectedBot.name} para revancha.`);
+                }
+            }
+
+            // Si no hay revancha o el anterior está ocupado, elegir uno nuevo al azar
+            if (!selectedBot) {
+                const randomIndex = Math.floor(Math.random() * availableBots.length);
+                selectedBot = availableBots[randomIndex];
+            }
+
+            // 4. Meter al bot
+            console.log(`[DiceRoom] 🤖 Insertando bot: ${selectedBot.name}`);
+            await this.addPlayer({ id: 'bot' } as any, {
+                id: selectedBot.id,
+                name: selectedBot.name,
+                avatar: selectedBot.avatarUrl,
+                selectedDiceColor: selectedBot.selectedDiceColor || 'red'
+            }, true); // isBot = true
+
+            // Guardar referencia para la próxima
+            this.lastBotId = selectedBot.id;
+
+        } catch (e) {
+            console.error("Error injectBot:", e);
+        }
+    }
+
+    // --- JUEGO ---
 
     public emitStateToSocket(socket: Socket) {
         socket.emit('update_game', this.buildStatePayload());
@@ -214,18 +313,10 @@ export class DiceRoom {
         this.broadcastState();
     }
 
-    public updateSkin(userId: string, skin: string) {
-        const p = this.players.find(p => p.userId === userId);
-        if (p) {
-            p.skin = skin;
-            this.broadcastState();
-        }
-    }
-
     public handleRoll(userId: string) {
         if (this.status !== 'PLAYING') return;
         if (this.turnUserId !== userId) return;
-        if (this.rolls[userId]) return;
+        if (this.rolls[userId]) return; // Ya tiró
 
         const roll: [number, number] = [Math.ceil(Math.random() * 6), Math.ceil(Math.random() * 6)];
         this.rolls[userId] = roll;
@@ -234,25 +325,56 @@ export class DiceRoom {
 
         this.io.to(this.id).emit('dice_anim', { userId, result: roll });
 
+        // Esperar animación
         setTimeout(() => {
             const opponent = this.players.find(p => p.userId !== userId);
 
             if (opponent && !this.rolls[opponent.userId]) {
+                // Cambio de turno
                 this.turnUserId = opponent.userId;
-                this.processTurn();
+                this.processTurn(); // Iniciar tiempo del siguiente
                 this.broadcastState();
             } else {
+                // Ambos tiraron
                 this.resolveRound();
             }
         }, 1500);
     }
 
+    private processTurn() {
+        if (this.timer) clearTimeout(this.timer);
+
+        const p = this.players.find(pl => pl.userId === this.turnUserId);
+        if (!p) return;
+
+        // Establecer tiempo límite real (30s)
+        this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
+
+        if (p.isBot) {
+            // 🤖 COMPORTAMIENTO HUMANO DEL BOT
+            // Tirar en un tiempo aleatorio entre 3s y 28s para parecer humano
+            const minDelay = 3000;
+            const maxDelay = 28000;
+            const humanDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay);
+
+            console.log(`[DiceRoom] Bot ${p.username} tirará en ${humanDelay / 1000}s`);
+
+            this.timer = setTimeout(() => {
+                this.handleRoll(p.userId);
+            }, humanDelay);
+
+        } else {
+            // Jugador Real: Esperar Timeout
+            this.timer = setTimeout(() => {
+                this.handleTurnTimeout(p.userId);
+            }, TURN_TIMEOUT_MS);
+        }
+    }
+
     private handleTurnTimeout(userId: string) {
         if (this.status !== 'PLAYING') return;
-
         const loser = this.players.find(p => p.userId === userId);
         const winner = this.players.find(p => p.userId !== userId);
-
         if (!loser || !winner) return;
 
         this.rolls[userId] = [0, 0];
@@ -354,8 +476,10 @@ export class DiceRoom {
                 data: { roomId: this.id, winnerUserId: winner.userId, winnerName: winner.username, prizeCents: total, roundNumber: this.round }
             });
             await prisma.user.update({ where: { id: winner.userId }, data: { balanceCents: { increment: total } } });
+
+            // Actualizar que terminó, pero NO borrar la sala, solo marcar finished
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
-        } catch (e) { }
+        } catch (e) { console.error(e) }
 
         console.log(`[DiceRoom ${this.id}] Partida finalizada. Reset en 8s.`);
 
@@ -363,35 +487,6 @@ export class DiceRoom {
         this.timer = setTimeout(() => {
             this.reset();
         }, 8000);
-    }
-
-    private processTurn() {
-        if (this.timer) clearTimeout(this.timer);
-
-        const p = this.players.find(pl => pl.userId === this.turnUserId);
-        if (!p) return;
-
-        this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
-
-        if (p.isBot) {
-            const botDelay = Math.random() * 2000 + 1000;
-            this.timer = setTimeout(() => this.handleRoll(p.userId), botDelay);
-        } else {
-            this.timer = setTimeout(() => {
-                this.handleTurnTimeout(p.userId);
-            }, TURN_TIMEOUT_MS);
-        }
-    }
-
-    private scheduleBot() {
-        if (this.botTimer) clearTimeout(this.botTimer);
-        if (this.botWaitMs > 0) this.botTimer = setTimeout(() => this.injectBot(), this.botWaitMs);
-    }
-    private cancelBot() { if (this.botTimer) clearTimeout(this.botTimer); }
-    private async injectBot() {
-        if (this.players.length !== 1 || this.status !== 'WAITING') return;
-        const bot = await prisma.user.findFirst({ where: { isBot: true } });
-        if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
     }
 
     private buildStatePayload() {
@@ -414,6 +509,15 @@ export class DiceRoom {
         this.io.to(this.id).emit('update_game', this.buildStatePayload());
     }
 
+
+    public updateSkin(userId: string, skin: string) {
+        const p = this.players.find(p => p.userId === userId);
+        if (p) {
+            p.skin = skin;
+            this.broadcastState();
+        }
+    }
+
     public destroy() {
         this.killGameLoop();
     }
@@ -427,6 +531,11 @@ export class DiceRoom {
     public async reset() {
         console.log(`[DiceRoom ${this.id}] ☢️ HARD RESET ☢️`);
         this.killGameLoop();
+
+        // Liberar bots globales antes de borrar la lista local
+        this.players.forEach(p => {
+            if (p.isBot) DiceRoom.activeBotIds.delete(p.userId);
+        });
 
         this.players = [];
         this.rolls = {};
