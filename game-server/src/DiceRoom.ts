@@ -376,35 +376,45 @@ export class DiceRoom {
         }
     }
 
-    public reset() {
-        console.log(`[DiceRoom ${this.id}] 🛑 RESET TOTAL: Vaciando sala...`);
+    public async reset() {
+        console.log(`[DiceRoom ${this.id}] ☢️ EJECUTANDO HARD RESET ☢️`);
 
-        // 1. Matar todos los timers del juego anterior
-        this.killGameLoop();
-        if (this.botTimer) clearTimeout(this.botTimer);
-        this.botTimer = null;
+        // 1. MATAR TODOS LOS PROCESOS ACTIVOS (Timers y Loops)
+        this.killGameLoop(); // Usa nuestro método existente que ya limpia timer y botTimer
 
-        // 2. VACIADO REAL DE JUGADORES
-        // Esto es vital: la sala debe quedar con 0 jugadores lógicos
-        this.players = [];
-        // this.seats = {}; // (Nota: seats no existe en la clase actual, omitido para evitar error TS)
-
-        // 3. Reset de variables de estado
-        this.rolls = {};
-        this.history = [];
-        this.round = 1;
+        // 2. LIMPIEZA TOTAL DE MEMORIA
+        this.players = [];       // Echar a todos
+        // this.seats = {};      // No usamos mapa de asientos separado en esta implementación
+        this.rolls = {};         // Borrar tiradas
+        this.history = [];       // Borrar historial de rondas
+        this.round = 1;          // Reiniciar contador de rondas
+        this.status = 'WAITING'; // Estado de espera
+        // this.winner = null;   // No mantenemos propiedad winner persistente en la clase
         this.turnUserId = null;
-        this.roundStarterId = null; // Ensuring this is cleared too as per class def
-        this.status = 'WAITING';
-        // this.winner = null; // (Propiedad no existe en clase, omitido)
+        this.roundStarterId = null;
 
-        // 4. Notificar a todos los sockets conectados que YA NO tienen asiento
-        // Esto fuerza al frontend a mostrar "Comprar Asiento"
-        this.io.to(this.id).emit('update_game', this.buildStatePayload()); // = emit('game_update' logic)
-        this.io.to(this.id).emit('server:room:reset');
+        // 3. ACTUALIZAR BASE DE DATOS (Para evitar desincronización al recargar)
+        try {
+            // Nota: Usamos 'state' en DB según esquema, mapeamos 'WAITING' -> 'OPEN' o lo que espere la DB
+            // En métodos anteriores usábamos update({ state: 'FINISHED' }). 
+            // Asumiremos 'OPEN' o 'WAITING' para estado disponible.
+            await prisma.room.update({
+                where: { id: this.id },
+                data: { state: 'OPEN' }
+            });
+        } catch (e) {
+            console.error(`[DiceRoom ${this.id}] Error reseteando DB:`, e);
+        }
 
-        // 5. IMPORTANTE: NO PROGRAMAR EL BOT INMEDIATAMENTE
-        // El bot solo debe programarse cuando ALGUIEN NUEVO entre.
-        // Si la sala está vacía, no debe haber timer de bot.
+        // 4. EMITIR EVENTO DE "MUERTE SÚBITA" AL FRONTEND
+        // Enviamos un estado vacío Y un evento específico de reset
+        this.broadcastState();
+        this.io.to(this.id).emit('game:hard_reset'); // Evento clave para limpieza visual
+
+        console.log(`[DiceRoom ${this.id}] Sala inmaculada. Esperando nuevos jugadores.`);
+
+        // 5. Reiniciar bucle de bots (si aplica) - SOLO si hay jugadores, pero como se vació, no se llama.
+        // Se llamará cuando entre el primer jugador humano (en addPlayer).
     }
 }
+```
