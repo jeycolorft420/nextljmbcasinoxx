@@ -335,6 +335,9 @@ export class DiceRoom {
     }
     private cancelBot() { if (this.botTimer) clearTimeout(this.botTimer); }
     private async injectBot() {
+        // RACE FIX: Verificar si la situación cambió mientras esperábamos la DB
+        if (this.players.length !== 1 || this.status !== 'WAITING') return;
+
         const bot = await prisma.user.findFirst({ where: { isBot: true } });
         if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
     }
@@ -357,6 +360,10 @@ export class DiceRoom {
 
     private broadcastState() {
         this.io.to(this.id).emit('update_game', this.buildStatePayload());
+    }
+
+    public destroy() {
+        this.killGameLoop();
     }
 
     // 1. MÉTODO DE LIMPIEZA PROFUNDA (CORTACABEZAS)
@@ -398,8 +405,11 @@ export class DiceRoom {
         this.turnUserId = null;
         this.roundStarterId = null;
 
-        // 3. Sincronizar DB (Resetear a OPEN)
+        // 3. Sincronizar DB (Resetear a OPEN y BORRAR PARTICIPANTES)
         try {
+            // CRÍTICO: Borrar las entradas para que index.ts no los deje volver a entrar
+            await prisma.entry.deleteMany({ where: { roomId: this.id } });
+
             await prisma.room.update({
                 where: { id: this.id },
                 data: { state: 'OPEN' }
