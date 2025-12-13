@@ -446,19 +446,53 @@ export default function RoomPage() {
     }
   };
 
-  const handleForfeit = async (skipConfirm = false) => {
-    if (!id || room?.gameMeta?.ended) return;
-    const fn = async () => { await fetch(`/api/rooms/${id}/forfeit`, { method: "POST", headers: { "Content-Type": "application/json" } }); };
-    if (skipConfirm) fn();
-    else setConfirmModal({ isOpen: true, title: "Rendirse", message: "¿Rendirse?", onConfirm: () => { fn(); closeConfirm(); }, variant: "danger" });
+  const role = (session?.user as any)?.role;
+
+  // --- SAFE NAVIGATION & EXIT LOGIC ---
+  const isParticipant = effectiveEntries.some((e: any) => e.user.id === userId);
+
+  const handleSafeNavigation = (path: string) => {
+    if (room?.gameType === "DICE_DUEL" && isParticipant) {
+      setConfirmModal({
+        isOpen: true,
+        title: "⚠️ ¿ABANDONAR JUEGO?",
+        message: "Si sales de la sala ahora, PERDERÁS TU APUESTA automáticamente. Esta acción no se puede deshacer. ¿Salir bajo tu responsabilidad?",
+        variant: "danger",
+        onConfirm: () => {
+          // Trigger leave protocol then navigate
+          fetch(`/api/rooms/${id}/leave`, { method: "POST" }).finally(() => {
+            window.location.href = path;
+          });
+        }
+      });
+    } else {
+      window.location.href = path;
+    }
   };
+
+  // Browser level protection (Tab close / Refresh)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (room?.gameType === "DICE_DUEL" && isParticipant) {
+        e.preventDefault();
+        e.returnValue = ''; // Trigger browser warning
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [room?.gameType, isParticipant]);
+
   const handleLeave = async () => {
     if (!id) return;
-    // Usamos effectiveEntries para saber si está participando
-    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
     if (!isParticipant) { window.location.href = "/rooms"; return; }
+
+    // Strict Warning for Dice Duel
+    const warningMsg = room?.gameType === "DICE_DUEL"
+      ? "Si sales de la sala ahora, PERDERÁS TU APUESTA automáticamente. ¿Salir bajo tu responsabilidad?"
+      : "¿Seguro que quieres abandonar el asiento?";
+
     setConfirmModal({
-      isOpen: true, title: "Abandonar", message: "¿Seguro?",
+      isOpen: true, title: room?.gameType === "DICE_DUEL" ? "⚠️ PELIGRO" : "Abandonar", message: warningMsg,
       onConfirm: async () => {
         const r = await fetch(`/api/rooms/${id}/leave`, { method: "POST" });
         if (r.ok) window.location.href = "/rooms";
@@ -467,11 +501,12 @@ export default function RoomPage() {
       }, variant: "danger"
     });
   };
+
   const handleBackToLobby = () => {
-    const isParticipant = effectiveEntries.some(e => e.user.id === userId);
-    if (isParticipant) handleLeave();
+    if (isParticipant) handleLeave(); // Uses the new strict warning
     else window.location.href = "/rooms";
   };
+
   const handleRejoin = async () => {
     if (!id) return;
     if (room?.state === "FINISHED") {
@@ -521,7 +556,7 @@ export default function RoomPage() {
                 ${isWinner ? "border-green-500 bg-green-500/20 shadow-[0_0_10px_lime]"
                 : isSelected ? "border-blue-400 bg-blue-600/30 text-white"
                   : isMine ? "border-purple-500 bg-purple-500/20"
-                    : occupied ? "border-white/5 bg-white/5 opacity-50 grayscale"
+                    : occupied ? "border-white/10 bg-white/5 opacity-50 grayscale"
                       : "border-white/10 opacity-70 hover:bg-white/10"}
                 ${canToggle ? "active:scale-95" : ""}`}
           >
@@ -613,7 +648,7 @@ export default function RoomPage() {
           <div className="absolute bottom-24 left-4 right-4 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-4 text-center animate-in slide-in-from-bottom duration-300 z-30">
             <h3 className="text-primary font-bold">¡Ronda Finalizada!</h3>
             <p className="text-white text-lg font-bold mt-1">
-              🏆 {effectiveEntries.find(e => e.id === room.winningEntryId)?.user.name || "Ganador"}
+              🏆 {effectiveEntries.find((e: any) => e.id === room.winningEntryId)?.user.name || "Ganador"}
             </p>
             <p className="text-xs opacity-50 font-mono mt-2">{countdownSeconds ? `Reiniciando… ${countdownSeconds}s` : "Reiniciando..."}</p>
           </div>
@@ -626,20 +661,25 @@ export default function RoomPage() {
 
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-md animate-in fade-in duration-200 p-6 flex flex-col sm:hidden">
-          {/* ... MENÚ MOVIL (Sin cambios) ... */}
+          {/* ... MENÚ MOVIL ... */}
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold">Menú</h2>
             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-white/10 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
           </div>
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            {/* ... Opciones del menú ... */}
-            <Link href="/rooms" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span>Salas de Juego</span></Link>
-            <Link href="/profile" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg><span>Perfil</span></Link>
-            <Link href="/deposit" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg><span>Depositar</span></Link>
-            <Link href="/shop" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg><span>Tienda</span></Link>
-            <Link href="/history" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg><span>Historial Global</span></Link>
-            <Link href="/support" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg><span>Soporte</span></Link>
-            <Link href="/dashboard" className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg><span>Dashboard</span></Link>
+            {/* Opciones del menú con Safe Navigation */}
+            <button onClick={() => handleSafeNavigation("/rooms")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span>Salas de Juego</span></button>
+            <button onClick={() => handleSafeNavigation("/profile")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg><span>Perfil</span></button>
+            <button onClick={() => handleSafeNavigation("/deposit")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg><span>Depositar</span></button>
+            <button onClick={() => handleSafeNavigation("/shop")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg><span>Tienda</span></button>
+            <button onClick={() => handleSafeNavigation("/history")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg><span>Historial Global</span></button>
+            <button onClick={() => handleSafeNavigation("/support")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg><span>Soporte</span></button>
+            <button onClick={() => handleSafeNavigation("/dashboard")} className="w-full flex items-center gap-3 p-4 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 text-left"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg><span>Dashboard</span></button>
+
+            {(role === 'ADMIN' || role === 'GOD') && (
+              <button onClick={() => handleSafeNavigation("/admin")} className="w-full flex items-center gap-3 p-4 bg-red-900/10 text-red-400 rounded-xl border border-red-500/20 hover:bg-red-900/20 text-left font-bold"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg><span>Administración</span></button>
+            )}
+
             <div className="mt-auto pt-4 border-t border-white/10">
               {session?.user && <button onClick={() => signOut({ callbackUrl: "/" })} className="w-full py-4 text-red-400 font-bold bg-red-900/10 rounded-xl hover:bg-red-900/20 flex items-center justify-center gap-2">Cerrar Sesión</button>}
             </div>
