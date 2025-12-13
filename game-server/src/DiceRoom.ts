@@ -300,13 +300,14 @@ export class DiceRoom {
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
         } catch (e) { }
 
-        console.log(`[DiceRoom ${this.id}] Partida finalizada. ⏳ Esperando 10s para Hard Reset...`);
+        console.log(`[DiceRoom ${this.id}] Partida finalizada. ⏳ Esperando 8s para limpieza automática...`);
 
         if (this.timer) clearTimeout(this.timer);
 
         this.timer = setTimeout(() => {
+            console.log(`[DiceRoom ${this.id}] ⏰ Tiempo agotado: Ejecutando Auto-Reset.`);
             this.reset();
-        }, 10000);
+        }, 8000);
     }
 
     private processTurn() {
