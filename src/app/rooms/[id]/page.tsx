@@ -335,18 +335,21 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔄 RESET RECIBIDO: Forzando limpieza de UI");
+      console.log("🔄 RESET RECIBIDO: Forzando limpieza de UI (Passive Sync Fix)");
       toast.info("La sala se ha reiniciado.");
 
-      // 1. Limpieza visual robusta para móviles
+      // 1. Limpieza Nuclear de Estados Visuales para el Jugador Pasivo
       setGameState({
         status: 'WAITING',
-        players: [], // ARRAY VACÍO ES LA CLAVE
+        players: [], // Array vacío OBLIGATORIO para disparar re-render
         round: 1,
         rolls: {},
         history: [],
         timeLeft: 30
       });
+
+      // 2. Forzar recarga de datos de sala
+      load();
     });
 
     socket.on('game:hard_reset', () => {
