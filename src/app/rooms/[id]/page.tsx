@@ -331,21 +331,18 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔥 HARD RESET: Limpiando tablero visualmente...");
+      console.log("🔄 RESET RECIBIDO: Forzando limpieza de UI");
       toast.info("La sala se ha reiniciado.");
 
-      // FORZAR LIMPIEZA VISUAL EXTRAMA
-      setGameState(null);
-      setTimeout(() => {
-        setGameState({
-          status: 'WAITING',
-          round: 1,
-          players: [],
-          rolls: {},
-          history: [],
-          timeLeft: 30
-        });
-      }, 50);
+      // 1. Limpieza visual robusta para móviles
+      setGameState({
+        status: 'WAITING',
+        players: [], // ARRAY VACÍO ES LA CLAVE
+        round: 1,
+        rolls: {},
+        history: [],
+        timeLeft: 30
+      });
     });
 
     socket.on('game:hard_reset', () => {
@@ -773,6 +770,7 @@ export default function RoomPage() {
                   userId={safeUser.id}
                   onRoll={handleRoll}
                   onReset={() => join()} // Pasamos JOIN para comprar entrada automáticamente
+                  userSkin={currentDiceSkin}
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />

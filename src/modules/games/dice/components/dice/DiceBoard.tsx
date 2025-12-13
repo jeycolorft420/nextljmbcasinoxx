@@ -22,7 +22,7 @@ const HistoryDiceIcon = ({ val }: { val: number }) => {
   );
 };
 
-export default function DiceBoard({ gameState: providedState, userId, onRoll, onReset }: { gameState: any, userId: string, onRoll: () => void, onReset?: () => void }) {
+export default function DiceBoard({ gameState: providedState, userId, onRoll, onReset, userSkin }: { gameState: any, userId: string, onRoll: () => void, onReset?: () => void, userSkin?: string }) {
   // NUKE LOGIC: If players are empty, force clean state locally if needed
   // We use a derived state or just use the providedState directly but ensure we handle empty array explicitly
   const gameState = (providedState?.players?.length === 0 && providedState?.status === 'WAITING')
@@ -365,7 +365,8 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
               // Configuración Visual Propia (BOTTOM)
               labelBottom={formatName(bottomPlayer, bottomPlayer?.userId === userId)}
               balanceBottom={bottomPlayer ? `$${(bottomPlayer.balance / 100).toFixed(2)}` : "---"}
-              diceColorBottom={bottomPlayer?.skin || "blue"}
+              // FIX: Use userSkin locally if available, otherwise server skin
+              diceColorBottom={(bottomPlayer?.userId === userId) ? (userSkin || bottomPlayer?.skin || "blue") : (bottomPlayer?.skin || "blue")}
               bottomRoll={bottomPlayer ? gameState.rolls[bottomPlayer.userId] : null}
               isRollingBottom={bottomPlayer ? animRolls[bottomPlayer.userId] : false}
               isGhostBottom={!bottomPlayer}
