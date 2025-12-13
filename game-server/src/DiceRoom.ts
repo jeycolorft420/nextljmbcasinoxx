@@ -300,14 +300,13 @@ export class DiceRoom {
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
         } catch (e) { }
 
-        console.log("[DiceRoom " + this.id + "] Partida finalizada. Reiniciando sala en 10s...");
+        console.log(`[DiceRoom ${this.id}] Partida finalizada. ⏳ Esperando 10s para Hard Reset...`);
 
-        // IMPORTANTE: Guardar referencia al timeout para poder cancelarlo si es necesario
         if (this.timer) clearTimeout(this.timer);
 
         this.timer = setTimeout(() => {
             this.reset();
-        }, 10000); // 10 segundos de espera para ver el resultado
+        }, 10000);
     }
 
     private processTurn() {
@@ -364,6 +363,11 @@ export class DiceRoom {
     private killGameLoop() {
         console.log(`[DiceRoom ${this.id}] 🛑 MATANDO procesos anteriores...`);
 
+        if (this.gameLoopInterval) {
+            clearInterval(this.gameLoopInterval);
+            this.gameLoopInterval = null;
+        }
+
         // Detener temporizador principal (Turnos / Bots jugando)
         if (this.timer) {
             clearTimeout(this.timer);
@@ -378,18 +382,14 @@ export class DiceRoom {
     }
 
     public async reset() {
-        console.log(`[DiceRoom ${this.id}] 🛑 HARD RESET: Limpieza estricta.`);
+        console.log(`[DiceRoom ${this.id}] ☢️ EJECUTANDO HARD RESET ☢️`);
 
-        // 1. Detener el reloj del juego
+        // 1. Matar lógica anterior
         this.killGameLoop();
+        if (this.botTimer) clearTimeout(this.botTimer);
+        this.botTimer = null; // ¡IMPORTANTE!
 
-        // 2. Detener CUALQUIER intento de bot
-        if (this.botTimer) {
-            clearTimeout(this.botTimer);
-            this.botTimer = null;
-        }
-
-        // 3. VACIADO TOTAL
+        // 2. Limpieza de memoria
         this.players = [];
         this.rolls = {};
         this.history = [];
@@ -398,21 +398,19 @@ export class DiceRoom {
         this.turnUserId = null;
         this.roundStarterId = null;
 
-        // 4. ACTUALIZAR BASE DE DATOS
+        // 3. Sincronizar DB (Resetear a OPEN)
         try {
             await prisma.room.update({
                 where: { id: this.id },
-                data: { state: 'OPEN' } // Asegurar estado OPEN
+                data: { state: 'OPEN' }
             });
         } catch (e) {
             console.error(`[DiceRoom ${this.id}] DB Reset Error:`, e);
         }
 
-        // 5. NOTIFICAR Y LUEGO SALIR
+        // 4. Ordenar al Frontend que se limpie
         this.broadcastState();
         this.io.to(this.id).emit('server:room:reset');
-
-        // IMPORTANTE: NO llames a scheduleBot() aquí.
-        // El bot solo debe activarse cuando un humano REAL compre un puesto nuevo en addPlayer().
+        this.io.to(this.id).emit('game:hard_reset');
     }
 }
