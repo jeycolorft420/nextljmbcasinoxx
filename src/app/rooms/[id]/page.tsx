@@ -336,6 +336,19 @@ export default function RoomPage() {
       // NO reload, let the state update handle it
     });
 
+    socket.on('game:hard_reset', () => {
+      console.log("nuclear: Recibido HARD RESET. Limpiando tablero...");
+      toast.error("La sala se ha reiniciado por completo.");
+
+      // 1. Limpiar estados locales críticos
+      setGameState(null);
+      // Si hay otros estados visuales gestionados aquí, limpiarlos.
+      // El setGameState(null) forzará a que los componentes hijos (DiceBoard) se desmonten o reinicien.
+
+      // Opcional: Forzar refetch de info de sala si fuese necesario, 
+      // pero setGameState(null) debería disparar el estado de "Cargando/Conectando" o Lobby.
+    });
+
     return () => { socket.disconnect(); };
   }, [id, userId, room?.gameType]);
 
