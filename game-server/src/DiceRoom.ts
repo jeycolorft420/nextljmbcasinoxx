@@ -417,4 +417,3 @@ export class DiceRoom {
         // Se llamará cuando entre el primer jugador humano (en addPlayer).
     }
 }
-```
