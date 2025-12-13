@@ -84,7 +84,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('buy_seat', async (payload) => {
-        const { roomId, user } = payload;
+        const { roomId, user, positions, count } = payload; // Added positions and count destructuring
         socket.join(roomId);
 
         let room = rooms[roomId];
@@ -100,7 +100,9 @@ io.on('connection', (socket) => {
             }
         }
         if (room) {
-            await room.addPlayer(socket, user, false, true); // true = isBuyAttempt
+            // Pass requested positions or count to addPlayer
+            // DiceRoom will ignore extra args, RouletteRoom will use them.
+            await room.addPlayer(socket, user, false, true, positions, count);
             if (room instanceof RouletteRoom) {
                 room.emitStateToSocket(socket);
             }

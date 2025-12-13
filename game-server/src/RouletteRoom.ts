@@ -37,79 +37,121 @@ export class RouletteRoom {
         }
     }
 
-    public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false) {
+    public async addPlayer(socket: Socket, user: any, isBot: boolean = false, isBuyAttempt: boolean = false, requestedPositions: number[] = [], count: number = 1) {
         // 1. Validar Capacidad en Memoria
-        if (this.players.length >= this.capacity) {
-            if (!isBot) socket.emit('error_msg', { message: 'Mesa llena' });
-            return;
-        }
+        const currentTaken = this.players.length;
+        // Si piden posiciones especificas, usar esas. Si no, usar la cantidad solicitada.
+        const entriesToCreate = requestedPositions.length > 0 ? requestedPositions.length : count;
 
-        const existing = this.players.find(p => p.userId === user.id);
-        if (existing) {
-            if (!isBot) existing.socketId = socket.id;
-            // No hacemos broadcast si ya existe, solo reconectamos
+        if (currentTaken + entriesToCreate > this.capacity) {
+            if (!isBot) socket.emit('error_msg', { message: 'No hay suficientes puestos' });
             return;
         }
 
         if (this.status !== 'OPEN' && !isBot) {
+            // Si intenta reconectar y ya compró podría estar ok, pero aqui es compra nueva
             socket.emit('error_msg', { message: 'La ronda ya comenzó' });
             return;
         }
 
-        // 2. Procesar Compra / Entrada
-        let pos = this.getNextFreePosition();
+        // 2. Determinar Posiciones
+        const positionsToBook: number[] = [];
 
-        try {
-            // Verificar si ya pagó en DB
-            const activeEntry = await prisma.entry.findFirst({ where: { roomId: this.id, userId: user.id } });
-
-            if (activeEntry) {
-                pos = activeEntry.position;
-            } else {
-                if (!isBot && isBuyAttempt) {
-                    // Transacción de Cobro
-                    const userDb = await prisma.user.findUnique({ where: { id: user.id } });
-                    if (!userDb || userDb.balanceCents < this.priceCents) {
-                        socket.emit('error_msg', { message: 'Saldo insuficiente' });
-                        return;
-                    }
-                    await prisma.$transaction([
-                        prisma.user.update({ where: { id: user.id }, data: { balanceCents: { decrement: this.priceCents } } }),
-                        prisma.entry.create({ data: { roomId: this.id, userId: user.id, position: pos } })
-                    ]);
-                } else if (isBot) {
-                    await prisma.entry.create({ data: { roomId: this.id, userId: user.id, position: pos } });
-                    BotRegistry.add(user.id);
-                } else {
-                    return; // Es un espectador
+        if (requestedPositions.length > 0) {
+            // Verificar disponibilidad exacta
+            const takenPositions = new Set(this.players.map(p => p.position));
+            for (const p of requestedPositions) {
+                if (takenPositions.has(p)) {
+                    if (!isBot) socket.emit('error_msg', { message: `El puesto ${p} ya está ocupado` });
+                    return;
+                }
+                positionsToBook.push(p);
+            }
+        } else {
+            // Asignar aleatorias/siguientes libres
+            const takenPositions = new Set(this.players.map(p => p.position));
+            let assigned = 0;
+            for (let i = 1; i <= this.capacity && assigned < entriesToCreate; i++) {
+                if (!takenPositions.has(i)) {
+                    positionsToBook.push(i);
+                    assigned++;
                 }
             }
+        }
+
+        if (positionsToBook.length === 0) return;
+
+        // 3. Procesar Compra en DB
+        const totalCost = this.priceCents * positionsToBook.length;
+
+        try {
+            // Si es reconexión de alguien que ya pagó, deberíamos saberlo. 
+            // Pero simplificamos: addPlayer con isBuyAttempt=true SIEMPRE cobra.
+            // Para reconexión simple, el frontend debería enviar otro evento o manejarlo distinto,
+            // pero actualmente la arquitectura asume que si entras, compras si no estás en la lista.
+            // MEJORA: Buscar si el usuario ya tiene entries en DB que NO esten en memoria (crash server recover).
+
+            // Para Roulette, permitimos comprar MÁS.
+
+            if (!isBot && isBuyAttempt) {
+                const userDb = await prisma.user.findUnique({ where: { id: user.id } });
+                if (!userDb || userDb.balanceCents < totalCost) {
+                    socket.emit('error_msg', { message: 'Saldo insuficiente' });
+                    return;
+                }
+
+                // Transacción: Cobrar Total y Crear N entries
+                await prisma.$transaction([
+                    prisma.user.update({ where: { id: user.id }, data: { balanceCents: { decrement: totalCost } } }),
+                    prisma.entry.createMany({
+                        data: positionsToBook.map(pos => ({
+                            roomId: this.id,
+                            userId: user.id,
+                            position: pos
+                        }))
+                    })
+                ]);
+            } else if (isBot) {
+                await prisma.entry.createMany({
+                    data: positionsToBook.map(pos => ({
+                        roomId: this.id,
+                        userId: user.id,
+                        position: pos
+                    }))
+                });
+                BotRegistry.add(user.id);
+            }
         } catch (e) {
-            console.error(e);
-            if (!isBot) socket.emit('error_msg', { message: 'Error en la compra' });
+            console.error("Error Buy Roulette:", e);
+            if (!isBot) socket.emit('error_msg', { message: 'Error procesando compra' });
             return;
         }
 
-        // 3. Añadir a Memoria
-        const newPlayer = {
-            socketId: isBot ? 'bot' : socket.id,
-            userId: user.id,
-            username: user.name || "Jugador",
-            avatarUrl: user.avatar || "",
-            position: pos,
-            isBot,
-        };
+        // 4. Añadir a Memoria (Multiples entries)
+        positionsToBook.forEach(pos => {
+            this.players.push({
+                socketId: isBot ? 'bot' : socket.id,
+                userId: user.id,
+                username: user.name || "Jugador",
+                avatarUrl: user.avatar || "",
+                position: pos,
+                isBot,
+            });
+        });
 
-        this.players.push(newPlayer);
-        this.notifyLobby(); // Actualizar lista de salas
-        this.broadcastState(); // Actualizar a los que están dentro
+        this.notifyLobby();
+        this.broadcastState();
 
-        // 4. Lógica de Inicio (Primer jugador activa el contador si no existe)
-        if (this.players.length === 1 && !this.autoLockAt) {
-            this.startCountdown();
+        // 5. Timer Logic
+        if (this.players.length >= 1 && !this.autoLockAt) { // Si hay alguien (incluso 1er puesto) inicia timer
+            // Solo si es el PRIMER entry de la sala.
+            // Como positionsToBook > 0, si antes length era 0, ahora es > 0.
+            // Ojo: this.players ya tiene los nuevos. 
+            // Si antes this.players.length - positionsToBook.length === 0...
+            const previousCount = this.players.length - positionsToBook.length;
+            if (previousCount === 0) this.startCountdown();
         }
 
-        // Si se llena, girar pronto
         if (this.players.length >= this.capacity) {
             this.shortenTimer();
         }

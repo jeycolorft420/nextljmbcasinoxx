@@ -435,7 +435,9 @@ export default function RoomPage() {
             avatar: session?.user?.image,
             selectedDiceColor: currentDiceSkin,
             activeSkin: currentDiceSkin
-          }
+          },
+          positions: selectedPositions, // Array of specific positions if selected
+          count: qty // Fallback quantity if random
         });
         toast.success("Procesando compra...");
         setSelectedPositions([]);
