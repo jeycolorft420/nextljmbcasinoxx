@@ -322,27 +322,43 @@ export class DiceRoom {
     }
 
     public reset() {
-        if (this.timer) clearTimeout(this.timer);
-        if (this.botTimer) clearTimeout(this.botTimer);
+        console.log(`[DiceRoom ${this.id}] EJECUTANDO RESET TOTAL.`);
 
-        // Destrucción total de estado
-        this.players.forEach(p => p.connected = false);
-        this.players = [];
+        // 1. Detener cualquier loop o timer activo
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+        if (this.botTimer) {
+            clearTimeout(this.botTimer);
+            this.botTimer = null;
+        }
+
+        // 2. LIMPIEZA AGRESIVA DE JUGADORES (La parte que fallaba)
+        this.players = []; // Borrar todos los jugadores de la memoria
+
+        // 3. Resetear variables de juego
         this.rolls = {};
         this.history = [];
-        this.status = 'WAITING';
         this.round = 1;
         this.turnUserId = null;
         this.roundStarterId = null;
         this.turnExpiresAt = 0;
 
-        console.log(`🧹 SALA ${this.id} RESETEADA TOTALMENTE`);
+        // 4. Restaurar estado base
+        this.status = 'WAITING';
 
-        // Notificar a todos que deben recargar
+        // 5. Notificar a todos los clientes que la sala es nueva
+        // Emitimos 'server:room:reset' para forzar recarga (frontend logic)
         this.io.to(this.id).emit('server:room:reset');
+
+        // También enviamos el estado vacío por si acaso
         this.broadcastState();
 
-        // Reiniciar bot si procede
+        // Reiniciar bot (esperar nuevos jugadores)
         this.scheduleBot();
+
+        console.log(`[DiceRoom ${this.id}] Reset completado. Sala vacía y esperando.`);
     }
 }
+
