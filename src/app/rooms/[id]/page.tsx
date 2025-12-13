@@ -330,6 +330,13 @@ export default function RoomPage() {
       else toast.error(data.reason === 'TIMEOUT' ? "Tiempo agotado" : "Perdiste");
     });
 
+    socket.on("server:room:reset", () => {
+      console.log("🔄 RESET DETECTADO: Recargando...");
+      toast.info("La sala se ha reiniciado.");
+      // Forzar recarga absoluta para limpiar memoria cliente
+      window.location.reload();
+    });
+
     return () => { socket.disconnect(); };
   }, [id, userId, room?.gameType]);
 
@@ -468,6 +475,7 @@ export default function RoomPage() {
     if (room?.state === "FINISHED") {
       try {
         await fetch(`/api/rooms/${id}/reset`, { method: "POST" });
+        socketRef.current?.emit("request_reset", { roomId: id }); // 🔥 Forzar reset en socket server
       } catch (e) {
         toast.error("Error al reiniciar la sala");
         return;
@@ -582,6 +590,7 @@ export default function RoomPage() {
                 gameState={gameState}
                 userId={safeUser.id}
                 onRoll={handleRoll}
+                onReset={handleRejoin}
               />
             </div>
           ) : (
@@ -736,6 +745,7 @@ export default function RoomPage() {
                   gameState={gameState}
                   userId={safeUser.id}
                   onRoll={handleRoll}
+                  onReset={handleRejoin} // Reusamos handleRejoin que tiene la lógica de reset+socket
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />

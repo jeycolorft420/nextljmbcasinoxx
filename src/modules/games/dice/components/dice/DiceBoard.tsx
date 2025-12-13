@@ -21,7 +21,7 @@ const HistoryDiceIcon = ({ val }: { val: number }) => {
   );
 };
 
-export default function DiceBoard({ gameState, userId, onRoll }: { gameState: any, userId: string, onRoll: () => void }) {
+export default function DiceBoard({ gameState, userId, onRoll, onReset }: { gameState: any, userId: string, onRoll: () => void, onReset?: () => void }) {
   const [animRolls, setAnimRolls] = useState<{ [key: string]: boolean }>({});
   const [timeLeft, setTimeLeft] = useState(30);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -87,6 +87,21 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
       }
     }
   }, [gameState?.status, userId]);
+
+  // 4. Listener de Reset (Limpieza Total)
+  useEffect(() => {
+    if (!gameState) return;
+    // Escuchar evento de reset global (esto requiere acceso al socket, pero DiceBoard recibe gameState)
+    // Como no tenemos el socket instance aquí directamente, dependemos de que el padre 'Recargue' o
+    // que el componente se desmonte.
+    // SIN EMBARGO, Page.tsx maneja el socket centralized.
+    // Vamos a añadir un log visual si el status cambia a WAITING de golpe.
+    if (gameState.status === 'WAITING' && gameState.players.length === 0) {
+      // Es un reset.
+      // No hacemos nada especial visualmente, el 'WAITING' overlay se encargará.
+    }
+  }, [gameState?.status]);
+
 
 
   if (!gameState) return <div className="min-h-[400px] flex items-center justify-center text-emerald-500 font-mono animate-pulse">CONECTANDO...</div>;
@@ -155,9 +170,24 @@ export default function DiceBoard({ gameState, userId, onRoll }: { gameState: an
           {iWonGame ? "¡VICTORIA!" : "ELIMINADO"}
         </h1>
         <p className="text-white/40 text-sm font-mono mb-8">LA PARTIDA HA TERMINADO</p>
-        <button onClick={() => window.location.href = '/rooms'} className="w-full px-8 py-4 bg-white text-black font-bold text-lg rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]">
-          VOLVER AL LOBBY
-        </button>
+        <div className="flex flex-col gap-3 w-full">
+          <button onClick={() => window.location.href = '/rooms'} className="w-full px-8 py-4 bg-white text-black font-bold text-lg rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+            VOLVER AL LOBBY
+          </button>
+          <button
+            onClick={() => {
+              if (onReset) onReset();
+              else {
+                // Fallback local por si acaso
+                fetch(`/api/rooms/${gameState.id || window.location.pathname.split('/').pop()}/reset`, { method: "POST" });
+                setTimeout(() => window.location.reload(), 500);
+              }
+            }}
+            className="w-full px-8 py-3 bg-red-500/20 text-red-200 border border-red-500/50 font-bold text-sm rounded-xl hover:bg-red-500/30 transition-all uppercase tracking-wider"
+          >
+            REINICIAR SALA ↻
+          </button>
+        </div>
       </div>
     );
   } else if (gameState.status === 'WAITING') {

@@ -62,6 +62,11 @@ io.on('connection', (socket) => {
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
     });
+
+    socket.on('request_reset', ({ roomId }) => {
+        const room = rooms[roomId];
+        if (room) room.reset();
+    });
 });
 
 const PORT = process.env.PORT || 4000;

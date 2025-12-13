@@ -320,4 +320,29 @@ export class DiceRoom {
     private broadcastState() {
         this.io.to(this.id).emit('update_game', this.buildStatePayload());
     }
+
+    public reset() {
+        if (this.timer) clearTimeout(this.timer);
+        if (this.botTimer) clearTimeout(this.botTimer);
+
+        // Destrucción total de estado
+        this.players.forEach(p => p.connected = false);
+        this.players = [];
+        this.rolls = {};
+        this.history = [];
+        this.status = 'WAITING';
+        this.round = 1;
+        this.turnUserId = null;
+        this.roundStarterId = null;
+        this.turnExpiresAt = 0;
+
+        console.log(`🧹 SALA ${this.id} RESETEADA TOTALMENTE`);
+
+        // Notificar a todos que deben recargar
+        this.io.to(this.id).emit('server:room:reset');
+        this.broadcastState();
+
+        // Reiniciar bot si procede
+        this.scheduleBot();
+    }
 }
