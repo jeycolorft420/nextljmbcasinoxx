@@ -133,94 +133,30 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   if (!gameState) return <div className="min-h-[400px] flex items-center justify-center text-emerald-500 font-mono animate-pulse">CONECTANDO...</div>;
 
   const me = gameState.players.find((p: any) => p.userId === userId);
-  const opponent = gameState.players.find((p: any) => p.userId !== userId);
+
+  // SPECTATOR LOGIC: If I am not playing, show P1 bottom, P2 top (or vice versa)
+  const isSpectator = !me;
+
+  let topPlayer, bottomPlayer;
+
+  if (isSpectator) {
+    // Spectator sees P1 at bottom, P2 at top (arbitrary but stable)
+    bottomPlayer = gameState.players[0];
+    topPlayer = gameState.players[1];
+  } else {
+    // Player sees Self at bottom, Opponent at top
+    bottomPlayer = me;
+    topPlayer = gameState.players.find((p: any) => p.userId !== userId);
+  }
+
   const isMyTurn = gameState.status === 'PLAYING' && gameState.turnUserId === userId;
 
-  // --- LÓGICA VISUAL DE ESTADOS ---
-  let overlayContent = null;
-  let borderColor = "border-white/5";
-
-  if (gameState.status === 'ROUND_END') {
-    const lastRound = gameState.history[gameState.history.length - 1];
-    const isWinner = lastRound?.winnerId === userId;
-    const isTie = !lastRound?.winnerId;
-    const isTimeout = lastRound?.isTimeout;
-
-    const myRoll = lastRound?.rolls[userId] || [0, 0];
-    const oppRoll = Object.values(lastRound?.rolls || {}).find((r: any) => JSON.stringify(r) !== JSON.stringify(myRoll)) as number[] || [0, 0];
-
-    // Cálculo de montos
-    const amount = (gameState.stepValue / 100).toFixed(2);
-
-    borderColor = isWinner ? "border-green-500/50" : isTie ? "border-yellow-500/50" : "border-red-500/50";
-
-    overlayContent = (
-      <div className="flex flex-col items-center justify-center animate-in zoom-in duration-300 text-center bg-black/90 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-xl">
-        <div className={`text-5xl md:text-6xl font-black drop-shadow-2xl mb-4 ${isWinner ? 'text-green-400' : isTie ? 'text-yellow-400' : 'text-red-500'}`}>
-          {isWinner ? "¡GANASTE!" : isTie ? "EMPATE" : "PERDISTE"}
-        </div>
-
-        {/* Resultados de Dados */}
-        <div className="flex items-center gap-6 mb-6 bg-white/5 p-4 rounded-xl border border-white/5">
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] uppercase text-white/50 mb-1">Tú</span>
-            <div className="flex gap-2"><HistoryDiceIcon val={myRoll[0]} /><HistoryDiceIcon val={myRoll[1]} /></div>
-          </div>
-          <div className="text-2xl font-black text-white/20">VS</div>
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] uppercase text-white/50 mb-1">Rival</span>
-            <div className="flex gap-2"><HistoryDiceIcon val={oppRoll[0]} /><HistoryDiceIcon val={oppRoll[1]} /></div>
-          </div>
-        </div>
-
-        {/* Monto Ganado/Perdido */}
-        {!isTie && (
-          <div className={`text-2xl font-mono font-bold ${isWinner ? "text-green-400" : "text-red-400"}`}>
-            {isWinner ? "+" : "-"}${amount}
-          </div>
-        )}
-
-        <div className="mt-6 px-4 py-1 bg-white/10 rounded-full border border-white/5">
-          <span className="text-xs text-white/60 font-bold uppercase tracking-widest">
-            {isTimeout ? "POR TIEMPO ⏱️" : `RONDA ${gameState.round}`}
-          </span>
-        </div>
-      </div>
-    );
-  } else if (gameState.status === 'FINISHED') {
-    const iWonGame = gameState.players.find((p: any) => p.userId === userId)?.balance > 0;
-    overlayContent = (
-      <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-500 p-8 bg-black/90 rounded-3xl border border-white/10 backdrop-blur-xl max-w-sm mx-4">
-        <div className="text-7xl mb-4">{iWonGame ? "🏆" : "☠️"}</div>
-        <h1 className={`text-4xl md:text-5xl font-black uppercase mb-2 ${iWonGame ? 'text-yellow-400' : 'text-gray-400'}`}>
-          {iWonGame ? "¡VICTORIA!" : "ELIMINADO"}
-        </h1>
-        <p className="text-white/40 text-sm font-mono mb-8">LA PARTIDA HA TERMINADO</p>
-        <div className="flex flex-col gap-3 w-full">
-          <button onClick={() => window.location.href = '/rooms'} className="w-full px-8 py-4 bg-white text-black font-bold text-lg rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]">
-            VOLVER AL LOBBY
-          </button>
-        </div>
-        <button
-          disabled={isAutoRejoining}
-          onClick={() => {
-            // Enable auto-rejoin flag
-            setIsAutoRejoining(true);
-          }}
-          className="w-full px-8 py-3 bg-red-500/20 text-red-200 border border-red-500/50 font-bold text-sm rounded-xl hover:bg-red-500/30 transition-all uppercase tracking-wider disabled:opacity-50"
-        >
-          {isAutoRejoining ? "ESPERANDO REINICIO..." : "JUGAR DE NUEVO ↻"}
-        </button>
-      </div >
-    );
-  } else if (gameState.status === 'WAITING') {
-    overlayContent = (
-      <div className="flex flex-col items-center animate-pulse">
-        <div className="w-20 h-20 border-4 border-t-emerald-500 border-white/5 rounded-full animate-spin mb-6"></div>
-        <span className="text-xl font-bold tracking-[0.2em] text-emerald-500/80 uppercase">Esperando Rival...</span>
-      </div>
-    );
-  }
+  // Name Formatting Helper
+  const formatName = (p: any, isSelf: boolean) => {
+    if (!p) return "Esperando...";
+    if (isSelf) return `${p.name} (Tú)`;
+    return p.name;
+  };
 
   return (
     <div className={`
@@ -299,28 +235,28 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
         <div className="flex-1 relative flex items-center justify-center p-2 md:p-10">
           <div className="w-full max-w-[500px] aspect-square relative">
             <DiceDuel
-              // Configuración Visual del Oponente
-              labelTop={opponent?.name || "Buscando..."}
-              balanceTop={opponent ? `$${(opponent.balance / 100).toFixed(2)}` : "---"}
-              diceColorTop={opponent?.skin || "red"}
-              topRoll={opponent ? gameState.rolls[opponent.userId] : null}
-              isRollingTop={opponent ? animRolls[opponent.userId] : false}
-              isGhostTop={!opponent}
+              // Configuración Visual del Oponente (TOP)
+              labelTop={formatName(topPlayer, topPlayer?.userId === userId)}
+              balanceTop={topPlayer ? `$${(topPlayer.balance / 100).toFixed(2)}` : "---"}
+              diceColorTop={topPlayer?.skin || "red"}
+              topRoll={topPlayer ? gameState.rolls[topPlayer.userId] : null}
+              isRollingTop={topPlayer ? animRolls[topPlayer.userId] : false}
+              isGhostTop={!topPlayer}
 
-              // Configuración Visual Propia - FIX: Label (Tú)
-              labelBottom={me ? `${me.name} (Tú)` : "Tú"}
-              balanceBottom={me ? `$${(me.balance / 100).toFixed(2)}` : "---"}
-              diceColorBottom={me?.skin || "blue"}
-              bottomRoll={me ? gameState.rolls[me.userId] : null}
-              isRollingBottom={me ? animRolls[me.userId] : false}
-              isGhostBottom={false}
+              // Configuración Visual Propia (BOTTOM)
+              labelBottom={formatName(bottomPlayer, bottomPlayer?.userId === userId)}
+              balanceBottom={bottomPlayer ? `$${(bottomPlayer.balance / 100).toFixed(2)}` : "---"}
+              diceColorBottom={bottomPlayer?.skin || "blue"}
+              bottomRoll={bottomPlayer ? gameState.rolls[bottomPlayer.userId] : null}
+              isRollingBottom={bottomPlayer ? animRolls[bottomPlayer.userId] : false}
+              isGhostBottom={!bottomPlayer}
 
               // Cartel de estado Central
               statusText={
                 gameState.status === 'PLAYING' ? (
                   <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
                     <span className={`text-2xl md:text-3xl font-black italic tracking-tighter drop-shadow-lg ${isMyTurn ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`}>
-                      {isMyTurn ? "¡TU TURNO!" : "ESPERANDO..."}
+                      {isMyTurn ? "¡TU TURNO!" : (isSpectator ? `Turno de ${gameState.players.find((p: any) => p.userId === gameState.turnUserId)?.name || "..."}` : "ESPERANDO...")}
                     </span>
                     <div className="mt-2 flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/5">
                       <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`}></div>
