@@ -26,8 +26,20 @@ export default function DiceBoard({ gameState, userId, onRoll, onReset }: { game
   const [timeLeft, setTimeLeft] = useState(30);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Auto Rejoin State
+  const [isAutoRejoining, setIsAutoRejoining] = useState(false);
+
   // FIX: Usar el timeLeft del servidor como base si está disponible
   const serverTimeLeft = gameState?.timeLeft;
+
+  // New Effect: Detect Reset & Trigger Auto Join
+  useEffect(() => {
+    if (isAutoRejoining && gameState?.status === 'WAITING' && gameState?.players?.length === 0) {
+      // Reset detected!
+      setIsAutoRejoining(false);
+      if (onReset) onReset(); // onReset here will be mapped to 'join' in page.tsx
+    }
+  }, [gameState?.status, gameState?.players?.length, isAutoRejoining, onReset]);
 
   // 1. Efecto de Sonido y Animación de Dados al recibir resultado
   useEffect(() => {
@@ -181,21 +193,18 @@ export default function DiceBoard({ gameState, userId, onRoll, onReset }: { game
           <button onClick={() => window.location.href = '/rooms'} className="w-full px-8 py-4 bg-white text-black font-bold text-lg rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]">
             VOLVER AL LOBBY
           </button>
-          <button
-            onClick={() => {
-              if (onReset) onReset();
-              else {
-                // Fallback local por si acaso
-                fetch(`/api/rooms/${gameState.id || window.location.pathname.split('/').pop()}/reset`, { method: "POST" });
-                setTimeout(() => window.location.reload(), 500);
-              }
-            }}
-            className="w-full px-8 py-3 bg-red-500/20 text-red-200 border border-red-500/50 font-bold text-sm rounded-xl hover:bg-red-500/30 transition-all uppercase tracking-wider"
-          >
-            REINICIAR SALA ↻
-          </button>
         </div>
-      </div>
+        <button
+          disabled={isAutoRejoining}
+          onClick={() => {
+            // Enable auto-rejoin flag
+            setIsAutoRejoining(true);
+          }}
+          className="w-full px-8 py-3 bg-red-500/20 text-red-200 border border-red-500/50 font-bold text-sm rounded-xl hover:bg-red-500/30 transition-all uppercase tracking-wider disabled:opacity-50"
+        >
+          {isAutoRejoining ? "ESPERANDO REINICIO..." : "JUGAR DE NUEVO ↻"}
+        </button>
+      </div >
     );
   } else if (gameState.status === 'WAITING') {
     overlayContent = (

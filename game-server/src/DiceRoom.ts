@@ -281,10 +281,14 @@ export class DiceRoom {
             await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
         } catch (e) { }
 
-        console.log("[DiceRoom " + this.id + "] Programando reinicio automático en 10s...");
-        setTimeout(() => {
+        console.log("[DiceRoom " + this.id + "] Partida finalizada. Reiniciando sala en 10s...");
+
+        // IMPORTANTE: Guardar referencia al timeout para poder cancelarlo si es necesario
+        if (this.timer) clearTimeout(this.timer);
+
+        this.timer = setTimeout(() => {
             this.reset();
-        }, 10000); // 10 Segundos de espera y PUM, limpieza total.
+        }, 10000); // 10 segundos de espera para ver el resultado
     }
 
     private processTurn() {
@@ -338,43 +342,31 @@ export class DiceRoom {
     }
 
     public reset() {
-        console.log("[DiceRoom " + this.id + "] EJECUTANDO RESET TOTAL.");
+        console.log("[DiceRoom " + this.id + "] EJECUTANDO RESET (Desalojando asientos)...");
 
-        // 1. Detener cualquier loop o timer activo
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
-        }
-        if (this.botTimer) {
-            clearTimeout(this.botTimer);
-            this.botTimer = null;
-        }
+        // Limpiar timers
+        if (this.timer) clearTimeout(this.timer);
+        if (this.botTimer) clearTimeout(this.botTimer);
 
-        // 2. LIMPIEZA AGRESIVA DE JUGADORES (La parte que fallaba)
-        this.players = []; // Borrar todos los jugadores de la memoria
+        // CRÍTICO: Vaciar array de jugadores (esto los levanta de la mesa)
+        this.players = [];
 
-        // 3. Resetear variables de juego
+        // Resetear variables de juego
         this.rolls = {};
         this.history = [];
         this.round = 1;
         this.turnUserId = null;
         this.roundStarterId = null;
-        this.turnExpiresAt = 0;
-
-        // 4. Restaurar estado base
         this.status = 'WAITING';
 
-        // 5. Notificar a todos los clientes que la sala es nueva
-        // Emitimos 'server:room:reset' para forzar recarga (frontend logic)
-        this.io.to(this.id).emit('server:room:reset');
-
-        // También enviamos el estado vacío por si acaso
+        // Notificar a todos que la sala está nueva y vacía
+        // Esto hará que el frontend muestre la pantalla de "Comprar Sitio"
         this.broadcastState();
 
-        // Reiniciar bot (esperar nuevos jugadores)
-        this.scheduleBot();
+        // Emitir evento explícito de reset por si el frontend necesita limpiar estados locales
+        this.io.to(this.id).emit('server:room:reset');
 
-        console.log("[DiceRoom " + this.id + "] Reset completado. Sala vacía y esperando.");
+        // Reiniciar ciclo de búsqueda de bots
+        this.scheduleBot();
     }
 }
-

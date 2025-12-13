@@ -331,10 +331,9 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔄 RESET DETECTADO: Recargando...");
+      console.log("🔄 RESET DETECTADO");
       toast.info("La sala se ha reiniciado.");
-      // Forzar recarga absoluta para limpiar memoria cliente
-      window.location.reload();
+      // NO reload, let the state update handle it
     });
 
     return () => { socket.disconnect(); };
@@ -745,7 +744,7 @@ export default function RoomPage() {
                   gameState={gameState}
                   userId={safeUser.id}
                   onRoll={handleRoll}
-                  onReset={handleRejoin} // Reusamos handleRejoin que tiene la lógica de reset+socket
+                  onReset={() => join()} // Pasamos JOIN para comprar entrada automáticamente
                 />
               ) : (
                 <RouletteBoard room={room} email={email} wheelSize={400} theme={currentTheme} onSpinEnd={handleSpinEnd} />
