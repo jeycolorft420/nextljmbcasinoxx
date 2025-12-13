@@ -42,8 +42,9 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   // New State: Result Overlay Delay
   const [showResultOverlay, setShowResultOverlay] = useState(false);
 
-  // Detect Past Round (Waiting state after round 1)
-  const isPastRound = gameState?.status === 'WAITING' && gameState?.round > 1;
+  // Detect Past Round: Show if round > 1 AND (Waiting OR (Playing but receiving empty rolls - meaning turn started but no action yet))
+  const isPastRound = gameState?.round > 1 &&
+    (gameState.status === 'WAITING' || (gameState.status === 'PLAYING' && Object.keys(gameState.rolls || {}).length === 0));
 
   // Strategy: Maintain last known valid rolls in Refs to prevent default [1,1] reset (MOVED UP TO FIX HOOK ERROR)
   const rollsRef = useRef<{ [key: string]: number[] }>({});
