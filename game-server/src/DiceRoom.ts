@@ -60,7 +60,13 @@ export class DiceRoom {
         this.io = io;
     }
 
-    public addPlayer(socket: Socket, user: any, isBot: boolean = false) {
+    public async addPlayer(socket: Socket, user: any, isBot: boolean = false) {
+        // 1. Validación rápida en memoria (Instantánea)
+        if (this.players.length >= 2) {
+            socket.emit('error_msg', { message: 'Sala llena' });
+            return;
+        }
+
         const existing = this.players.find(p => p.userId === user.id);
         if (existing) {
             if (!isBot) existing.socketId = socket.id;
@@ -69,31 +75,46 @@ export class DiceRoom {
             return;
         }
 
-        if (this.players.length >= 2 || (this.status !== 'WAITING' && !isBot)) return;
+        if (this.status !== 'WAITING' && !isBot) return;
 
-        this.players.push({
+        // 2. CREAR JUGADOR EN MEMORIA (RAM) - ¡ESTO ES LO QUE DA VELOCIDAD!
+        const newPlayer: Player = {
             socketId: isBot ? 'bot' : socket.id,
             userId: user.id,
             username: user.name || "Jugador",
             avatarUrl: user.avatar || "",
             position: this.players.some(p => p.position === 1) ? 2 : 1,
             balance: this.priceCents,
-            skin: user.selectedDiceColor || 'white',
+            skin: user.selectedDiceColor || user.activeSkin || 'white', // Compatible with both
             isBot,
             connected: true
-        });
+        };
 
+        this.players.push(newPlayer);
         this.players.sort((a, b) => a.position - b.position);
+
+        // 3. BROADCAST INMEDIATO (El cliente ve que se sentó en <50ms)
         this.broadcastState();
 
-        // Lógica del Bot corregida
-        if (this.players.length === 1) {
-            // Solo programar bot si hay 1 humano esperando
-            this.scheduleBot();
-        } else if (this.players.length >= 2) {
-            // Si se llenó, cancelar cualquier bot pendiente
+        // 4. PERSISTENCIA EN SEGUNDO PLANO (Fire and Forget)
+        // No usamos 'await' aquí para no bloquear el juego.
+        if (!isBot) {
+            prisma.entry.create({
+                data: { roomId: this.id, userId: user.id, status: 'ACTIVE', position: newPlayer.position }
+            }).catch(err => {
+                console.error(`[DiceRoom ${this.id}] Error guardando entrada en DB (Rollback):`, err);
+                // Si falla la DB, lo sacamos (caso muy raro)
+                this.removePlayer(socket.id);
+                socket.emit('error_msg', { message: 'Error de conexión con base de datos.' });
+            });
+        }
+
+        // 5. Iniciar lógica de juego si está lleno
+        if (this.players.length >= 2) {
             this.cancelBot();
             setTimeout(() => this.startGame(), 2000);
+        } else if (this.players.length === 1) {
+            this.scheduleBot();
         }
     }
 

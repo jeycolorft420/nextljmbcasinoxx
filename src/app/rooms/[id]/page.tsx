@@ -391,7 +391,8 @@ export default function RoomPage() {
   }, [selectedPositions.length, qty]);
 
   const join = async () => {
-    if (!id) return;
+    if (!id || !userId) return;
+    // Calculate cost
     const costCents = room ? room.priceCents * ((selectedPositions.length > 0 ? selectedPositions.length : qty)) : 0;
     const currentBalance = walletBalance ?? (session?.user as any)?.balanceCents ?? 0;
 
@@ -401,78 +402,39 @@ export default function RoomPage() {
     }
 
     setJoining(true);
+    // Optimistic Wallet Update (Client Side)
     optimisticUpdate(-costCents);
 
-    const oldSelection = [...selectedPositions];
-    let revertRoom: Room | null = null;
-
-    if (room && session?.user && selectedPositions.length > 0) {
-      revertRoom = { ...room };
-      const newEntries = selectedPositions.map((pos) => ({
-        id: `temp-${pos}-${Date.now()}`,
-        position: pos,
-        round: room.currentRound ?? 1,
-        user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
-      }));
-      setRoom((prev) => {
-        if (!prev) return prev;
-        const others = (prev.entries || []).filter(e => !selectedPositions.includes(e.position));
-        return { ...prev, entries: [...others, ...newEntries] };
-      });
-      setSelectedPositions([]);
-    }
-
+    // --- OPTIMISTIC SOCKET JOIN (No REST API wait) ---
     try {
-      const payload = selectedPositions.length > 0 ? { positions: selectedPositions } : { quantity: qty };
-      const res = await fetch(`/api/rooms/${id}/join`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-      const data = await res.json();
+      if (socketRef.current && socketRef.current.connected) {
+        console.log("⚡ SOCKET JOIN: Enviando petición optimista...");
+        socketRef.current.emit("join_room", {
+          roomId: id,
+          user: {
+            id: userId,
+            name: session?.user?.name,
+            avatar: session?.user?.image,
+            selectedDiceColor: currentDiceSkin, // Send dice color
+            activeSkin: currentDiceSkin // Send as activeSkin too for compatibility
+          }
+        });
 
-      if (!res.ok) {
-        rollbackUpdate(costCents);
-        if (revertRoom) setRoom(revertRoom);
-        if (oldSelection.length > 0) setSelectedPositions(oldSelection);
-        toast.error(data.error || "No se pudo unir");
+        // Assuming success for UI feedback
+        toast.success("¡Uniendo...");
+
+        // Clear selections
+        setSelectedPositions([]);
       } else {
-        const takenList = Array.isArray(data.positions) ? data.positions : [];
-        if (oldSelection.length === 0 && takenList.length > 0 && room && session?.user) {
-          const newEntries = takenList.map((pos: number) => ({
-            id: `temp-${pos}-${Date.now()}`, position: pos, round: room.currentRound ?? 1,
-            user: { id: (session.user as any)?.id || "me", name: session.user?.name || "Yo", email: session.user?.email! }
-          }));
-          setRoom((prev) => {
-            if (!prev) return prev;
-            const others = (prev.entries || []).filter(e => !takenList.includes(e.position));
-            return { ...prev, entries: [...others, ...newEntries] };
-          });
-        }
-        toast.success("¡Unido!");
-
-        // ✅ SOLUCIÓN REAL-TIME: Avisar al socket inmediatamente
-        await load(); // 1. Recargar datos de la sala
-        if (socketRef.current && userId) {
-          console.log("💰 Compra detectada, actualizando socket...");
-          socketRef.current.emit("join_room", {
-            roomId: id,
-            user: {
-              id: userId,
-              name: session?.user?.name,
-              avatar: session?.user?.image,
-              selectedDiceColor: (session?.user as any)?.selectedDiceColor
-            }
-          });
-        }
-
-        setTimeout(() => { load().then(d => { if (d) handleRoomUpdate(d); }); }, 500);
+        throw new Error("Socket no conectado");
       }
-    } catch {
+    } catch (e) {
+      console.error("Socket Join Error", e);
       rollbackUpdate(costCents);
-      if (revertRoom) setRoom(revertRoom);
-      if (oldSelection.length > 0) setSelectedPositions(oldSelection);
-      toast.error("Error de red");
+      toast.error("Error de conexión al servidor de juego");
     } finally {
-      setJoining(false);
+      // Stop loading spinner after a short delay (UI feel)
+      setTimeout(() => setJoining(false), 500);
     }
   };
 
