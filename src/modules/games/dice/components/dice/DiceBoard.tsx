@@ -60,9 +60,16 @@ export default function DiceBoard({ gameState, userId, onRoll, onReset }: { game
     if (gameState?.status === 'FINISHED') {
       const iWon = gameState.players.find((p: any) => p.userId === userId)?.balance > 0;
       if (iWon) {
-        const audio = new Audio("/sfx/win.mp3"); // Asumiendo que existe o usar dice-roll fallback
-        audio.catch(() => new Audio("/sfx/dice-roll.mp3")); // Fallback
-        audio.play().catch(() => { });
+        const audio = new Audio("/sfx/win.mp3");
+        // FIX: audio.play() devuelve una promesa. audio en sí mismo es un elemento HTML y no tiene .catch
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {
+            // Fallback si falla (ej: autoplay policy)
+            new Audio("/sfx/dice-roll.mp3").play().catch(() => { });
+          });
+        }
+
 
         const duration = 3000;
         const end = Date.now() + duration;

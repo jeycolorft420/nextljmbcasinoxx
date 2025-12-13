@@ -273,13 +273,17 @@ export class DiceRoom {
         // Asegurar actualización final
         this.broadcastState();
 
-        try {
-            await prisma.gameResult.create({
-                data: { roomId: this.id, winnerUserId: winner.userId, winnerName: winner.username, prizeCents: total, roundNumber: this.round }
-            });
-            await prisma.user.update({ where: { id: winner.userId }, data: { balanceCents: { increment: total } } });
-            await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
-        } catch (e) { }
+        await prisma.gameResult.create({
+            data: { roomId: this.id, winnerUserId: winner.userId, winnerName: winner.username, prizeCents: total, roundNumber: this.round }
+        });
+        await prisma.user.update({ where: { id: winner.userId }, data: { balanceCents: { increment: total } } });
+        await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
+    } catch(e) { }
+
+        console.log(`[DiceRoom ${this.id}] Programando reinicio automático en 10s...`);
+        setTimeout(() => {
+            this.reset();
+        }, 10000); // 10 Segundos de espera y PUM, limpieza total.
     }
 
     private processTurn() {
@@ -333,7 +337,7 @@ export class DiceRoom {
     }
 
     public reset() {
-        console.log(`[DiceRoom ${this.id}] EJECUTANDO RESET TOTAL.`);
+        console.log(`[DiceRoom ${ this.id }] EJECUTANDO RESET TOTAL.`);
 
         // 1. Detener cualquier loop o timer activo
         if (this.timer) {
@@ -369,7 +373,7 @@ export class DiceRoom {
         // Reiniciar bot (esperar nuevos jugadores)
         this.scheduleBot();
 
-        console.log(`[DiceRoom ${this.id}] Reset completado. Sala vacía y esperando.`);
+        console.log(`[DiceRoom ${ this.id }] Reset completado.Sala vacía y esperando.`);
     }
 }
 
