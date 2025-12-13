@@ -39,6 +39,19 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
   // FIX: Usar el timeLeft del servidor como base si está disponible
   const serverTimeLeft = gameState?.timeLeft;
 
+  // New State: Delayed Finish Modal
+  const [showFinishModal, setShowFinishModal] = useState(false);
+
+  // New Effect: Handle Delayed Finish Modal logic (3s delay)
+  useEffect(() => {
+    if (gameState?.status === 'FINISHED') {
+      const t = setTimeout(() => setShowFinishModal(true), 3000);
+      return () => clearTimeout(t);
+    } else {
+      setShowFinishModal(false);
+    }
+  }, [gameState?.status]);
+
   // New Effect: Detect Reset & Trigger Auto Join
   useEffect(() => {
     if (isAutoRejoining && gameState?.status === 'WAITING' && gameState?.players?.length === 0) {
@@ -219,7 +232,7 @@ export default function DiceBoard({ gameState: providedState, userId, onRoll, on
         </div>
       </div>
     );
-  } else if (gameState.status === 'FINISHED') {
+  } else if (gameState.status === 'FINISHED' && showFinishModal) {
     const iWonGame = gameState.players.find((p: any) => p.userId === userId)?.balance > 0;
 
     // Spectator Finish Screen
