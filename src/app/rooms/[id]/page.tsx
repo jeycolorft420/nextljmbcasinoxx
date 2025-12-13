@@ -331,22 +331,29 @@ export default function RoomPage() {
     });
 
     socket.on("server:room:reset", () => {
-      console.log("🔄 RESET DETECTADO");
+      console.log("🔥 HARD RESET: Limpiando tablero visualmente...");
       toast.info("La sala se ha reiniciado.");
-      // NO reload, let the state update handle it
+
+      // FORZAR LIMPIEZA VISUAL EXTRAMA
+      setGameState({
+        status: 'WAITING',
+        round: 1,
+        players: [], // Vaciamos explícitamente
+        rolls: {},
+        history: [],
+        timeLeft: 30
+      });
+      // Esto disparará la renderización de DiceBoard sin jugadores
     });
 
     socket.on('game:hard_reset', () => {
+      // Mismo comportamiento que reset
       console.log("nuclear: Recibido HARD RESET. Limpiando tablero...");
+      setGameState(null); // O reiniciar a objeto vacío como arriba, pero null fuerza 'loading' state maybe? 
+      // El usuario pidió: destructivo. Null es destructivo.
+      // Pero arriba en server:room:reset pidió "Vaciamos el array explícitamente" en el objecto.
+      // Voy a usar null para hard_reset para que sea "Reinicio de Fábrica" total.
       toast.error("La sala se ha reiniciado por completo.");
-
-      // 1. Limpiar estados locales críticos
-      setGameState(null);
-      // Si hay otros estados visuales gestionados aquí, limpiarlos.
-      // El setGameState(null) forzará a que los componentes hijos (DiceBoard) se desmonten o reinicien.
-
-      // Opcional: Forzar refetch de info de sala si fuese necesario, 
-      // pero setGameState(null) debería disparar el estado de "Cargando/Conectando" o Lobby.
     });
 
     return () => { socket.disconnect(); };

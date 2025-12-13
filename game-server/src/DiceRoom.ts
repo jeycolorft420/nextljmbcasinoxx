@@ -377,43 +377,41 @@ export class DiceRoom {
     }
 
     public async reset() {
-        console.log(`[DiceRoom ${this.id}] ☢️ EJECUTANDO HARD RESET ☢️`);
+        console.log(`[DiceRoom ${this.id}] 🛑 HARD RESET: Limpieza estricta.`);
 
-        // 1. MATAR TODOS LOS PROCESOS ACTIVOS (Timers y Loops)
-        this.killGameLoop(); // Usa nuestro método existente que ya limpia timer y botTimer
+        // 1. Detener el reloj del juego
+        this.killGameLoop();
 
-        // 2. LIMPIEZA TOTAL DE MEMORIA
-        this.players = [];       // Echar a todos
-        // this.seats = {};      // No usamos mapa de asientos separado en esta implementación
-        this.rolls = {};         // Borrar tiradas
-        this.history = [];       // Borrar historial de rondas
-        this.round = 1;          // Reiniciar contador de rondas
-        this.status = 'WAITING'; // Estado de espera
-        // this.winner = null;   // No mantenemos propiedad winner persistente en la clase
+        // 2. Detener CUALQUIER intento de bot
+        if (this.botTimer) {
+            clearTimeout(this.botTimer);
+            this.botTimer = null;
+        }
+
+        // 3. VACIADO TOTAL
+        this.players = [];
+        this.rolls = {};
+        this.history = [];
+        this.round = 1;
+        this.status = 'WAITING';
         this.turnUserId = null;
         this.roundStarterId = null;
 
-        // 3. ACTUALIZAR BASE DE DATOS (Para evitar desincronización al recargar)
+        // 4. ACTUALIZAR BASE DE DATOS
         try {
-            // Nota: Usamos 'state' en DB según esquema, mapeamos 'WAITING' -> 'OPEN' o lo que espere la DB
-            // En métodos anteriores usábamos update({ state: 'FINISHED' }). 
-            // Asumiremos 'OPEN' o 'WAITING' para estado disponible.
             await prisma.room.update({
                 where: { id: this.id },
-                data: { state: 'OPEN' }
+                data: { state: 'OPEN' } // Asegurar estado OPEN
             });
         } catch (e) {
-            console.error(`[DiceRoom ${this.id}] Error reseteando DB:`, e);
+            console.error(`[DiceRoom ${this.id}] DB Reset Error:`, e);
         }
 
-        // 4. EMITIR EVENTO DE "MUERTE SÚBITA" AL FRONTEND
-        // Enviamos un estado vacío Y un evento específico de reset
+        // 5. NOTIFICAR Y LUEGO SALIR
         this.broadcastState();
-        this.io.to(this.id).emit('game:hard_reset'); // Evento clave para limpieza visual
+        this.io.to(this.id).emit('server:room:reset');
 
-        console.log(`[DiceRoom ${this.id}] Sala inmaculada. Esperando nuevos jugadores.`);
-
-        // 5. Reiniciar bucle de bots (si aplica) - SOLO si hay jugadores, pero como se vació, no se llama.
-        // Se llamará cuando entre el primer jugador humano (en addPlayer).
+        // IMPORTANTE: NO llames a scheduleBot() aquí.
+        // El bot solo debe activarse cuando un humano REAL compre un puesto nuevo en addPlayer().
     }
 }
