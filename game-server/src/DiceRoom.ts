@@ -280,100 +280,100 @@ export class DiceRoom {
         await prisma.room.update({ where: { id: this.id }, data: { state: 'FINISHED', finishedAt: new Date(), winningEntryId: winner.userId } });
     } catch(e) { }
 
-        console.log(`[DiceRoom ${this.id}] Programando reinicio automático en 10s...`);
-        setTimeout(() => {
-            this.reset();
-        }, 10000); // 10 Segundos de espera y PUM, limpieza total.
+        console.log("[DiceRoom " + this.id + "] Programando reinicio automático en 10s...");
+setTimeout(() => {
+    this.reset();
+}, 10000); // 10 Segundos de espera y PUM, limpieza total.
     }
 
     private processTurn() {
-        if (this.timer) clearTimeout(this.timer);
+    if (this.timer) clearTimeout(this.timer);
 
-        const p = this.players.find(pl => pl.userId === this.turnUserId);
-        if (!p) return;
+    const p = this.players.find(pl => pl.userId === this.turnUserId);
+    if (!p) return;
 
-        // DEFINIR EL TIEMPO INMEDIATAMENTE (30s)
-        // Esto asegura que broadcastState siempre tenga el valor futuro correcto
-        this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
+    // DEFINIR EL TIEMPO INMEDIATAMENTE (30s)
+    // Esto asegura que broadcastState siempre tenga el valor futuro correcto
+    this.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
 
-        if (p.isBot) {
-            const botDelay = Math.random() * 2000 + 1000;
-            this.timer = setTimeout(() => this.handleRoll(p.userId), botDelay);
-        } else {
-            this.timer = setTimeout(() => {
-                this.handleTurnTimeout(p.userId);
-            }, TURN_TIMEOUT_MS);
-        }
+    if (p.isBot) {
+        const botDelay = Math.random() * 2000 + 1000;
+        this.timer = setTimeout(() => this.handleRoll(p.userId), botDelay);
+    } else {
+        this.timer = setTimeout(() => {
+            this.handleTurnTimeout(p.userId);
+        }, TURN_TIMEOUT_MS);
     }
+}
 
     private scheduleBot() {
-        if (this.botTimer) clearTimeout(this.botTimer);
-        if (this.botWaitMs > 0) this.botTimer = setTimeout(() => this.injectBot(), this.botWaitMs);
-    }
+    if (this.botTimer) clearTimeout(this.botTimer);
+    if (this.botWaitMs > 0) this.botTimer = setTimeout(() => this.injectBot(), this.botWaitMs);
+}
     private cancelBot() { if (this.botTimer) clearTimeout(this.botTimer); }
     private async injectBot() {
-        const bot = await prisma.user.findFirst({ where: { isBot: true } });
-        if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
-    }
+    const bot = await prisma.user.findFirst({ where: { isBot: true } });
+    if (bot) this.addPlayer({ id: 'bot' } as any, { id: bot.id, name: bot.name, avatar: bot.avatarUrl, selectedDiceColor: 'red' }, true);
+}
 
     private buildStatePayload() {
-        return {
-            status: this.status,
-            round: this.round,
-            turnUserId: this.turnUserId,
-            rolls: this.rolls,
-            history: this.history,
-            players: this.players.map(p => ({
-                userId: p.userId, name: p.username, avatar: p.avatarUrl,
-                balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
-            })),
-            stepValue: this.stepValue,
-            timeLeft: this.status === 'PLAYING' ? Math.max(0, Math.ceil((this.turnExpiresAt - Date.now()) / 1000)) : 0
-        };
-    }
+    return {
+        status: this.status,
+        round: this.round,
+        turnUserId: this.turnUserId,
+        rolls: this.rolls,
+        history: this.history,
+        players: this.players.map(p => ({
+            userId: p.userId, name: p.username, avatar: p.avatarUrl,
+            balance: p.balance, position: p.position, isBot: p.isBot, skin: p.skin
+        })),
+        stepValue: this.stepValue,
+        timeLeft: this.status === 'PLAYING' ? Math.max(0, Math.ceil((this.turnExpiresAt - Date.now()) / 1000)) : 0
+    };
+}
 
     private broadcastState() {
-        this.io.to(this.id).emit('update_game', this.buildStatePayload());
-    }
+    this.io.to(this.id).emit('update_game', this.buildStatePayload());
+}
 
     public reset() {
-        console.log(`[DiceRoom ${ this.id }] EJECUTANDO RESET TOTAL.`);
+    console.log("[DiceRoom " + this.id + "] EJECUTANDO RESET TOTAL.");
 
-        // 1. Detener cualquier loop o timer activo
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
-        }
-        if (this.botTimer) {
-            clearTimeout(this.botTimer);
-            this.botTimer = null;
-        }
-
-        // 2. LIMPIEZA AGRESIVA DE JUGADORES (La parte que fallaba)
-        this.players = []; // Borrar todos los jugadores de la memoria
-
-        // 3. Resetear variables de juego
-        this.rolls = {};
-        this.history = [];
-        this.round = 1;
-        this.turnUserId = null;
-        this.roundStarterId = null;
-        this.turnExpiresAt = 0;
-
-        // 4. Restaurar estado base
-        this.status = 'WAITING';
-
-        // 5. Notificar a todos los clientes que la sala es nueva
-        // Emitimos 'server:room:reset' para forzar recarga (frontend logic)
-        this.io.to(this.id).emit('server:room:reset');
-
-        // También enviamos el estado vacío por si acaso
-        this.broadcastState();
-
-        // Reiniciar bot (esperar nuevos jugadores)
-        this.scheduleBot();
-
-        console.log(`[DiceRoom ${ this.id }] Reset completado.Sala vacía y esperando.`);
+    // 1. Detener cualquier loop o timer activo
+    if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
     }
+    if (this.botTimer) {
+        clearTimeout(this.botTimer);
+        this.botTimer = null;
+    }
+
+    // 2. LIMPIEZA AGRESIVA DE JUGADORES (La parte que fallaba)
+    this.players = []; // Borrar todos los jugadores de la memoria
+
+    // 3. Resetear variables de juego
+    this.rolls = {};
+    this.history = [];
+    this.round = 1;
+    this.turnUserId = null;
+    this.roundStarterId = null;
+    this.turnExpiresAt = 0;
+
+    // 4. Restaurar estado base
+    this.status = 'WAITING';
+
+    // 5. Notificar a todos los clientes que la sala es nueva
+    // Emitimos 'server:room:reset' para forzar recarga (frontend logic)
+    this.io.to(this.id).emit('server:room:reset');
+
+    // También enviamos el estado vacío por si acaso
+    this.broadcastState();
+
+    // Reiniciar bot (esperar nuevos jugadores)
+    this.scheduleBot();
+
+    console.log("[DiceRoom " + this.id + "] Reset completado. Sala vacía y esperando.");
+}
 }
 
