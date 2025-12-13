@@ -19,7 +19,7 @@ export interface DiceDuelProps {
   isGhostBottom?: boolean;
 
   // Status & Controls
-  statusText?: string;
+  statusText?: React.ReactNode;
   subMessage?: string;
   winnerDisplay?: { name: string; amount: string; isTie?: boolean } | null;
   onExit?: () => void;
