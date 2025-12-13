@@ -167,12 +167,30 @@ export class RouletteRoom {
 
         if (positionsToBook.length === 0) return;
 
+        // --- OPTIMISTIC RESERVATION (Fix Concurrency) ---
+        // Reserve seats in memory IMMEDIATELY so subsequent calls see them as taken.
+        const tempPlayers: any[] = [];
+        positionsToBook.forEach(pos => {
+            const p = {
+                socketId: isBot ? 'bot' : socket.id,
+                userId: user.id,
+                username: user.name || "Jugador",
+                avatarUrl: user.avatar || "",
+                position: pos,
+                isBot,
+            };
+            this.players.push(p);
+            tempPlayers.push(p);
+        });
+
         // EXECUTE TRANSACTION
         const totalCost = this.priceCents * positionsToBook.length;
         try {
             if (!isBot && isBuyAttempt) {
                 const userDb = await prisma.user.findUnique({ where: { id: user.id } });
                 if (!userDb || userDb.balanceCents < totalCost) {
+                    // Rollback
+                    this.players = this.players.filter(p => !tempPlayers.includes(p));
                     socket.emit('error_msg', { message: 'Saldo insuficiente' });
                     return;
                 }
@@ -191,9 +209,9 @@ export class RouletteRoom {
                         id: user.id,
                         name: user.name || "Bot",
                         email: `${user.id}@bot.local`,
-                        username: `bot_${user.id}`, // Ensure unique username
-                        password: "BOT_PASSWORD_PLACEHOLDER", // Required field
-                        avatarUrl: user.avatar || "", // Correct field name
+                        username: `bot_${user.id}`,
+                        password: "BOT_PASSWORD_PLACEHOLDER",
+                        avatarUrl: user.avatar || "",
                         balanceCents: 0,
                         isBot: true
                     }
@@ -206,21 +224,14 @@ export class RouletteRoom {
             }
         } catch (e) {
             console.error("Error Buy Roulette:", e);
+            // ROLLBACK MEMORY ON ERROR
+            this.players = this.players.filter(p => !tempPlayers.includes(p));
+
             if (!isBot) socket.emit('error_msg', { message: 'Error procesando compra' });
             return;
         }
 
-        // UPDATE MEMORY
-        positionsToBook.forEach(pos => {
-            this.players.push({
-                socketId: isBot ? 'bot' : socket.id,
-                userId: user.id,
-                username: user.name || "Jugador",
-                avatarUrl: user.avatar || "",
-                position: pos,
-                isBot,
-            });
-        });
+        // UPDATE MEMORY (Already done optimistically, just notify)
 
         this.notifyLobby();
         this.broadcastState();
