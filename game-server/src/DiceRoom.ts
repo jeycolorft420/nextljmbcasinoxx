@@ -109,6 +109,9 @@ export class DiceRoom {
     }
 
     private startGame() {
+        // Antes de empezar nada, asegúrate de que no haya un zombie corriendo
+        this.killGameLoop();
+
         this.status = 'PLAYING';
         this.round = 1;
         this.history = [];
@@ -341,31 +344,44 @@ export class DiceRoom {
         this.io.to(this.id).emit('update_game', this.buildStatePayload());
     }
 
+    // 1. MÉTODO DE LIMPIEZA PROFUNDA (CORTACABEZAS)
+    private killGameLoop() {
+        console.log(`[DiceRoom ${this.id}] 🛑 MATANDO procesos anteriores...`);
+
+        // Detener temporizador principal (Turnos / Bots jugando)
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+
+        // Detener temporizador de búsqueda de bots
+        if (this.botTimer) {
+            clearTimeout(this.botTimer);
+            this.botTimer = null;
+        }
+    }
+
     public reset() {
+        // PASO 1: Matar el juego anterior OBLIGATORIAMENTE
+        this.killGameLoop();
+
         console.log(`[DiceRoom ${this.id}] EJECUTANDO RESET NUCLEAR.`);
 
-        // 1. Matar timers
-        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-        if (this.botTimer) { clearTimeout(this.botTimer); this.botTimer = null; }
-
-        // 2. VACIAR MEMORIA (Lo más importante)
-        this.players = []; // Array vacío = Nadie sentado
+        // PASO 2: Vaciar datos
+        this.players = []; // Array vacío (CRÍTICO)
         this.rolls = {};
         this.history = [];
         this.round = 1;
         this.turnUserId = null;
         this.roundStarterId = null;
         this.status = 'WAITING';
-        // this.winner = null; // (Note: Property winner does not exist on class, skipping to avoid error)
 
-        // 3. Forzar actualización de estado INMEDIATA
-        // Enviamos el estado limpio para que el frontend redibuje una mesa vacía
+        // PASO 3: Notificar al frontend que la sala está MUERTA y VACÍA
         this.broadcastState();
+        this.io.to(this.id).emit('server:room:reset'); // Señal explicita para recargar UI
 
-        // 4. Emitir señal específica de reset
-        this.io.to(this.id).emit('server:room:reset');
-
-        // 5. Reiniciar bucle de bots (si aplica)
+        // PASO 4: Reiniciar bucle de bots (si aplica)
         this.scheduleBot();
     }
 }
+```
