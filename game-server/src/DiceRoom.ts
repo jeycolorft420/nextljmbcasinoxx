@@ -408,4 +408,3 @@ export class DiceRoom {
         // Si la sala está vacía, no debe haber timer de bot.
     }
 }
-```
